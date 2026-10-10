@@ -87,6 +87,7 @@ flowchart TD
 | [ ] | #28 | setup RPC Fuji + faucet AVAX + BEDROCK_MODEL_ID | `blocker` : sans ça, ni chaîne ni LLM. |
 | [ ] | #26 | onboarding (clone, venv, make install, .env, branche) | chacun doit être opérationnel. |
 | [ ] | #27 | CODEOWNERS + tableau TEAM.md | fige « qui possède quoi » avant de coder. |
+| [x] | #31 | contracts : registre des déploiements Fuji (`DEPLOYMENTS.md`) | consigne staff : tracer les adresses déployées. |
 
 ## Vague 1 — Décisions d'équipe (bloquent le code métier)
 
