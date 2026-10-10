@@ -21,6 +21,7 @@ Règles :
 |---|-------------------|------|-----|--------|--------|
 | 0 | Décision structurante : où vit la sécurité, et cœur du projet | 2026-10-10 | Équipe 20 | Tranché en équipe | — |
 | 0bis | Le Token Ghost s'applique-t-il au seul mint ou à tous les transferts ? | 2026-10-10 | Marceau | Tranché | PR #34 |
+| 1 | Détection du mint anormal : invariants, seuils, légitime vs malveillant | 2026-10-10 | denybs | Validée en session, à relire par l'équipe | PR #51 |
 | 3 | Réponse graduée : retarder ≠ bloquer, machine à états, quorums multisig | 2026-10-10 | Équipe 20 | Tranché en équipe | — |
 | 9 | Volet 2 : surveillance adaptative, allongement de fenêtre ciblé, contamination par ratio | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | PR #38 |
 
@@ -141,6 +142,101 @@ balise de risque et les signaux de la section 2.
 - #35 : que produit le transfert d'un Token Ghost (Ghost d'un Ghost) ?
 - #36 : que devient le collatéral quand on brûle un Ghost adossé (collatéral orphelin) ?
 - #37 : aligner `CLAIMS.md` sur l'objectif de la décision (solvabilité ou récupération).
+
+---
+
+## §1. Détection du mint anormal
+
+### DÉCISION (2026-10-10, denybs) — _validée en session, à relire par l'équipe_
+
+**Le surveillant de mint ne cherche pas des mints « trop gros » : il vérifie, indépendamment du
+contrat, que les hypothèses du volet 1 tiennent.**
+
+Raisonnement. Avec le volet 1 (§0), la signature autorise « traiter la demande n°X » et le
+contrat dérive lui-même le montant du dépôt. Un mint cohérent avec son dépôt (1:1, aux frais
+près) ne rapporte rien à l'attaquant : ce n'est pas une attaque, quelle que soit sa taille. Des
+seuils sur la taille d'un mint individuel seraient donc **redondants** avec le volet 1 et ne
+produiraient que des faux positifs (une baleine qui dépose 80M et reçoit 80M est légitime).
+
+Référence Resolv (22 mars 2026) : ~200 000 USDC déposés, 80M USR mintés en deux appels à
+`completeSwap()` avec une clé `SERVICE_ROLE` compromise, signatures toutes valides (ratio ~400×).
+C'est exactement ce que I1 ci-dessous rend impossible on-chain. Sources :
+[post-mortem Resolv](https://resolv.xyz/blog/resolv-postmortem-march-22-2026-incident),
+[CertiK](https://www.certik.com/blog/resolv-protocol-incident-analysis).
+
+Ce qui reste à surveiller, ce sont les cas où **une hypothèse du volet 1 tombe** :
+
+1. **Le contrat n'est plus celui qu'on croit** : upgrade via une clé admin volée, nouveau rôle de
+   mint. `CLAIMS.md` suppose « clés d'administration non compromises » ; le surveillant, hors
+   chaîne, ne dépend pas de cette clé.
+2. **Le taux est faux** : oracle manipulé (ex. flash loan). I1 est respecté, mais avec un mauvais
+   taux.
+3. **Le code a un bug** : on dit « vérifié par tests », jamais « prouvé ».
+4. **Le destinataire est détourné** : un mint à 1:1 peut quand même être un vol si l'attaquant
+   traite la demande d'une victime et envoie les tokens chez lui. Le bilan global reste à 1:1,
+   mais l'argent change de poche.
+
+#### Q1 — Invariants du système de mint
+
+| # | Invariant | Appliqué par | Ce qu'il bloque |
+|---|-----------|--------------|-----------------|
+| I1 | `minted(X) = deposit(X) × taux`, à ε près (frais) | contrat (#5), testé par fuzzing (#6) | Mint gonflé (cas Resolv) |
+| I2 | La demande X existe, est en attente, n'est traitée qu'une fois | contrat (#5) | Rejeu, demande fabriquée |
+| I3 | Le destinataire du mint X est le déposant de X | contrat (#5) | Détournement à 1:1 |
+| I4 | Une seule fonction, un seul rôle peut minter | contrat (#5) | Chemin de mint parallèle |
+| I5 | `Δ totalSupply = Σ Mint − Σ Burn` | surveillant (#11) | Mint passé par un chemin non prévu |
+| I6 | `totalSupply ≤ valeur du collatéral × facteur` | surveillant (#11) | Dérive de solvabilité (dépend de l'oracle) |
+
+I3 est **nouveau** et doit être appliqué par le contrat : sans lui, le volet 1 laisse passer un vol
+à 1:1. Le surveillant recalcule aussi I1 hors chaîne, comme **alarme** (il ne peut plus être violé
+on-chain sauf si une hypothèse est tombée).
+
+#### Q2 — Seuils d'anomalie
+
+- **Pas de seuil sur la taille d'un mint individuel** (absolu, relatif à la médiane, z-score) :
+  redondant avec le volet 1.
+- **Volumes agrégés anormaux** : déjà couverts par la baseline adaptative de la §9 (ratios
+  normalisés, médiane + MAD, volume élevé ET dispersion effondrée). Pas de second mécanisme.
+- Le surveillant de mint lève une `Alert` sur :
+  - toute violation recalculée de I1, I5 ou I6 (tolérance = ε des frais, rien d'autre) ;
+  - tout événement d'administration (`Upgraded`, `RoleGranted`, changement d'oracle ou de taux)
+    non annoncé au préalable ;
+  - un écart du taux / de l'oracle au-delà de δ par rapport à une source de référence.
+- Réponse : conforme à la §3. Le surveillant ne peut que **retarder** le périmètre concerné ;
+  détruire ou mettre en pause globale reste au multisig. Une violation d'invariant détectée hors
+  chaîne signifie que le contrat a été contourné : c'est le cas qui justifie l'audit humain.
+
+#### Q3 — Distinguer un mint légitime important d'un mint malveillant
+
+- Sous le volet 1, un mint **cohérent avec son dépôt et son déposant** (I1 + I3) est légitime par
+  définition, **quelle que soit sa taille**. La taille n'est pas un critère.
+- La question devient : le mint est-il passé par **le chemin prévu**, avec **le bon taux**, vers
+  **le bon destinataire** ? C'est ce que vérifient les invariants et les événements admin.
+- Le comportement **après** le mint (sortie rapide, concentration vers peu d'adresses) n'est pas
+  traité ici : le Ghost s'appliquant à tous les transferts (§0bis), c'est la contamination par
+  ratio et le discriminant de dispersion de la §9 qui le couvrent.
+
+#### Conséquences (à reporter, sans les trancher ici)
+
+- **#11** : `check_mint()` vérifie I1, I5, I6, les événements admin et l'écart d'oracle. Pas de
+  seuil de taille.
+- **#5** : le contrat protégé doit appliquer I3 (destinataire lié au déposant).
+- **#9** (monitor) : écouter aussi les événements d'administration, pas seulement les mints.
+- **#2** (`docs/CONTRACTS.md`, zone sensible) : `MintEvent` / `MintRequest` devront porter au
+  minimum l'identifiant de demande, le déposant, le destinataire, le montant déposé et le taux.
+  Proposition à discuter en équipe, fichier non modifié.
+- **#49** : le scénario B de `data/README.md` (« l'attaquant reste sous les plafonds ») n'a plus
+  de sens avec le volet 1 et sans plafond fixe ; il est à reformuler autour d'une hypothèse qui
+  tombe.
+
+### Reste ouvert
+
+- Relecture par l'équipe.
+- Valeurs de ε (frais) et δ (écart d'oracle), et choix de la source de référence du taux, **à
+  mesurer**.
+- Le contrat est-il **upgradable** ? S'il ne l'est pas, le risque n°1 (clé admin) disparaît en
+  grande partie, au prix de ne pas pouvoir corriger un bug.
+- Liste exacte des événements d'administration à surveiller.
 
 ---
 

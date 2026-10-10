@@ -54,9 +54,21 @@ risque est transféré vers un marché secondaire spéculatif) :
 
 ## 1. Détection du mint anormal
 
+> → **Tranché**, voir `docs/OPEN_ANSWERS.md` §1 (validée en session, à relire par l'équipe).
+> Résumé : pas de seuil sur la taille d'un mint (redondant avec le volet 1) ; le surveillant
+> vérifie hors chaîne que les hypothèses du volet 1 tiennent (invariants, événements admin,
+> oracle) ; nouvel invariant I3 « destinataire = déposant » à appliquer dans le contrat.
+
 - Quels **invariants** doit respecter le système de mint (ex : tokens émis ≤ f(collatéral)) ?
 - Quels **seuils** déclenchent une anomalie de mint (absolus, relatifs, fenêtre temporelle) ?
 - Comment distinguer un mint légitime important d'un mint malveillant ?
+
+### Reste ouvert (voir §1 d'`OPEN_ANSWERS.md`)
+
+- Valeurs de ε (frais) et δ (écart d'oracle), source de référence du taux, **à mesurer**.
+- Contrat upgradable ou non.
+- Liste exacte des événements d'administration à surveiller.
+- Reformulation du scénario B (#49).
 
 ## 2. Signaux de transferts anormaux
 
