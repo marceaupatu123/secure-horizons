@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from botocore.exceptions import ClientError, NoCredentialsError
+from botocore.exceptions import ClientError, NoCredentialsError, ProfileNotFound
 
 from llm.client import DEFAULT_MAX_TOKENS, BedrockClient, LLMError
 from llm.prompts import SYSTEM_PROMPT_EXPLAIN
@@ -116,6 +116,28 @@ def test_botocore_error_wrapped(
     fake = FakeBedrockRuntime(events, error=NoCredentialsError())
     with pytest.raises(LLMError, match="NoCredentialsError"):
         _client(settings, limiter, fake).complete("u", "s")
+
+
+def test_client_construction_error_wrapped(
+    settings: Settings,
+    limiter: RecordingRateLimiter,
+    events: list[str],
+    alert: Alert,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def broken_factory(*args: Any, **kwargs: Any) -> Any:
+        raise ProfileNotFound(profile="x")
+
+    monkeypatch.setattr("llm.client.boto3.client", broken_factory)
+    client = BedrockClient(settings, rate_limiter=limiter)
+
+    with pytest.raises(LLMError, match="ProfileNotFound"):
+        client.complete("u", "s")
+    assert events == ["wait"]
+
+    result = client.explain(alert)
+    assert "Explication IA indisponible" in result
+    assert alert.reason in result
 
 
 def test_boto3_client_created_lazily_once(

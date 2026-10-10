@@ -192,19 +192,19 @@ class IncidentReport(_ReportModel):
             "",
             s[5] + ai_note,
             "",
-            self.narrative.description,
+            _neutralise_headings(self.narrative.description),
             "",
             s[6] + ai_note,
             "",
-            self.narrative.impact,
+            _neutralise_headings(self.narrative.impact),
             "",
             s[7] + ai_note,
             "",
-            self.narrative.probable_cause,
+            _neutralise_headings(self.narrative.probable_cause),
             "",
             s[8] + ai_note,
             "",
-            self.narrative.mitigation,
+            _neutralise_headings(self.narrative.mitigation),
             "",
         ]
         return "\n".join(lines)
@@ -213,6 +213,26 @@ class IncidentReport(_ReportModel):
 def _cell(text: str) -> str:
     """Echappe un texte libre pour une cellule de tableau Markdown."""
     return text.replace("|", "\\|").replace("\n", " ")
+
+
+def _neutralise_headings(text: str) -> str:
+    """Echappe les `#` de tete de ligne d'un texte libre (texte LLM).
+
+    Le texte du modele ne peut ainsi pas creer de titre dans le rapport.
+    """
+    out: list[str] = []
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith("#"):
+            indent = line[: len(line) - len(stripped)]
+            line = f"{indent}\\{stripped}"
+        out.append(line)
+    return "\n".join(out)
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Interprete un datetime naif comme UTC (sans modifier l'entree)."""
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
 
 def _decided_by(action: ResponseAction) -> str:
@@ -230,10 +250,14 @@ def _build_timeline(
     actions: Sequence[ResponseAction],
     audit_entries: Sequence[AuditLogEntry],
 ) -> list[TimelineEntry]:
-    """Chronologie triee (stable) : alerte, actions, journal d'audit."""
+    """Chronologie triee (stable) : alerte, actions, journal d'audit.
+
+    Les datetimes naifs sont interpretes comme UTC (melange naif/aware trie
+    sans `TypeError`).
+    """
     entries = [
         TimelineEntry(
-            at=alert.created_at,
+            at=_as_utc(alert.created_at),
             actor=f"monitor:{alert.monitor_name}",
             event="alerte créée",
             detail=alert.reason,
@@ -243,7 +267,7 @@ def _build_timeline(
         perimeter = action.perimeter_address or "global"
         entries.append(
             TimelineEntry(
-                at=action.created_at,
+                at=_as_utc(action.created_at),
                 actor=_decided_by(action),
                 event=f"action {action.action_type.value} ({action.status.value})",
                 detail=f"{action.action_id} — périmètre {perimeter}",
@@ -252,7 +276,7 @@ def _build_timeline(
         if action.expires_at is not None:
             entries.append(
                 TimelineEntry(
-                    at=action.expires_at,
+                    at=_as_utc(action.expires_at),
                     actor="système",
                     event=f"expiration prévue de {action.action_type.value}",
                     detail=action.action_id,
@@ -261,7 +285,7 @@ def _build_timeline(
     for audit in audit_entries:
         entries.append(
             TimelineEntry(
-                at=audit.recorded_at,
+                at=_as_utc(audit.recorded_at),
                 actor=audit.actor,
                 event=audit.event_type,
                 detail=audit.message,
@@ -353,8 +377,8 @@ def build_incident_report(
     return IncidentReport(
         report_id=f"IR-{alert.alert_id}",
         incident_id=alert.alert_id,
-        generated_at=generated_at or datetime.now(timezone.utc),
-        detected_at=alert.created_at,
+        generated_at=_as_utc(generated_at or datetime.now(timezone.utc)),
+        detected_at=_as_utc(alert.created_at),
         kind=alert.kind,
         severity=alert.severity,
         monitor_name=alert.monitor_name,

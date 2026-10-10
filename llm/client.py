@@ -106,8 +106,10 @@ class BedrockClient:
                 (identifiants, reseau) ou reponse sans texte.
         """
         self._rate_limiter.wait()
-        client = self._get_client()
         try:
+            # Construction dans le try : une erreur botocore a la creation du
+            # client (ex. ProfileNotFound) devient aussi une LLMError.
+            client = self._get_client()
             response = client.converse(
                 modelId=self._settings.bedrock_model_id,
                 system=[{"text": system_prompt}],

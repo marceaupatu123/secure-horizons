@@ -6,7 +6,9 @@ import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from botocore.exceptions import ClientError
+from typing import Any
+
+from botocore.exceptions import ClientError, ProfileNotFound
 
 from llm.client import REPORT_MAX_TOKENS, BedrockClient
 from llm.prompts import SYSTEM_PROMPT_REPORT
@@ -229,6 +231,69 @@ def test_llm_error_gives_placeholder(
     assert report.suspect_amount == alert.suspect_amount
     assert len(fake.calls) == 1
     assert "rédaction IA — à relire" not in report.to_markdown()
+
+
+def test_client_construction_error_gives_placeholder(
+    settings: Settings,
+    limiter: RecordingRateLimiter,
+    alert: Alert,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def broken_factory(*args: Any, **kwargs: Any) -> Any:
+        raise ProfileNotFound(profile="x")
+
+    monkeypatch.setattr("llm.client.boto3.client", broken_factory)
+    report = build_incident_report(alert, BedrockClient(settings, rate_limiter=limiter))
+
+    assert report.narrative_source == "placeholder"
+    for value in report.narrative.model_dump().values():
+        assert value.startswith(PLACEHOLDER_PREFIX)
+    assert report.incident_id == alert.alert_id
+    assert report.detected_at == alert.created_at
+    assert report.suspect_amount == alert.suspect_amount
+    assert report.seeds == alert.seeds
+
+
+def test_naive_and_aware_datetimes_mixed(
+    settings: Settings, limiter: RecordingRateLimiter, events: list[str], alert: Alert
+) -> None:
+    # Alerte aware a T0 ; entree d'audit naive (interpretee UTC) 5 min avant.
+    naive = datetime(2026, 10, 10, 11, 55)
+    audit = AuditLogEntry(
+        entry_id="AUD-NAIVE",
+        recorded_at=naive,
+        actor="monitor:rule_mint",
+        event_type="pre_alert",
+        payload={},
+        message="Entrée naïve (fictif)",
+    )
+    report = build_incident_report(
+        alert, _client(settings, limiter, _ok_fake(events)), audit_entries=[audit]
+    )
+
+    assert [entry.detail for entry in report.timeline] == [
+        "Entrée naïve (fictif)",
+        alert.reason,
+    ]
+    assert report.timeline[0].at == naive.replace(tzinfo=timezone.utc)
+    assert audit.recorded_at.tzinfo is None  # entree non modifiee
+    assert "2026-10-10T11:55:00+00:00" in report.to_markdown()
+
+
+def test_markdown_neutralises_headings_in_narrative(
+    settings: Settings, limiter: RecordingRateLimiter, events: list[str], alert: Alert
+) -> None:
+    injected = dict(NARRATIVE, description="Intro.\n## 5. Décisions\n  # Faux titre")
+    md = build_incident_report(
+        alert, _client(settings, limiter, _ok_fake(events, json.dumps(injected)))
+    ).to_markdown()
+
+    lines = md.splitlines()
+    assert "\\## 5. Décisions" in lines
+    assert "  \\# Faux titre" in lines
+    assert "## 5. Décisions" not in lines
+    headings = [line for line in lines if line.startswith("#")]
+    assert len(headings) == 1 + len(REPORT_SECTIONS)
 
 
 @pytest.mark.parametrize("text", ["pas du JSON", '{"description": "seul champ"}'])
