@@ -604,7 +604,7 @@ décidable par un surveillant/IA seul ; `destroy` et `global_pause` exigent le m
 
 ```json
 {
-  "tx_hash": "0xffeeddccbbaa00998877665544332211ffeeddccbbaa0099887766554433221100",
+  "tx_hash": "0xffeeddccbbaa00998877665544332211ffeeddccbbaa00998877665544332211",
   "log_index": 2,
   "block_number": 12345800,
   "chain_id": 43113,
