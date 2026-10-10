@@ -37,6 +37,7 @@ flowchart TD
         I20["#20 dashboard : alertes + reponse"]
         I7["#7 contracts : balise + faux marche (volet 3)"]
         I8["#8 contracts : ERC20 Token Ghost"]
+        I65["#65 contracts : pool simule (swap-id)"]
         I13["#13 detection : ML / prediction conforme"]
         I25["#25 data : scenarios C et D"]
     end
@@ -63,5 +64,9 @@ flowchart TD
     I5 --> I24
     I17 --> I20
     I3 --> I8
+    I5 --> I8
+    I8 --> I7
+    I8 --> I65
     I7 --> I25
     I8 --> I25
+    I65 --> I25
