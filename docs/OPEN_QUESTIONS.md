@@ -71,6 +71,31 @@ risque est transféré vers un marché secondaire spéculatif) :
 - Comment pondérer/combiner ces signaux (règles, score, modèle `scikit-learn`) ?
 - Qu'est-ce qu'une « adresse neuve » et un « point de sortie » dans notre modèle ?
 
+### Propositions (2026-10-10, Yannis) — _proposé, à valider en équipe, **non acté**_
+
+> Ce sont des **propositions** pour répondre aux points ci-dessus, pas des décisions. Rien n'ira
+> dans `docs/OPEN_ANSWERS.md` tant que l'équipe ne les a pas actées.
+
+1. **⚠️ PRIORITÉ HAUTE — délai de détection.** La détection doit être **plus rapide que la fenêtre
+   Ghost normale** (10 min, §0bis), sinon les fonds de l'attaquant sont déjà convertis quand
+   l'alerte arrive. Des agrégats journaliers/horaires (ligne « volume agrégé » ci-dessus) arrivent
+   donc trop tard. Proposition : mesurer par **tranches de 5 min**, comparées à la baseline
+   médiane + MAD **du même créneau** (§9).
+2. **« Adresse neuve »** : pour la démo, **aucune transaction avant T dans notre jeu de données**
+   (le plus simple sur des données synthétiques). Amélioration future : **moins de K transactions
+   au total**, qui résiste à un attaquant qui « chauffe » ses adresses à l'avance.
+3. **« Point de sortie »** : une **liste fixe d'adresses étiquetées** « exchange » ou « bridge »,
+   produite par le générateur de données. → **À signaler au propriétaire de `data/`
+   (@EnzoFB06, #24).**
+4. **Mesure de la dispersion** (le discriminant de la §9) :
+   - mesure de référence : **indice de Herfindahl** (somme des parts au carré des destinataires ;
+     proche de 1 quand tout part au même endroit) ;
+   - exposée en plus : le **nombre de destinataires distincts**, plus facile à montrer au jury
+     sur le dashboard ;
+   - les signaux par transfert (gros montant vers adresse neuve, découpage, sortie rapide,
+     concentration vers les sorties, éventail/*fan-out*) **alimentent uniquement** la mesure de
+     dispersion ; ce ne sont **pas** des surveillants séparés, pour rester simple.
+
 ## 3. Réponse graduée — automatique vs validation humaine
 
 > **TRANCHÉ par la décision §3 (2026-10-10, Équipe 20)** — texte complet dans
@@ -110,6 +135,14 @@ risque est transféré vers un marché secondaire spéculatif) :
 
 - Champs de `MintEvent`, `TransferEvent`, `Alert`, `ResponseAction`, `AuditLogEntry`.
 - Où vivent les modèles (`shared/`), format d'échange (JSON ?), versionnage éventuel.
+
+### Proposition (2026-10-10, Yannis) — _proposé, à valider en équipe, **non acté**_
+
+- **`Alert` doit désigner un périmètre, pas seulement « anomalie ».** Le modèle de contamination
+  par ratio (§9) a besoin de savoir **quelles adresses marquer suspectes au départ** (les
+  « graines ») et pour **quels montants**. Proposition : `Alert` porte la liste des adresses
+  graines et le montant suspect associé à chacune. Champs exacts à définir ensemble.
+  → **À signaler au propriétaire de `shared/` (@marceaupatu123, #2).**
 
 ## 8. `BEDROCK_MODEL_ID` — choix du modèle LLM (#28) — _proposé par défaut, à confirmer_
 
