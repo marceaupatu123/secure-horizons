@@ -1,0 +1,49 @@
+[profile.default]
+src = "src"
+test = "test"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.33"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+remappings = [
+    "forge-std/=lib/forge-std/src/",
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+]
+
+# Paramètres d'exploration (pas des mesures).
+[profile.default.fuzz]
+runs = 256
+
+[profile.default.invariant]
+runs = 256
+depth = 128
+fail_on_revert = false
+
+# Profil approfondi : FOUNDRY_PROFILE=deep forge test
+[profile.deep]
+src = "src"
+test = "test"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.33"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+remappings = [
+    "forge-std/=lib/forge-std/src/",
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+]
+
+[profile.deep.fuzz]
+runs = 1024
+
+[profile.deep.invariant]
+runs = 512
+depth = 256
+fail_on_revert = false
+
+[rpc_endpoints]
+# RPC publique Fuji (testnet), aucune clé.
+fuji = "https://api.avax-test.network/ext/bc/C/rpc"
