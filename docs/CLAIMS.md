@@ -14,6 +14,9 @@
 | Un **gel protège les protocoles en aval**. | _(à définir — comparaison des mauvaises créances d'un faux marché de prêt avec et sans balise de risque)_ | _(à définir — marché simulé/fictif ; dépend de l'adoption de la balise par l'aval)_ |
 | Le **taux de faux positifs est mesuré** sur du trafic normal rejoué. | _(à définir — mesure sur un jeu de trafic normal synthétique)_ | _(à définir — la garantie suppose que le trafic de test ressemble au trafic de calibration)_ |
 | Le **protocole principal reste 100% solvable** même si l'attaquant contourne le Volet 1 (quarantaine liquide / Token Ghost). | _(à définir — vérifié par la destruction des Tokens Ghost avant conversion)_ | _(à définir — la perte financière n'est pas effacée : elle est absorbée par les acheteurs du marché secondaire)_ |
+| La **friction est bornée** : notre propre surveillance ne peut pas mettre plus de **X %** de l'offre en fenêtre allongée (volet 2). | _(à définir — tests d'invariants Foundry sur le budget de quarantaine ; « vérifié par tests d'invariants », pas de preuve)_ | _(à définir — X à mesurer ; hypothèse : garde-fou on-chain non contourné, clés d'administration non compromises)_ |
+| Le **soupçon est conservé** : fractionner/disperser un lot suspect ne réduit pas le soupçon total (anti-blanchiment par construction, volet 2). | _(à définir — tests d'invariants sur le modèle de contamination par ratio : somme des soupçons conservée après N transferts/splits)_ | _(à définir — porte sur le Ghost non converti ; le Ghost déjà converti avant marquage échappe au clawback)_ |
+| La **friction reste locale** : un allongement de fenêtre ne touche que le périmètre suspect, pas tout le token. | _(à définir — mesure de la part du token restée en fenêtre normale pendant un incident simulé)_ | _(à définir — conditionné au **lignage** du Ghost ; sans lignage, le ciblage est impossible)_ |
 
 ## Pistes futures (mentionnées, non implémentées — trop lourdes pour 48 h)
 
