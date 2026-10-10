@@ -21,6 +21,7 @@ Règles :
 |---|-------------------|------|-----|--------|--------|
 | 0 | Décision structurante : où vit la sécurité, et cœur du projet | 2026-10-10 | Équipe 20 | Tranché en équipe | — |
 | 0bis | Le Token Ghost s'applique-t-il au seul mint ou à tous les transferts ? | 2026-10-10 | Marceau | Tranché | PR #34 |
+| 0bis-a | Quelle affirmation porte le Ghost devant le jury : solvabilité ou récupération ? (#37) | 2026-10-10 | Marceau | Tranché | Issue #37 |
 | 1 | Détection du mint anormal : invariants, seuils, légitime vs malveillant | 2026-10-10 | denybs | Validée en session, à relire par l'équipe | PR #51 |
 | 3 | Réponse graduée : retarder ≠ bloquer, machine à états, quorums multisig | 2026-10-10 | Équipe 20 | Tranché en équipe | — |
 | 4 | Angle différenciant : anti-contagion (principal) + supervision IA + cadre DORA | 2026-10-10 | Équipe 20 | Tranché en équipe | — |
@@ -143,7 +144,39 @@ balise de risque et les signaux de la section 2.
   transfert de perte, destruction d'un Ghost fragmenté, impact sur la liquidité).
 - #35 : que produit le transfert d'un Token Ghost (Ghost d'un Ghost) ?
 - #36 : que devient le collatéral quand on brûle un Ghost adossé (collatéral orphelin) ?
-- #37 : aligner `CLAIMS.md` sur l'objectif de la décision (solvabilité ou récupération).
+- ~~#37 : aligner `CLAIMS.md` sur l'objectif de la décision (solvabilité ou récupération).~~
+  → Tranché, voir ci-dessous.
+
+### DÉCISION (2026-10-10, Marceau) — deux affirmations distinctes, solvabilité en tête (#37)
+
+**Tranché : la ligne unique de `CLAIMS.md` sur le Ghost est scindée en deux affirmations, chacune
+avec sa propre méthode de vérification.**
+
+1. **Solvabilité (affirmation principale devant le jury).** Un mint frauduleux détecté avant la
+   fin de la fenêtre Ghost ne produit aucun vrai token non adossé (`supply <= collateral`).
+   Vérifiée par tests d'invariants Foundry et rejeu des scénarios A/D.
+2. **Récupération (affirmation secondaire).** Un transfert suspect est annulable tant que son
+   Ghost n'est pas converti, y compris après fragmentation. Vérifiée par rejeu d'une chaîne de
+   transferts et mesure de la part récupérée.
+
+**Raisons :**
+
+- Les deux restent vraies avec le Ghost sur tous les transferts : brûler un Ghost adossé donne
+  `supply < collateral`, ce qui reste solvable si l'invariant s'écrit `<=`. Le Ghost conserve la
+  solvabilité et ajoute la récupération ; elles ne se démontrent pas de la même façon.
+- La solvabilité est mise en tête parce qu'elle se vérifie seule (invariants) et ne dépend
+  d'aucune question ouverte. La récupération dépend de #36 (collatéral orphelin) et d'un
+  arbitrage humain (annuler un transfert = confisquer puis redistribuer, §3).
+
+**Corrections apportées à l'ancienne ligne :**
+
+- « 100 % solvable » retiré : la garantie est **conditionnelle** au fait que la détection soit
+  plus rapide que la fenêtre Ghost (cf. `OPEN_QUESTIONS.md` §2, priorité haute).
+- « contourne le Volet 1 (quarantaine liquide / Token Ghost) » corrigé : le volet 1 est la
+  dérivation du montant depuis le dépôt ; le Ghost est un renfort, pas le volet 1.
+
+**Reste ouvert :** #36 (sort du collatéral libéré) conditionne la colonne « limites » de
+l'affirmation de récupération.
 
 ---
 
