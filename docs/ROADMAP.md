@@ -9,6 +9,75 @@ Tout reste **proposé, à valider en équipe**. Cocher la case quand c'est fait.
 Sur GitHub, chaque issue porte un label `wave:0` … `wave:5` pour trier le backlog dans le même
 ordre que ce tableau.
 
+## Schéma du plan d'action
+
+Diagramme des dépendances entre issues (source : `docs/plan-action.mmd`, visualisable sur
+<https://mermaid.live>). Les flèches signifient « doit être fait avant ».
+
+```mermaid
+flowchart TD
+    subgraph V0["Vague 0 - Debloquer"]
+        I28["#28 Setup Fuji/Bedrock"]
+        I26["#26 Onboarding"]
+        I27["#27 CODEOWNERS + TEAM"]
+    end
+    subgraph V1["Vague 1 - Decisions"]
+        I1["#1 Securite dans le contrat"]
+        I3["#3 Plafonds / Token Ghost"]
+        I2["#2 Champs des modeles"]
+    end
+    subgraph V2["Vague 2 - Fondations"]
+        I4["#4 Foundry + vulnerable"]
+        I9["#9 monitor mints"]
+        I10["#10 monitor transferts"]
+        I5["#5 Contrat protege (V1)"]
+    end
+    subgraph V3["Vague 3 - Metier"]
+        I11["#11 detection mint"]
+        I12["#12 detection transferts"]
+        I14["#14 llm Bedrock"]
+        I17["#17 response orchestration"]
+        I6["#6 invariants/fuzzing (V2)"]
+    end
+    subgraph V4["Vague 4 - Reponse + conformite"]
+        I18["#18 gel/levee multisig"]
+        I19["#19 journal DORA"]
+        I15["#15 rapport DORA"]
+        I24["#24 data A/B"]
+    end
+    subgraph V5["Vague 5 - Demo + options"]
+        I20["#20 dashboard"]
+        I7["#7 balise + faux marche (V3)"]
+        I8["#8 ERC20 Token Ghost"]
+        I13["#13 ML / conforme"]
+        I25["#25 data C/D"]
+    end
+    V0 --> V1
+    I1 --> I4
+    I2 --> I9
+    I2 --> I10
+    I1 --> I5
+    I3 --> I5
+    I2 --> I11
+    I9 --> I11
+    I2 --> I12
+    I10 --> I12
+    I28 --> I14
+    I2 --> I17
+    I12 --> I17
+    I5 --> I6
+    I3 --> I18
+    I17 --> I18
+    I2 --> I19
+    I17 --> I19
+    I14 --> I15
+    I5 --> I24
+    I17 --> I20
+    I3 --> I8
+    I7 --> I25
+    I8 --> I25
+```
+
 ---
 
 ## Vague 0 — Débloquer tout le monde (en parallèle, tout de suite)

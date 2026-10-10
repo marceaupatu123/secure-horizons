@@ -1,0 +1,92 @@
+---
+title: "Le Token Ghost (cœur du projet)"
+description: "La quarantaine liquide : un jeton échangeable qui crée un marché parallèle et transfère le risque hors du protocole."
+---
+
+<Note>
+**C'est l'idée la plus différenciante du projet.** Au lieu de bloquer bêtement les jetons
+fraîchement créés, on les rend **échangeables** — ce qui crée un **marché parallèle** et déplace
+le risque loin du protocole.
+</Note>
+
+## L'idée en une phrase
+
+Quand des jetons sont mintés, on n'émet pas tout de suite le vrai jeton : on émet un **Token
+Ghost**, un jeton temporaire **que tout le monde peut acheter et revendre librement** pendant une
+courte fenêtre, avant qu'il ne devienne (ou non) le vrai jeton.
+
+## Pourquoi c'est malin : le marché parallèle
+
+Le Token Ghost n'est pas « gelé dans un coffre ». Il **vit sur un marché** où des gens peuvent
+l'échanger. Et c'est tout l'intérêt :
+
+<CardGroup cols={3}>
+  <Card title="Il est moins cher" icon="tag">
+    Comme il porte un **petit risque** (et si c'était une fraude ?), il se vend avec une **décote**
+    — par exemple 0,95 au lieu de 1,00.
+  </Card>
+  <Card title="Des acheteurs sont prêts" icon="users">
+    Des spéculateurs **acceptent ce risque** en échange de la décote : si le jeton se convertit,
+    ils gagnent la différence.
+  </Card>
+  <Card title="Le risque quitte le protocole" icon="shield-check">
+    La perte éventuelle est **assumée par le marché**, pas par le protocole. Le vrai jeton, lui,
+    n'est jamais émis frauduleusement.
+  </Card>
+</CardGroup>
+
+**L'analogie** : c'est comme acheter un billet de concert **non encore confirmé** à prix réduit.
+Si le concert est confirmé (pas de fraude), ton billet devient valable et tu as payé moins cher.
+S'il est annulé (fraude détectée), tu perds ta petite mise — mais **tu le savais en achetant moins
+cher**, et c'est toi qui as choisi ce pari, pas la salle de concert.
+
+## Comment ça marche, étape par étape
+
+<Steps>
+  <Step title="Mint → Token Ghost">
+    Une création de jetons produit des **Tokens Ghost**, pas le vrai jeton.
+  </Step>
+  <Step title="Marché libre pendant une fenêtre (ex. 10 min)">
+    Les Tokens Ghost **s'échangent librement**. Un marché se forme, avec un prix décoté qui
+    reflète le risque perçu. Les surveillants observent en parallèle.
+  </Step>
+  <Step title="Cas normal → conversion 1:1">
+    Aucune anomalie : chaque Token Ghost devient **1 vrai jeton**. Les acheteurs qui ont parié
+    gagnent la décote. Tout le monde est content.
+  </Step>
+  <Step title="Cas fraude → destruction">
+    Un gel est confirmé : les Tokens Ghost du lot suspect sont **détruits**. Les acheteurs
+    perdent leur mise (le risque qu'ils avaient accepté), **mais le protocole est intact** : le
+    vrai jeton n'a jamais été créé frauduleusement.
+  </Step>
+</Steps>
+
+## Qui gagne, qui perd
+
+| Acteur | Cas normal (pas de fraude) | Cas fraude détectée |
+|--------|-----------------------------|----------------------|
+| **Le protocole** | Fonctionne normalement | **Protégé** : zéro vrai jeton frauduleux émis |
+| **L'acheteur de Token Ghost** | Gagne la décote (ex. +5 %) | Perd sa mise (risque accepté en connaissance de cause) |
+| **Le voleur** | — | Ses faux jetons sont détruits avant conversion |
+
+<Note>
+Le résultat visé pour la démo : montrer que **la perte côté protocole est nulle** même quand
+l'attaquant contourne le volet 1, parce que le risque a été transféré au marché parallèle. Ce
+chiffre sera **mesuré**, pas inventé (voir `docs/CLAIMS.md`).
+</Note>
+
+## Les questions ouvertes (à trancher en équipe)
+
+Cette approche est puissante mais soulève de vraies questions, listées dans
+`docs/OPEN_QUESTIONS.md` :
+
+- Est-ce **juste** de transférer la perte à des acheteurs du marché secondaire ? Est-ce conforme à
+  l'**esprit de la régulation** (DORA vise à protéger l'écosystème entier, pas qu'un protocole) ?
+- Comment **détruire** techniquement un Token Ghost déjà **fragmenté et envoyé à 50 adresses** ?
+- Que se passe-t-il pour la **liquidité** des autres marchés si un jeton échangeable **disparaît**
+  d'un coup ?
+
+<Warning>
+Piste **proposée, à valider en équipe**. C'est notre angle fort, mais on reste honnête sur ses
+limites — surtout face au jury.
+</Warning>

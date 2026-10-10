@@ -25,6 +25,7 @@
             "group": "Comment ça marche",
             "pages": [
               "les-trois-volets",
+              "token-ghost",
               "les-garde-fous",
               "le-parcours-dune-attaque"
             ]

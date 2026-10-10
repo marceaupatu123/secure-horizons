@@ -1,0 +1,67 @@
+flowchart TD
+    subgraph V0["Vague 0 - Debloquer (tout de suite, en parallele)"]
+        I28["#28 Setup RPC Fuji + faucet + Bedrock ID"]
+        I26["#26 Onboarding (clone, venv, .env, branche)"]
+        I27["#27 CODEOWNERS + TEAM.md"]
+    end
+
+    subgraph V1["Vague 1 - Decisions d'equipe (bloquantes)"]
+        I1["#1 Securite dans le contrat vs autour"]
+        I3["#3 Plafonds / quarantaine / Token Ghost"]
+        I2["#2 Champs des modeles (CONTRACTS + shared)"]
+    end
+
+    subgraph V2["Vague 2 - Fondations de code"]
+        I4["#4 Foundry + contrat vulnerable"]
+        I9["#9 monitor : ecoute mints"]
+        I10["#10 monitor : ecoute transferts"]
+        I5["#5 Contrat protege (volet 1)"]
+    end
+
+    subgraph V3["Vague 3 - Logique metier"]
+        I11["#11 detection : regles mint"]
+        I12["#12 detection : transferts anormaux"]
+        I14["#14 llm : client Bedrock"]
+        I17["#17 response : orchestration"]
+        I6["#6 contracts : invariants/fuzzing (volet 2)"]
+    end
+
+    subgraph V4["Vague 4 - Reponse + conformite"]
+        I18["#18 response : gel / levee (multisig)"]
+        I19["#19 response : journal DORA"]
+        I15["#15 llm : rapport d'incident DORA"]
+        I24["#24 data : scenarios A et B"]
+    end
+
+    subgraph V5["Vague 5 - Demo + options"]
+        I20["#20 dashboard : alertes + reponse"]
+        I7["#7 contracts : balise + faux marche (volet 3)"]
+        I8["#8 contracts : ERC20 Token Ghost"]
+        I13["#13 detection : ML / prediction conforme"]
+        I25["#25 data : scenarios C et D"]
+    end
+
+    V0 --> V1
+    I1 --> I4
+    I2 --> I9
+    I2 --> I10
+    I1 --> I5
+    I3 --> I5
+    I2 --> I11
+    I9 --> I11
+    I2 --> I12
+    I10 --> I12
+    I28 --> I14
+    I2 --> I17
+    I12 --> I17
+    I5 --> I6
+    I3 --> I18
+    I17 --> I18
+    I2 --> I19
+    I17 --> I19
+    I14 --> I15
+    I5 --> I24
+    I17 --> I20
+    I3 --> I8
+    I7 --> I25
+    I8 --> I25

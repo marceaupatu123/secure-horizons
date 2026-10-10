@@ -7,41 +7,15 @@ En plus des trois volets, deux renforts rendent le système plus solide.
 
 ## La quarantaine « Token Ghost »
 
-<Note>
-**Un jeton fraîchement créé n'est pas tout de suite « le vrai » : c'est d'abord un fantôme en
-observation.**
-</Note>
+C'est le **cœur du projet** et il a sa propre page détaillée : un jeton temporaire **échangeable**
+qui crée un **marché parallèle** et transfère le risque hors du protocole.
 
-Au lieu de bloquer sèchement les nouveaux jetons, on émet un **Token Ghost** (jeton fantôme) :
+<Card title="Tout comprendre sur le Token Ghost" icon="ghost" href="/token-ghost">
+  Le marché parallèle, le prix décoté, qui gagne et qui perd.
+</Card>
 
-<Steps>
-  <Step title="Création">
-    Un mint produit un **Token Ghost**, pas encore le vrai jeton.
-  </Step>
-  <Step title="Période d'observation (ex. 10 min)">
-    Le Token Ghost est **librement échangeable** pendant un court délai. Les surveillants
-    regardent s'il y a une anomalie.
-  </Step>
-  <Step title="Si tout va bien">
-    Le Token Ghost est converti **1 pour 1** en vrai jeton. Rien d'anormal, tout le monde est
-    content.
-  </Step>
-  <Step title="Si fraude détectée et gel confirmé">
-    Les Tokens Ghost issus du lot suspect sont **purement et simplement détruits**. Le vrai jeton
-    n'a jamais été émis frauduleusement.
-  </Step>
-</Steps>
-
-**L'idée économique** (astucieuse) : le risque est transféré à un **marché secondaire**. Des
-spéculateurs peuvent acheter des Tokens Ghost moins cher (par ex. 0,95 au lieu de 1), en pariant
-qu'ils seront convertis. S'ils se trompent (fraude), **c'est eux qui absorbent la perte, pas le
-protocole**.
-
-<Warning>
-C'est une piste **proposée, à valider en équipe**. Elle soulève de vraies questions (est-ce juste
-vis-à-vis des spéculateurs ? conforme à l'esprit de la régulation ?) — listées dans
-`docs/OPEN_QUESTIONS.md`.
-</Warning>
+En deux mots : un mint produit des **Tokens Ghost** (pas le vrai jeton), échangeables pendant une
+courte fenêtre ; convertis **1:1** si tout va bien, **détruits** si une fraude est confirmée.
 
 ## Les surveillants multiples
 
