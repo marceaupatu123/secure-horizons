@@ -1,16 +1,19 @@
 # OPEN_ANSWERS.md — décisions tranchées en équipe
 
 Ce fichier regroupe les questions de `docs/OPEN_QUESTIONS.md` qui ont reçu une **décision
-actée** (marquée « DÉCISION », avec une date et un auteur). Les textes ci-dessous sont des
-**copies** : chaque décision reste aussi dans `OPEN_QUESTIONS.md`, avec un renvoi ici, parce que
-ses conséquences et ses questions dérivées sont encore ouvertes.
+actée** (marquée « DÉCISION », avec une date et un auteur). Les textes ci-dessous sont la
+**source unique** de chaque décision : une fois actée, le texte complet est **déplacé ici** et
+`OPEN_QUESTIONS.md` ne garde qu'un **renvoi** vers la section correspondante, plus les questions
+et conséquences encore ouvertes.
 
 Règles :
 
 - On n'ajoute ici que ce qui est marqué **DÉCISION** dans `OPEN_QUESTIONS.md`. Une proposition
   « par défaut, à confirmer » (ex. §8 `BEDROCK_MODEL_ID`) reste dans les questions.
 - Le statut est recopié tel quel (ex. « à relire par l'équipe ») : on ne le renforce pas.
-- Toute modification d'une décision se fait **dans les deux fichiers**.
+- Le texte complet d'une décision vit **ici seulement** ; `OPEN_QUESTIONS.md` pointe dessus par un
+  renvoi. Toute modification d'une décision se fait donc dans ce fichier (et le renvoi côté
+  questions est ajusté s'il change de sens).
 
 ## Index
 

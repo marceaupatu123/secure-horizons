@@ -13,8 +13,8 @@ document explique comment parler à ton assistant pour rester dans ton périmèt
    Ce sont nos interfaces communes : si quelqu'un les change seul, tout le monde casse.
 3. **Avant de coder, dis à ton IA sur quel dossier tu travailles** (voir le modèle de prompt).
 4. **Rien n'est décidé par l'IA.** Les choix d'archi/seuils/design vont dans
-   `docs/OPEN_QUESTIONS.md`, on tranche en équipe. Une fois tranchée, la réponse est copiée
-   dans `docs/OPEN_ANSWERS.md` (avec un renvoi depuis la question).
+   `docs/OPEN_QUESTIONS.md`, on tranche en équipe. Une fois tranchée, le texte de la réponse est
+   déplacé dans `docs/OPEN_ANSWERS.md` (la question ne garde qu'un renvoi + ce qui reste ouvert).
 5. **Branche + commit + push + PR au moins toutes les heures.** GitHub est notre seule sauvegarde
    (le compte AWS est supprimé à la fin).
 
@@ -156,8 +156,8 @@ Comme ça, personne ne découvre un modèle changé sous ses pieds.
 | `CLAUDE.md` | But du projet + conventions + règles de collab (contexte à donner à l'IA). |
 | `.kiro/steering/collaboration.md` | Mêmes règles, chargées automatiquement par Kiro. |
 | `docs/CONTRACTS.md` | Les interfaces entre modules (zone partagée, lecture OK, écriture = accord). |
-| `docs/OPEN_QUESTIONS.md` | Toutes les décisions non tranchées : on y dépose, on n'invente pas. |
-| `docs/OPEN_ANSWERS.md` | Toutes les décisions tranchées (copie, avec date, auteur et ce qui reste ouvert). |
+| `docs/OPEN_QUESTIONS.md` | Les décisions non tranchées + un renvoi vers celles déjà tranchées. On y dépose, on n'invente pas. |
+| `docs/OPEN_ANSWERS.md` | Source unique des décisions tranchées (texte complet, date, auteur et ce qui reste ouvert). |
 | `docs/CLAIMS.md` | Ce qu'on dira au jury + comment on le vérifie (aucun chiffre sans mesure). |
 | `.github/pull_request_template.md` | Le gabarit à remplir pour chaque PR. |
 
