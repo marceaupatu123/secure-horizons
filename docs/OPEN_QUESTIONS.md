@@ -2,6 +2,8 @@
 
 Ce fichier liste les décisions de conception **non tranchées**. Aucune n'est décidée par un
 assistant IA : on les discute et on les acte ici (ajouter la décision + la date sous chaque point).
+Chaque décision actée est aussi **copiée** dans `docs/OPEN_ANSWERS.md` (elle reste ici, avec un
+renvoi, tant que ses conséquences sont ouvertes).
 
 ## 0. Décision structurante — _proposé, à valider en équipe_
 
@@ -39,6 +41,9 @@ risque est transféré vers un marché secondaire spéculatif) :
   soudainement** de leurs réserves ?
 
 ### DÉCISION (2026-10-10, Marceau) — le Ghost s'applique à **tous les transferts**
+
+> → **Tranché**, voir `docs/OPEN_ANSWERS.md` §0bis. Conséquences et questions dérivées (#35, #36,
+> #37) encore ouvertes.
 
 **Tranché : le Token Ghost n'est pas limité au mint. Tout transfert de token produit du Ghost chez
 le destinataire, converti 1:1 en vrai token après la fenêtre (ex. 10 min) sans anomalie.**
@@ -155,6 +160,9 @@ la reproductibilité.
 ## 9. Volet 2 — surveillance adaptative, allongement de fenêtre ciblé et modèle de contamination par ratio
 
 ### DÉCISION (2026-10-10, Marceau) — _validée en session, à relire par l'équipe_
+
+> → **Tranché**, voir `docs/OPEN_ANSWERS.md` §9. Seuils à mesurer, relecture d'équipe et #35/#36
+> encore ouverts.
 
 Le volet 2 n'est **pas** une garantie statique seule : c'est une **deuxième sécurité réactive**
 posée au-dessus du Token Ghost permanent (fenêtre normale courte, ex. 10 min, sur tous les
