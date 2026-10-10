@@ -161,3 +161,58 @@ Comme ça, personne ne découvre un modèle changé sous ses pieds.
 
 En cas de doute : demande dans le canal d'équipe **avant** de laisser l'IA modifier quoi que ce
 soit hors de ton dossier.
+
+---
+
+## Fonctionnalités Kiro à utiliser (dans l'IDE)
+
+Kiro embarque des fonctions natives (panneau de gauche) déjà configurées **dans le repo** : au
+clone, tu en hérites sans rien installer.
+
+### Steering — règles chargées automatiquement
+
+Les fichiers de `.kiro/steering/` injectent des règles dans ton assistant Kiro sans que tu aies à
+les répéter :
+
+- **`collaboration.md`** — règles d'équipe + but du projet, **toujours** chargé.
+- **`module-<nom>.md`** (monitor, detection, llm, response, dashboard, shared, contracts) —
+  chargés **automatiquement** quand tu ouvres/édites un fichier du dossier correspondant. Ils
+  rappellent à l'IA ton périmètre, les décisions non tranchées et l'obligation de tests.
+
+Concrètement : si tu bosses dans `detection/`, Kiro charge tout seul `module-detection.md` et sait
+qu'il ne doit pas toucher `shared/`. **Tu n'as rien à activer.**
+
+> Les steering en section **Global** (chez un membre) sont personnels à sa machine et ne sont PAS
+> partagés. Seuls ceux de `.kiro/steering/` (section Workspace) sont dans le repo.
+
+### Agent Hooks — automatisations partagées
+
+Dans `.kiro/hooks/` (partagé via le repo) :
+
+- **`pytest-on-save`** — lance `pytest` à chaque sauvegarde d'un fichier `.py`. Filet de sécurité
+  local : tu vois tout de suite si tu casses un test, avant même de pousser. Actif au prochain
+  démarrage de session Kiro après le clone.
+
+Tu peux en créer d'autres via **Agent Hooks › Create New Hook** (ou la palette : « Open Kiro Hook
+UI »). Garde-les simples et utiles à toute l'équipe.
+
+### Specs — pour les tâches un peu grosses
+
+Pour un morceau conséquent (contrat protégé, orchestration de réponse), lance une **Spec**
+(panneau Specs › Create New Spec) : elle cadre requirements → design → tâches avant de coder.
+C'est individuel, rien à partager.
+
+### MCP Servers — connecter des outils externes (optionnel)
+
+Via `.kiro/settings/mcp.json` (workspace) ou `~/.kiro/settings/mcp.json` (perso). Utile ici :
+
+- **AWS Documentation MCP** — pratique pour le module `llm` (Bedrock, API Converse).
+
+À n'activer que si le besoin se présente ; non indispensable pour 48 h.
+
+### Ce que chaque membre fait après le clone
+
+1. Ouvrir le projet dans Kiro → le steering `collaboration` + les `module-*` s'activent seuls.
+2. Lancer `make install` (deps + hook anti-secrets git).
+3. Coder dans SON dossier : le hook `pytest-on-save` tourne à chaque sauvegarde.
+4. Rien d'autre à installer côté Kiro : tout est versionné dans `.kiro/`.

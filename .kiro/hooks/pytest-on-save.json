@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Run pytest on Python save",
+      "trigger": "PostFileSave",
+      "description": "Lance la suite pytest a chaque sauvegarde d'un fichier Python (filet de securite local avant push).",
+      "matcher": "\\.py$",
+      "action": {
+        "type": "command",
+        "command": "python -m pytest -q",
+        "timeout": 120
+      }
+    }
+  ]
+}
