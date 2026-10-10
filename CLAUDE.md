@@ -9,9 +9,11 @@ Trois volets proposés : **(1)** la signature autorise « traiter la demande n°
 dérive lui-même le montant du dépôt on-chain ; **(2)** perte maximale **bornée et testée** (tests
 d'invariants/fuzzing Foundry, jamais « prouvée ») ; **(3)** pare-feu de contagion (balise de
 risque + faux marché de prêt). Renforts : **quarantaine liquide (« Token Ghost »)** — au lieu d'un
-sas strict, le mint émet un **Token Ghost librement échangeable** converti 1:1 contre le vrai
-token après un délai sans anomalie, et **détruit** si un gel est confirmé ; surveillants
-multiples ; IA simple surveillant. Données **fictives** uniquement.
+sas strict, **tout transfert** émet un **Token Ghost librement échangeable** converti 1:1 contre
+le vrai token après un délai sans anomalie (ex. 10 min), et **détruit** si un gel est confirmé
+(décision du 2026-10-10 : le Ghost n'est **pas** limité au mint — voir
+`docs/OPEN_QUESTIONS.md` §0bis) ; surveillants multiples ; IA simple surveillant. Données
+**fictives** uniquement.
 
 ## Principe de conception — _proposé, à valider en équipe_
 
@@ -21,6 +23,10 @@ multiples ; IA simple surveillant. Données **fictives** uniquement.
 > **Quarantaine liquide (Token Ghost)** : la sécurité du protocole est garantie par le **transfert
 > du risque vers un marché secondaire spéculatif** — le vrai token n'est jamais émis
 > frauduleusement, et la perte éventuelle est assumée par les acheteurs de Tokens Ghost.
+>
+> Le Ghost portant **tous les transferts** (décision du 2026-10-10), il sert aussi à **récupérer
+> des fonds après coup**. Le coût assumé est une **friction permanente** sur les usages
+> légitimes : à **mesurer**, jamais à estimer (voir `docs/CLAIMS.md`).
 
 ## Conventions de code
 

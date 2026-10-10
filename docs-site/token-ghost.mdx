@@ -1,19 +1,46 @@
 ---
 title: "Le Token Ghost (cœur du projet)"
-description: "La quarantaine liquide : un jeton échangeable qui crée un marché parallèle et transfère le risque hors du protocole."
+description: "La quarantaine liquide : chaque transfert passe par un jeton échangeable, ce qui crée un marché parallèle permanent et rend les mouvements récupérables pendant une courte fenêtre."
 ---
 
 <Note>
-**C'est l'idée la plus différenciante du projet.** Au lieu de bloquer bêtement les jetons
-fraîchement créés, on les rend **échangeables** — ce qui crée un **marché parallèle** et déplace
-le risque loin du protocole.
+**C'est l'idée la plus différenciante du projet.** Au lieu de bloquer des jetons dans un coffre,
+on fait passer **chaque transfert** par un jeton temporaire **échangeable** — ce qui crée un
+**marché parallèle** et laisse une fenêtre pour **récupérer** des fonds en cas de fraude.
 </Note>
 
 ## L'idée en une phrase
 
-Quand des jetons sont mintés, on n'émet pas tout de suite le vrai jeton : on émet un **Token
-Ghost**, un jeton temporaire **que tout le monde peut acheter et revendre librement** pendant une
-courte fenêtre, avant qu'il ne devienne (ou non) le vrai jeton.
+Quand des jetons changent de mains, le destinataire ne reçoit pas tout de suite le vrai jeton : il
+reçoit un **Token Ghost**, un jeton temporaire **que tout le monde peut acheter et revendre
+librement** pendant une courte fenêtre, avant qu'il ne devienne (ou non) le vrai jeton.
+
+**Exemple de référence** : A achète du token **M** à B → A reçoit du **M-Ghost** → après
+**10 minutes** sans anomalie, son M-Ghost devient du **M**.
+
+<Note>
+**Décision du 2026-10-10** : le Ghost s'applique à **tous les transferts**, et pas seulement au
+mint. C'est un choix structurant — son raisonnement et ses conséquences sont consignés dans
+`docs/OPEN_QUESTIONS.md` §0bis.
+</Note>
+
+## Pourquoi tous les transferts, et pas seulement le mint
+
+Un Ghost limité au mint protège contre une **émission frauduleuse**, mais s'arrête là. Deux
+raisons ont fait pencher vers « tous les transferts » :
+
+<CardGroup cols={2}>
+  <Card title="Récupérer après coup" icon="rotate-left">
+    Une fois le vrai jeton en circulation, plus rien n'est rattrapable. En gardant chaque mouvement
+    en Ghost pendant la fenêtre, on peut encore **annuler** des transferts liés à une fraude —
+    c'est ce qui ouvre la porte à la lutte **anti-blanchiment**.
+  </Card>
+  <Card title="Un marché parallèle qui existe vraiment" icon="chart-line">
+    On ne mint pas toutes les minutes : un Ghost limité au mint laisserait le marché
+    **Coin / Coin-Ghost quasi vide**. En portant tous les transferts, le marché parallèle est
+    **alimenté en continu** — donc observable et démontrable.
+  </Card>
+</CardGroup>
 
 ## Pourquoi c'est malin : le marché parallèle
 
@@ -22,8 +49,8 @@ l'échanger. Et c'est tout l'intérêt :
 
 <CardGroup cols={3}>
   <Card title="Il est moins cher" icon="tag">
-    Comme il porte un **petit risque** (et si c'était une fraude ?), il se vend avec une **décote**
-    — par exemple 0,95 au lieu de 1,00.
+    Comme il porte un **petit risque** (et si c'était une fraude ?), il se vend avec une
+    **décote**. _(L'ampleur de la décote est une inconnue à mesurer, pas à postuler.)_
   </Card>
   <Card title="Des acheteurs sont prêts" icon="users">
     Des spéculateurs **acceptent ce risque** en échange de la décote : si le jeton se convertit,
@@ -43,8 +70,9 @@ cher**, et c'est toi qui as choisi ce pari, pas la salle de concert.
 ## Comment ça marche, étape par étape
 
 <Steps>
-  <Step title="Mint → Token Ghost">
-    Une création de jetons produit des **Tokens Ghost**, pas le vrai jeton.
+  <Step title="Transfert → Token Ghost">
+    Tout mouvement de jetons (y compris le mint) crédite le destinataire en **Tokens Ghost**, pas
+    en vrai jeton.
   </Step>
   <Step title="Marché libre pendant une fenêtre (ex. 10 min)">
     Les Tokens Ghost **s'échangent librement**. Un marché se forme, avec un prix décoté qui
@@ -55,9 +83,9 @@ cher**, et c'est toi qui as choisi ce pari, pas la salle de concert.
     gagnent la décote. Tout le monde est content.
   </Step>
   <Step title="Cas fraude → destruction">
-    Un gel est confirmé : les Tokens Ghost du lot suspect sont **détruits**. Les acheteurs
-    perdent leur mise (le risque qu'ils avaient accepté), **mais le protocole est intact** : le
-    vrai jeton n'a jamais été créé frauduleusement.
+    Un gel est confirmé : les Tokens Ghost du lot suspect sont **détruits** avant conversion. Les
+    acheteurs perdent leur mise (le risque qu'ils avaient accepté), **mais le protocole est
+    intact**.
   </Step>
 </Steps>
 
@@ -66,27 +94,50 @@ cher**, et c'est toi qui as choisi ce pari, pas la salle de concert.
 | Acteur | Cas normal (pas de fraude) | Cas fraude détectée |
 |--------|-----------------------------|----------------------|
 | **Le protocole** | Fonctionne normalement | **Protégé** : zéro vrai jeton frauduleux émis |
-| **L'acheteur de Token Ghost** | Gagne la décote (ex. +5 %) | Perd sa mise (risque accepté en connaissance de cause) |
-| **Le voleur** | — | Ses faux jetons sont détruits avant conversion |
+| **L'acheteur de Token Ghost** | Gagne la décote | Perd sa mise (risque accepté en connaissance de cause) |
+| **Le voleur** | — | Ses jetons sont détruits avant conversion |
+| **L'utilisateur légitime** | Subit la fenêtre d'attente sur chaque transfert | Peut voir un transfert reçu annulé |
 
-<Note>
-Le résultat visé pour la démo : montrer que **la perte côté protocole est nulle** même quand
-l'attaquant contourne le volet 1, parce que le risque a été transféré au marché parallèle. Ce
-chiffre sera **mesuré**, pas inventé (voir `docs/CLAIMS.md`).
-</Note>
+## Ce que ça coûte (assumé, pas caché)
+
+Porter **tous** les transferts a un prix. On le dit franchement plutôt que de le découvrir devant
+le jury :
+
+<CardGroup cols={2}>
+  <Card title="Friction permanente" icon="hourglass">
+    Ce ne sont plus seulement les mints suspects qui attendent : **100 % des usages légitimes**
+    passent par la fenêtre de quarantaine. L'ampleur de cette gêne est à **mesurer**.
+  </Card>
+  <Card title="Compatibilité des pools" icon="droplet">
+    Chaque swap sur un marché automatisé (AMM) produit du Ghost non convertible pendant la
+    fenêtre. Reste à déterminer si un pool peut encore fonctionner, et sinon quel traitement
+    particulier lui appliquer.
+  </Card>
+</CardGroup>
+
+Et le point technique le plus dur : annuler un échange suppose de **défaire des Ghost déjà
+fragmentés chez N adresses**. Avec ce modèle, ce cas n'est plus l'exception, c'est le **cas
+normal**.
 
 ## Les questions ouvertes (à trancher en équipe)
 
-Cette approche est puissante mais soulève de vraies questions, listées dans
-`docs/OPEN_QUESTIONS.md` :
+Listées dans `docs/OPEN_QUESTIONS.md` :
 
 - Est-ce **juste** de transférer la perte à des acheteurs du marché secondaire ? Est-ce conforme à
   l'**esprit de la régulation** (DORA vise à protéger l'écosystème entier, pas qu'un protocole) ?
-- Comment **détruire** techniquement un Token Ghost déjà **fragmenté et envoyé à 50 adresses** ?
+- Comment **détruire** techniquement une **chaîne** de Tokens Ghost fragmentée sur de nombreuses
+  adresses ?
 - Que se passe-t-il pour la **liquidité** des autres marchés si un jeton échangeable **disparaît**
   d'un coup ?
+- Quelle **durée de fenêtre** (10 min proposé) : arbitrage entre capacité de récupération et gêne
+  pour les utilisateurs légitimes ?
+
+**Repli identifié** si les coûts ci-dessus bloquent à l'implémentation : ne mettre en Ghost que les
+**transferts flaggés** par les surveillants (gros montant, adresse neuve, découpage), au lieu de
+tous.
 
 <Warning>
 Piste **proposée, à valider en équipe**. C'est notre angle fort, mais on reste honnête sur ses
-limites — surtout face au jury.
+limites — surtout face au jury. Aucun chiffre n'est affiché sans avoir été **mesuré** (voir
+`docs/CLAIMS.md`), et on ne dit jamais « prouvé » : au mieux « vérifié par tests d'invariants ».
 </Warning>
