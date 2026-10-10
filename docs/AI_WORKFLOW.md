@@ -109,6 +109,28 @@ Conseils :
 - Si tu dois absolument toucher à `shared/` ou `docs/CONTRACTS.md`, **dis-le dans la PR** et fais
   relire par l'équipe.
 
+## Tests obligatoires sur chaque PR (CI)
+
+Un workflow GitHub Actions (`.github/workflows/ci.yml`) tourne **automatiquement sur chaque PR** :
+il installe les dépendances, lance le lint (`compileall`) et les tests (`pytest`). **Une PR dont
+le CI est rouge ne se fusionne pas.**
+
+Règle d'équipe : **chaque nouvelle fonction arrive avec ses tests.** Concrètement, quand tu
+ajoutes une fonction dans ton module, ajoute un test dans `ton_module/tests/` (à côté du
+`test_smoke.py` existant). Un test ciblé suffit : appeler la fonction et vérifier le résultat
+attendu (ou qu'elle lève bien l'erreur prévue).
+
+Phrase utile pour ton IA :
+
+> « À chaque fonction que tu écris dans `<TON_MODULE>/`, ajoute un test correspondant dans
+> `<TON_MODULE>/tests/`. Lance `pytest` et montre-moi qu'il passe avant qu'on commite. »
+
+Vérifie en local avant de pousser :
+
+```bash
+make test        # ou : python -m pytest -q
+```
+
 ---
 
 ## Comment on fait évoluer une interface commune (le cas délicat)

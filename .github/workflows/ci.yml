@@ -1,0 +1,52 @@
+name: CI
+
+# Vérifie chaque Pull Request (et chaque push sur main) :
+#   - installe les dépendances (source unique : requirements.txt)
+#   - lint léger (compilation de tous les modules)
+#   - tests pytest (un test de fumée par module + les tests ajoutés par l'équipe)
+#
+# RÈGLE D'ÉQUIPE : chaque nouvelle fonction doit arriver avec ses tests.
+# Ce workflow est le filet de sécurité qui bloque une PR dont les tests échouent.
+
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: [main]
+
+# Annule une exécution précédente encore en cours sur la même réf (économise des minutes).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: lint + tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Socle minimal garanti par nos conventions (Python 3.11+).
+        python-version: ["3.11"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Lint (compileall)
+        run: python -m compileall monitor detection llm response dashboard shared
+
+      - name: Run tests
+        run: python -m pytest -q

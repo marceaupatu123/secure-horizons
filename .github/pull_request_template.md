@@ -22,7 +22,12 @@
 - [ ] docs
 
 ## Checklist
+- [ ] **Chaque nouvelle fonction est accompagnée de ses tests** (voir ci-dessous).
+- [ ] `make test` passe en local **et** le CI (GitHub Actions) est vert.
 - [ ] Pas de vraie clé ni de vraies données (test Fuji + synthétique uniquement).
 - [ ] Nouvelles dépendances ajoutées à `requirements.txt` et équipe prévenue.
-- [ ] `make test` passe.
 - [ ] Je ne modifie pas `/shared` ni `/docs/CONTRACTS.md` sans accord explicite.
+
+> Le workflow CI (`.github/workflows/ci.yml`) lance lint + `pytest` sur chaque PR.
+> **On alimente les tests à chaque nouvelle action** : une PR sans test pour le code ajouté
+> ne doit pas être fusionnée.
