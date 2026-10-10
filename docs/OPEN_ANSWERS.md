@@ -31,7 +31,7 @@ Règles :
 | 6 | Données synthétiques : format JSONL, scénarios recadrés, générateur reproductible | 2026-10-10 | EnzoFB06 | Tranché (propriétaire `data/`) | — |
 | 9 | Volet 2 : surveillance adaptative, allongement de fenêtre ciblé, contamination par ratio | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | PR #38 |
 | 10 | Lignage d'un swap : `swap-id` sur notre pool, jambe sortante en règlement différé (#43) | 2026-10-10 | denybs | Validée en session, à relire par l'équipe | Issue #43 |
-| 10bis | Qui porte le risque : M' de règlement protégé vs M' pur, routeur et Ghost de paiement par actif (#84) | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | Issue #84 |
+| 10bis | Qui porte le risque : M' protégé / pur / chèque, routeur + Ghost de paiement, restitution sans fonds ni frais (#84) | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | Issue #84 |
 
 ---
 
@@ -867,13 +867,13 @@ Réponses aux questions de la §10 d'`OPEN_QUESTIONS.md` :
 - Priorité : **vague 5**, après #8 (Ghost) et #7 (balise + marché de prêt), dans le pool simulé du
   scénario D.
 - → **Étendu par §10bis** ci-dessous (#84) : règlement différé via un routeur pour toute vente de
-  M', paiement en Ghost de l'actif, M' de règlement protégé vs M' pur.
+  M', paiement en Ghost de l'actif, M' protégé / pur / chèque, restitution aux victimes.
 
 ---
 
-## §10bis. Qui porte le risque — M' de règlement protégé vs M' pur
+## §10bis. Qui porte le risque — protégé, pur, chèque ; restituer, jamais garder
 
-### DÉCISION (2026-10-10, Marceau) — seul l'acheteur de **M' pur** porte le risque ; le voleur ne reçoit jamais que du Ghost (#84)
+### DÉCISION (2026-10-10, Marceau) — le risque ne porte que sur les acteurs du **M' pur** ; le voleur ne reçoit jamais que du Ghost ; le protocole ne garde rien (#84)
 
 _Validée en session, à relire par l'équipe._
 
@@ -882,110 +882,177 @@ paie le voleur en vrai actif tout de suite. Exemple de référence : 10 M fraudu
 main en main jusqu'à 40 personnes. Au gel, seul le 40e détenteur voit ses M' brûlés : **il perd
 10 $ et le voleur garde 10 $**. Le protocole est solvable, mais la fraude reste rentable.
 
-**Tranché : deux sortes de M', et un paiement toujours en Ghost.**
+**Objectifs de la décision** :
 
-| | M' de règlement (protégé) | M' pur (à risque) |
+1. empêcher le vol et le blanchiment ;
+2. garder un marché de Ghost spéculatif ;
+3. faire porter **tout** le risque sur ceux qui achètent et vendent du **M' pur** ;
+4. **ne rien financer** avec de l'argent issu d'une fraude, ni avec des frais de protocole.
+
+**Principe : personne ne garde l'argent de personne.** Ce qui est bloqué est soit rendu à son
+propriétaire, soit restitué à une victime. Le protocole ne détient jamais rien pour lui-même.
+
+#### 1. Trois statuts de M' (étiquette par tranche d'échéance, §0bis-b)
+
+| Comment on l'a reçu | Statut | En cas de destruction confirmée |
 | --- | --- | --- |
-| Origine | reçu contre du **vrai M** (achat, paiement, transfert) | acheté à quelqu'un **avant son échéance** |
-| En cas de destruction confirmée | **remboursé** | perd sa part (`ratio × solde`, §9) : le risque choisi |
-| Prix | celui du M | avec une **décote** = prix du risque (§0) |
+| Acheté contre du **vrai M**, via le routeur, avec son paiement bloqué | **protégé** | on récupère **son propre paiement bloqué** |
+| Acheté à quelqu'un alors que c'était **encore du M'** | **pur** | on perd sa part (`ratio × solde`, §9) : risque choisi, pricé par la décote, réduit par la restitution (point 4) |
+| Reçu **sans paiement on-chain** (don, salaire payé en direct) | **chèque** | le M' n'arrive jamais ; on n'avait rien payé on-chain |
 
-Règles :
+- Revendre un M' (protégé ou chèque) avant l'échéance donne du M' **pur** chez l'acheteur.
+- **Chèque** : un paiement en M n'est vraiment encaissé qu'à l'échéance, comme un chèque. S'il est
+  annulé, le receveur n'a rien perdu sur la chaîne ; il garde sa créance hors chaîne contre le
+  payeur (comme un chèque sans provision). Ce statut **remplace tout fonds de protection**.
+- **Anti-blanchiment** : un don ne donne jamais de protection. Un voleur ne peut pas « offrir » son
+  M à un complice pour le rendre protégé.
+- Coût constant par transfert (une étiquette par tranche).
 
-1. **Étiquette par tranche.** Chaque tranche d'échéance (§0bis-b) porte `reglement` ou `pur`.
-   Recevoir du vrai M donne une tranche `reglement`. Revendre un M' avant échéance donne une tranche
-   `pur` chez l'acheteur. Coût constant par transfert.
-2. **Routeur de règlement.** Pendant la fenêtre, le M' ne bouge **que via le routeur** : DEX tiers
-   et transfert direct refusés. Il suffit de restreindre le M' : avant l'échéance, le voleur ne
-   détient que du M' ; une fois mûr, il est trop tard de toute façon.
-3. **Paiement en Ghost, un Ghost par actif.** Ce que paie l'acheteur (USDC, wBTC…) est bloqué dans
-   le **coffre de cet actif** ; le vendeur reçoit le **Ghost de cet actif** (USDC-Ghost…), 1:1,
-   converti à l'échéance du M' vendu. Le Ghost de paiement circule librement et porte un ratio (§9).
-   **Pas d'oracle** (on rend toujours l'actif bloqué) et **pas de prix plancher** (la décote reste).
-4. **Coffre à deux destinations codées en dur** : le porteur du Ghost de paiement à l'échéance, ou
-   le fonds de protection. Même avec les clés du multisig, aucune autre sortie : une clé volée ne
-   vaut presque rien.
-5. **À la destruction confirmée (multisig 2/3, §3)** :
-   - on brûle le M' contaminé (ratio §9) ;
-   - on brûle le Ghost de paiement **des seules adresses graines** (`AlertSeed`, le voleur). Les
-     vendeurs intermédiaires gardent leur paiement ;
-   - un porteur de M' `reglement` récupère **son propre paiement bloqué** : rien n'est pris à
-     personne d'autre ;
-   - un porteur de M' `pur` perd sa part ;
-   - l'actif libéré chez le voleur va au **fonds de protection**.
-6. **Fonds de protection** : alimenté par l'argent repris aux voleurs et par la marge de conversion
-   (§0). Il rembourse, **plafonné par son solde**, les M' `reglement` reçus **hors routeur** (ex. un
-   salarié payé en M par un voleur : aucun paiement bloqué à lui rendre). Il complète la réserve de
-   restitution (§0bis-c), à articuler.
-7. **Standard, pas service.** Interface ouverte + bibliothèque de référence ; **chaque émetteur
-   déploie sa propre instance** (routeur, coffres, multisig, surveillants, choix des balises). Aucun
-   registre central. Un échange M' contre N' entre deux tokens du standard : chaque émetteur règle
-   sa jambe. Pour le hackathon : **une seule chaîne** (Fuji), une instance de référence (M), une
-   seconde (N) si le temps le permet.
+#### 2. Toute vente passe par un routeur ; le paiement est toujours un Ghost
 
-#### Exemples de référence (à rejouer en démo et en tests)
+- Pendant la fenêtre, le M' ne bouge **que via le routeur** (DEX tiers et transfert direct
+  refusés). Il suffit de restreindre le M' : avant l'échéance, le voleur ne détient que du M'.
+- Ce que paie l'acheteur (USDC, wBTC…) est bloqué dans le **coffre de cet actif**. Le vendeur
+  reçoit le **Ghost de cet actif** (USDC-Ghost…), 1:1, converti à l'échéance du M' vendu.
+- **Un Ghost par actif, sans oracle** (on rend toujours l'actif bloqué) et **sans prix plancher**
+  (la décote reste, donc le marché).
+- Le Ghost de paiement suit les mêmes règles : il circule librement, porte un ratio (§9), et un
+  USDC-Ghost revendu avant échéance devient lui aussi **pur**.
 
-**Cas 1 — achat de vrai M à un voleur.** Tu paies 10 $ (bloqués), tu reçois du M' `reglement`, le
-voleur reçoit 10 USDC-Ghost. Gel confirmé : ton M' et l'USDC-Ghost du voleur sont brûlés, tes 10 $
-te reviennent. Toi 0, voleur 0.
+#### 3. Coffre : deux sorties seulement, aucune vers le protocole
 
-**Cas 2 — chaîne des 40, en M' pur.**
+Le coffre ne peut envoyer l'actif bloqué qu'à : **(a)** le porteur du Ghost de paiement à
+l'échéance, ou **(b)** une restitution selon la règle du point 4. Aucune autre sortie, ni vers le
+protocole, ni vers le multisig. Une clé volée ne permet pas de vider un coffre.
+
+#### 4. À la destruction confirmée (multisig 2/3, §3) : restituer, jamais garder
+
+1. On brûle le M' contaminé (ratio §9) et le Ghost de paiement **des seules adresses graines**
+   (`AlertSeed`). Les vendeurs intermédiaires gardent leur paiement.
+2. L'argent bloqué derrière le Ghost de paiement du voleur **n'a jamais été à lui** : c'est celui
+   de ses acheteurs. Il est restitué **automatiquement**, selon une règle fixe et vérifiable :
+   - d'abord aux porteurs dont le M' a été brûlé **dans ce lot**, au prorata du montant brûlé,
+     **plafonné par ce qu'ils avaient payé** ;
+   - le reste, s'il y en a, à **celui qui avait payé le voleur**.
+3. Un porteur protégé récupère son propre paiement bloqué (rien n'est pris à personne d'autre).
+4. Le vrai M brûlé dans un cas de blanchiment libère du collatéral : il va à la **réserve de
+   restitution** (§0bis-c) pour la victime d'origine, jamais au protocole.
+5. Le protocole ne gagne rien à détruire : aucune incitation à détruire (§0bis-c, DORA).
+
+#### 5. Exemples de référence (à rejouer en démo et en tests)
+
+**Cas 1 — achat protégé de vrai M à un blanchisseur.** Tu paies 10 $ (bloqués), tu reçois du M'
+protégé, le vendeur reçoit 10 USDC-Ghost. Fraude confirmée : ton M' et son USDC-Ghost sont brûlés,
+tes 10 $ te reviennent. Toi 0, vendeur 0. Le collatéral libéré va à la réserve de restitution.
+
+**Cas 2 — chaîne des 40, en M' pur, même prix (10 $).**
 
 | Qui | Résultat |
 | --- | --- |
 | Voleur (A1) | 0 : son USDC-Ghost est brûlé |
-| A2 à A39 | 0 : ils gardent leur paiement, ils ne sont pas graines |
-| A40, dernier acheteur de M' pur | −10 $ : le risque qu'il avait choisi et pricé |
-| 10 $ repris au voleur | fonds de protection |
+| A2 à A39 | 0 : ils gardent leur paiement |
+| A40, dernier porteur de M' pur | M' brûlé, 10 $ restitués : 0 |
+| Protocole | 0 : ne touche rien |
+
+**Cas 2bis — mêmes 40, prix qui montent (voleur vend 10 $, A40 achète 15 $).** A40 récupère 10 $
+et perd 5 $. Ces 5 $ ont été gagnés par les intermédiaires qui ont revendu plus cher : le risque se
+partage entre acheteurs et vendeurs de M' pur, par les prix.
+
+**Cas 3 — salaire payé en M par un voleur, hors routeur.** Le salarié reçoit du M' **chèque**.
+Fraude confirmée : le M' est brûlé, le salarié n'a rien payé on-chain ; il garde sa créance hors
+chaîne contre l'employeur.
+
+#### 6. Où reste le risque
+
+Uniquement sur les acteurs du M' pur, quand l'argent bloqué du voleur ne couvre pas les pertes :
+le voleur a fait circuler sans vendre, a été payé à côté, ou les prix ont monté en route. C'est ce
+risque qui justifie la **décote**, donc le marché spéculatif (§0 : pricer le risque).
+
+#### 7. Vol et blanchiment
+
+- Avant l'échéance, le voleur ne détient que du Ghost et n'est payé qu'en Ghost : tout est
+  récupérable.
+- Chaque transfert de **vrai** M rouvre une fenêtre (§0bis-b) : blanchir par sauts coûte une
+  fenêtre par saut, et chaque saut est rattrapable.
+- Pour encaisser du vrai actif, le voleur doit attendre l'échéance (donc la détection) ou trouver
+  quelqu'un qui le paie à côté (complice ou imprudent).
+
+#### 8. Financement
+
+- **Remboursements** : par le propre paiement bloqué de chacun, ou par restitution aux victimes.
+  **Aucun fonds**, aucun argent issu d'une fraude conservé.
+- **Fonctionnement** : le gas, payé par les utilisateurs comme pour toute transaction. **Aucun
+  frais de protocole.**
+- **Conséquence sur §0** : la marge de conversion n'est plus nécessaire au système. À confirmer
+  en équipe (modifie la décision §0).
+
+#### 9. Standard, pas service
+
+Interface ouverte + bibliothèque de référence ; **chaque émetteur déploie sa propre instance**
+(routeur, coffres, multisig, surveillants, choix des balises). Aucun registre central. Un échange
+M' contre N' entre deux tokens du standard : chaque émetteur règle sa jambe. Pour le hackathon :
+**une seule chaîne** (Fuji), une instance de référence (M), une seconde (N) si le temps le permet.
 
 #### Options écartées
 
+- **Fonds de protection alimenté par l'argent repris aux voleurs** : cet argent appartient aux
+  victimes ; le garder ferait du protocole le détenteur du produit d'une fraude et créerait une
+  incitation à détruire.
+- **Fonds alimenté par des frais / la marge de conversion** : inutile avec le statut « chèque » et
+  la restitution ; écarté pour ne pas financer la protection par des frais.
 - **Stablecoin pivot Z permanent** (`OPEN_QUESTIONS.md` §10) : reste écarté. Le Ghost de paiement
-  n'est pas un stablecoin qui circule pour toujours : c'est une créance de la durée de la fenêtre,
-  toujours adossée 1:1 à l'actif bloqué.
+  est une créance de la durée de la fenêtre, toujours adossée 1:1 à l'actif bloqué.
 - **Z multi-actif avec oracle** : manipulable, et inutile si on rend l'actif bloqué.
 - **Multi-chaînes / pont** : les ponts sont la cible la plus attaquée ; hors périmètre hackathon.
-- **Prix plancher** pour rendre le paiement « à côté » absurde : exige un oracle et supprime la
-  décote, donc le marché spéculatif.
+- **Prix plancher** contre le paiement à côté : exige un oracle et supprime la décote.
 - **Rembourser A40 avec l'argent du dernier détenteur** : fait payer un innocent.
-- **Tout rembobiner (chaque acheteur remboursé)** : supprime le risque, donc le marché du M' pur.
+- **Tout rembobiner (chaque acheteur remboursé de son paiement)** : supprime le risque, donc le
+  marché du M' pur.
+- **Protection pour un M' reçu en don** : porte ouverte au blanchiment par complice.
 
 #### Ce que ça modifie
 
+- **§0** : la marge de conversion n'est plus requise (à confirmer).
 - **§0bis / principe de conception** : « la perte est assumée par les acheteurs de Tokens Ghost »
-  devient « la perte est assumée par les acheteurs de **M' pur** ; les porteurs de M' de règlement
-  sont remboursés ». À reporter dans `CLAUDE.md`, le steering et `docs-site` (propriétaires à
-  prévenir, non modifiés ici).
-- **§10** : le règlement différé n'est plus limité à notre pool. Il passe par le routeur pour toute
-  vente de M' du standard. La limite « DEX tiers » devient « DEX tiers exclus pendant la fenêtre ».
-- **#8** : étiquette `reglement`/`pur` par tranche, M' transférable seulement via le routeur.
+  devient « la perte est assumée par les acteurs du **M' pur** ; le M' acheté contre du vrai M est
+  protégé ; le M' reçu sans paiement est un chèque ». À reporter dans `CLAUDE.md`, le steering et
+  `docs-site` (propriétaires à prévenir, non modifiés ici).
+- **§0bis-c** : la réserve de restitution reçoit aussi le collatéral libéré dans le cas 1.
+- **§10** : le règlement différé n'est plus limité à notre pool : routeur pour toute vente de M'.
+  « DEX tiers » devient « DEX tiers exclus pendant la fenêtre ».
+- **#8** : trois statuts par tranche, M' transférable seulement via le routeur.
 - **#65** : le pool simulé devient un cas particulier du routeur (paiement en USDC-Ghost).
-- **`docs/CONTRACTS.md`** (zone sensible, non modifié) : les événements Ghost devront porter
-  l'étiquette de tranche et l'actif du Ghost de paiement. Proposition à faire valider par le
-  propriétaire de `shared/`.
+- **`docs/CONTRACTS.md`** (zone sensible, non modifié) : les événements Ghost devront porter le
+  statut de tranche et l'actif du Ghost de paiement ; un événement de restitution est à ajouter.
+  Proposition à faire valider par le propriétaire de `shared/`.
 
 #### Limites assumées (à dire au jury)
 
 - **Détection plus lente que la fenêtre** : après l'échéance, tout est converti. Aucun mécanisme ne
   remplace une alerte à temps.
 - **Paiement à côté** (liquide, USDC hors routeur) : invisible pour le contrat ; risque pris par
-  l'acheteur, qui n'a aucune garantie de livraison.
+  celui qui paie, sans aucune garantie de livraison.
 - **Fraude sous les seuils**, **faux positifs**, **multisig corrompu** : inchangés (§3, §9).
-- **Coffres** : de vrais fonds. Les deux destinations protègent d'une clé volée, pas d'un bug du
-  coffre. **Bug de la bibliothèque partagée** : touche tous les émetteurs ; parade = plusieurs
+- **Coffres** : de vrais fonds. Les deux sorties protègent d'une clé volée, pas d'un bug du coffre.
+  **Bug de la bibliothèque partagée** : touche tous les émetteurs ; parade = plusieurs
   implémentations, audits, invariants.
 - **Pouvoir de reprendre** étendu à l'actif de paiement bloqué : hypothèse de confiance plus lourde.
-- **Réglementation** (MiCA : blocage de fonds de tiers) : non vérifiée.
-- **Fonds de protection** plafonné : un remboursement hors routeur peut être partiel.
+- **Statut chèque** : le receveur hors routeur n'est pas indemnisé on-chain ; son recours est hors
+  chaîne.
+- **Réglementation** (MiCA, blocage et restitution de fonds de tiers) : non vérifiée.
 
 ### Reste ouvert
 
 - Relecture par l'équipe.
-- **Contamination posée après coup** (issue #85, `OPEN_QUESTIONS.md` §11) : **bloque la conception**.
-  Si le voleur est marqué après la propagation, le ratio ne l'a pas suivi : comment atteindre le M'
-  chez A40 ?
-- Articulation fonds de protection / réserve de restitution (§0bis-c) et affectation de la marge (§0).
-- Tests d'invariants à écrire dans #84 : aucun vrai actif ne sort vers un vendeur avant l'échéance ;
-  `coffre(actif) >= somme des Ghost de paiement de cet actif` ; un porteur `reglement` payé via le
-  routeur ne perd jamais rien ; rejeu de la chaîne des 40.
+- **Contamination posée après coup** (issue #85, `OPEN_QUESTIONS.md` §11) : **bloque la
+  conception**. Piste recommandée pour le hackathon : recalcul hors chaîne + racine de Merkle
+  signée par le multisig, contestable par tous.
+- Confirmer l'abandon de la marge de conversion (§0).
+- Tests d'invariants à écrire dans #84 :
+  - aucun vrai actif ne sort du coffre vers un vendeur avant l'échéance ;
+  - `coffre(actif) >= somme des Ghost de paiement de cet actif` ;
+  - aucune sortie du coffre vers le protocole ou le multisig ;
+  - un porteur protégé ne perd jamais rien ;
+  - restitution totale ≤ argent bloqué du voleur, et somme des restitutions + paiements = entrées ;
+  - rejeu des cas 1, 2, 2bis et 3.
 - Friction à **mesurer** (attente de l'actif final, exclusion des protocoles hors standard).
