@@ -2,7 +2,7 @@
 
 - **Propriétaire** : @EnzoFB06 (voir `docs/TEAM.md`).
 - **Lancer** : `make data` ou `python -m data.generate --scenario <normal|A|B|C|D|all> --seed <n>` ;
-  tests : `python -m pytest data/`.
+  calibration #3 : `make calibrate` ; tests : `python -m pytest data/`.
 
 > **Toutes les données de ce dossier sont FICTIVES.** Aucune vraie donnée on-chain, aucune vraie
 > adresse, aucune vraie clé. Faux secrets autorisés de type `FLAG{team20-canary}`.
@@ -91,10 +91,54 @@ Deux limites mises en évidence par la simulation (à discuter avec #8 et #43) :
 
 ## Paramètres — à calibrer, pas des mesures
 
-Les valeurs par défaut de `GenerationParams` (200 utilisateurs, ~1 mint et ~12 transferts par
-créneau de 5 min, 24 h simulées, attaque à 75 % de la période) sont des **paramètres de
-génération**, pas des chiffres mesurés (`docs/CLAIMS.md`). Seule référence externe : Resolv
-(~200 000 déposés, ratio ~400×, cf. §1).
+Les valeurs par défaut de `GenerationParams` (200 utilisateurs avec un solde initial de 50 dépôts,
+~1 mint et ~12 transferts par créneau de 5 min, chaque transfert envoyant 5 à 50 % du solde, 24 h
+simulées, attaque à 75 % de la période) sont des **paramètres de génération**, pas des chiffres
+mesurés (`docs/CLAIMS.md`). Seule référence externe : Resolv (~200 000 déposés, ratio ~400×, §1).
+
+Le Ghost du générateur suit §0bis-b : un Ghost transféré garde son échéance d'origine.
+
+## Calibration des valeurs de #3 — `make calibrate`
+
+`python -m data.calibrate` rejoue 8 jours de trafic dans les surveillants de `detection/` (#11,
+#12) et écrit `data/generated/calibration.{json,md}`. Il **mesure**, il ne choisit pas : le point de
+fonctionnement est une décision d'équipe (§5 Q2). Résultats avec la graine 42 (une seule graine,
+simulation) :
+
+**Fenêtre Ghost W** — part de l'offre immobilisée en Ghost sur le trafic normal (friction) :
+
+| W | 5 min | 10 min | 15 min | 30 min |
+|---|---|---|---|---|
+| médiane / p95 | 1,6 % / 3,2 % | 3,2 % / 5,7 % | 4,6 % / 7,8 % | 8,7 % / 13,5 % |
+
+**Seuil de déclenchement** (z robustes volume et Herfindahl, balayés de 2 à 6) : sur 864 tranches
+évaluées du trafic normal, et pour une attaque B dont la taille est une part de l'offre :
+
+| Profil de trafic légitime | Faux positifs | Plus petite attaque détectée avant conversion | Marge (W = 10 min) |
+|---|---|---|---|
+| gros transferts (5–50 % du solde) | 5 (z = 2/2) à 0 (z volume = 6) | 5 % de l'offre | ~5 min |
+| petits transferts (1–10 % du solde) | 0 pour toute la grille | 0,5 % de l'offre | 0,1 min à 0,5 %, ~5 min au-delà |
+
+Ce qu'on en tire :
+
+- **Le profil du trafic pèse plus que les seuils.** Avec de gros transferts légitimes, le fond est
+  déjà concentré (Herfindahl élevé) et une attaque de 2 % de l'offre passe inaperçue quel que soit
+  le seuil. Il faut choisir un profil réaliste avant de figer un seuil.
+- **La marge est bornée par la tranche** : l'alerte part à la clôture de la tranche (5 min), donc
+  au mieux ~5 min de marge avec W = 10 min. Une attaque qui s'étale sur deux tranches n'est vue
+  qu'à la seconde, presque à l'échéance.
+- **Surveillant de mint** : il voit les 2 mints gonflés du scénario A vulnérable et rien ailleurs,
+  mais **ne voit pas le détournement à 1:1 de B** : I3 (destinataire = déposant) n'est pas vérifié.
+  Seul le surveillant de transferts rattrape B, et seulement au-dessus du seuil de taille.
+
+Pas mesuré ici, et pourquoi :
+
+- **Seuils de conversion** (ratio, montant absolu) et **seuil de la balise** : dans C et D, le
+  soupçon n'est semé qu'à l'alerte, et les adresses semées sont alors retardées ; le seuil ne joue
+  qu'après une levée ou une expiration sans destruction, scénario pas encore simulé.
+- **Budget de quarantaine, facteur d'allongement max** : il faut rejouer les alertes dans
+  `response/` avec les soldes Ghost ; à faire une fois un seuil de déclenchement choisi.
+- **Marge de conversion** : barème à décider (§0), rien à mesurer avant.
 
 ## Reste ouvert
 
