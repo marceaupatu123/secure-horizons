@@ -18,5 +18,18 @@ un mint = `Transfer(from = 0x0, to, value)` émis par le contrat token configur�
 - **Gap connu** : un `Transfer` ERC-20 ne porte pas l'id de demande. `MintEvent.request_id` vaut
   la sentinelle `UNKNOWN_REQUEST_ID` (0) tant que le contrat (#5) n'émet pas d'événement dédié ;
   il suffira alors de passer un autre `MintLogDecoder` à `ChainListener`.
-- **Pas encore fait** : événements d'administration (`Upgraded`, `RoleGranted`, OPEN_ANSWERS §1),
-  écoute des transferts (#10).
+- **Pas encore fait** : événements d'administration (`Upgraded`, `RoleGranted`, OPEN_ANSWERS §1).
+
+## Écoute des transferts (#10)
+
+`ChainListener.stream_transfer_events()` (et `fetch_transfer_events(from, to)`) : même événement
+`Transfer` ERC-20 du même contrat, même boucle de polling que les mints, converti en
+`shared.models.TransferEvent`.
+
+- **Exclus** : les mints (`from = 0x0`, déjà émis par `stream_mint_events`) et les burns
+  (`to = 0x0`) — exclusion des burns **provisoire, à valider par l'équipe**.
+- **Gap connu** : un `Transfer` ERC-20 ne dit pas si le token est un Ghost. `TransferEvent.is_ghost`
+  vient de `MONITOR_TOKEN_IS_GHOST` (`MonitorConfig.token_is_ghost`, défaut **provisoire**
+  `false` = vrai token) tant que le design du contrat Ghost n'est pas fixé.
+- `python -m monitor` n'affiche encore que les mints ; les transferts s'utilisent depuis le code
+  (`detection`).
