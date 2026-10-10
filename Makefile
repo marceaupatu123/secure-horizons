@@ -21,13 +21,14 @@ install:
 	$(PYTHON) -m pip install --upgrade pip
 	$(PYTHON) -m pip install -r requirements.txt
 	git config core.hooksPath .githooks
+	-chmod +x .githooks/pre-commit
 	@echo "OK : dependances installees et pre-commit hook active (core.hooksPath=.githooks)."
 
 test:
 	$(PYTHON) -m pytest -q
 
 lint:
-	$(PYTHON) -m compileall monitor detection llm response dashboard shared
+	$(PYTHON) -m compileall monitor detection llm response dashboard shared data
 
 SEED ?= 42
 
