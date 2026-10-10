@@ -27,7 +27,9 @@ Tous les parametres sont des **parametres de generation a calibrer**, pas des
 chiffres mesures (`docs/CLAIMS.md`). Seule reference externe : Resolv
 (~200 000 USDC deposes, 80M USR mintes, ratio ~400x), cf. §1.
 
-Lancement : `python -m data.generate --scenario <normal|A|B|all> --seed <n>`
+Scenarios C et D : voir `data/scenarios_cd.py`.
+
+Lancement : `python -m data.generate --scenario <normal|A|B|C|D|all> --seed <n>`
 ou `make data`.
 """
 
@@ -48,14 +50,35 @@ from typing import Any, Union
 
 from pydantic import ValidationError
 
-from shared.models import MintEvent, MintRequest, TransferEvent
+from shared.models import (
+    GhostTokenBurnEvent,
+    GhostTokenMintEvent,
+    GhostTokenRedemptionEvent,
+    MintEvent,
+    MintRequest,
+    RiskBeaconUpdate,
+    TransferEvent,
+)
 
-Event = Union[MintRequest, MintEvent, TransferEvent]
-EVENT_MODELS: tuple[type[MintRequest] | type[MintEvent] | type[TransferEvent], ...] = (
+Event = Union[
     MintRequest,
     MintEvent,
     TransferEvent,
+    GhostTokenMintEvent,
+    GhostTokenRedemptionEvent,
+    GhostTokenBurnEvent,
+    RiskBeaconUpdate,
+]
+EVENT_MODELS: tuple[type[Any], ...] = (
+    MintRequest,
+    MintEvent,
+    TransferEvent,
+    GhostTokenMintEvent,
+    GhostTokenRedemptionEvent,
+    GhostTokenBurnEvent,
+    RiskBeaconUpdate,
 )
+"""Modeles partages pouvant apparaitre dans un JSONL genere (normal, A, B, C, D)."""
 
 FUJI_CHAIN_ID = 43113
 TOKEN_DECIMALS = 6
@@ -168,6 +191,14 @@ def event_time(event: Event) -> datetime:
     """Horodatage simule de l'evenement (`t0`)."""
     if isinstance(event, MintRequest):
         return event.created_at
+    if isinstance(event, GhostTokenMintEvent):
+        return event.minted_at
+    if isinstance(event, GhostTokenRedemptionEvent):
+        return event.redeemed_at
+    if isinstance(event, GhostTokenBurnEvent):
+        return event.burned_at
+    if isinstance(event, RiskBeaconUpdate):
+        return event.published_at
     return event.observed_at
 
 
@@ -539,11 +570,16 @@ def load_jsonl(path: Path) -> list[Event]:
 
 
 def build(scenario: str, params: GenerationParams) -> list[GeneratedScenario]:
-    """Genere les jeux demandes (`normal`, `A`, `B` ou `all`)."""
+    """Genere les jeux demandes (`normal`, `A`, `B`, `C`, `D` ou `all`)."""
+    from data.scenarios_cd import ContagionParams, generate_scenario_c, generate_scenario_d
+
+    contagion = ContagionParams(seed=params.seed)
     jobs: dict[str, Callable[[], list[GeneratedScenario]]] = {
         "normal": lambda: [generate_normal(params)],
         "A": lambda: list(generate_scenario_a(params).values()),
         "B": lambda: [generate_scenario_b(params)],
+        "C": lambda: list(generate_scenario_c(contagion).values()),
+        "D": lambda: list(generate_scenario_d(contagion).values()),
     }
     names = list(jobs) if scenario == "all" else [scenario]
     return [s for name in names for s in jobs[name]()]
@@ -553,7 +589,7 @@ def main(argv: list[str] | None = None) -> None:
     """Point d'entree : `python -m data.generate`."""
     defaults = GenerationParams()
     parser = argparse.ArgumentParser(description="Genere des donnees synthetiques FICTIVES.")
-    parser.add_argument("--scenario", choices=["normal", "A", "B", "all"], default="all")
+    parser.add_argument("--scenario", choices=["normal", "A", "B", "C", "D", "all"], default="all")
     parser.add_argument("--seed", type=int, default=defaults.seed)
     parser.add_argument("--hours", type=float, default=defaults.hours)
     parser.add_argument("--users", type=int, default=defaults.users)
