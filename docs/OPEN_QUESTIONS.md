@@ -50,7 +50,10 @@ risque est transféré vers un marché secondaire spéculatif) :
 
 > → **Tranché**, voir `docs/OPEN_ANSWERS.md` §0bis (texte complet de la décision, conséquences
 > assumées et option intermédiaire écartée). Les questions existentielles ci-dessus et les
-> questions dérivées #35, #36, #37 restent ouvertes.
+> questions dérivées #35 et #36 restent ouvertes.
+>
+> **#37 (solvabilité vs récupération dans `CLAIMS.md`)** → Tranché, voir `docs/OPEN_ANSWERS.md`
+> §0bis (deux affirmations distinctes, solvabilité en tête).
 
 ## 1. Détection du mint anormal
 
