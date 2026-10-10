@@ -9,6 +9,21 @@ Tout reste **proposé, à valider en équipe**. Cocher la case quand c'est fait.
 Sur GitHub, chaque issue porte un label `wave:0` … `wave:5` pour trier le backlog dans le même
 ordre que ce tableau.
 
+## Répartition en cours (travail parallèle 4 PC) — 2026-10-10
+
+Chacun lance son agent Kiro sur **son** PC, sur **sa** branche, dans un **dossier distinct** (zéro
+collision). Les deux goulots (#2, #4) sont pris en priorité pour débloquer la suite.
+
+| Membre | Issue en cours | Dossier | Vague |
+|--------|----------------|---------|-------|
+| **marceaupatu123** | #2 champs des modèles | `shared/` | 1 (`blocker`) |
+| **denybs** | #4 Foundry + contrat vulnérable | `contracts/` | 2 |
+| **EnzoFB06** | #26 onboarding | — | 0 |
+| **Yannis1307** | #9 monitor : écoute des mints | `monitor/` | 2 |
+
+> Dès que #2 est mergée, monitor/detection/response/llm se débloquent : prochaine vague de
+> répartition possible (#10, #11, #12, #14, #17…). Dès que #1 est tranchée, #5 s'ouvre.
+
 ## Schéma du plan d'action
 
 Diagramme des dépendances entre issues (source : `docs/plan-action.mmd`, visualisable sur
@@ -84,8 +99,8 @@ flowchart TD
 
 | Fait | Issue | Tâche | Pourquoi d'abord |
 |------|-------|-------|------------------|
-| [ ] | #28 | setup RPC Fuji + faucet AVAX + BEDROCK_MODEL_ID | `blocker` : sans ça, ni chaîne ni LLM. |
-| [ ] | #26 | onboarding (clone, venv, make install, .env, branche) | chacun doit être opérationnel. |
+| [x] | #28 | setup RPC Fuji + faucet AVAX + BEDROCK_MODEL_ID | `blocker` : sans ça, ni chaîne ni LLM. (fermée via PR #32) |
+| [ ] | #26 | onboarding (clone, venv, make install, .env, branche) | chacun doit être opérationnel. _(EnzoFB06, en cours)_ |
 | [ ] | #27 | CODEOWNERS + tableau TEAM.md | fige « qui possède quoi » avant de coder. |
 | [x] | #31 | contracts : registre des déploiements Fuji (`DEPLOYMENTS.md`) | consigne staff : tracer les adresses déployées. |
 
@@ -95,14 +110,14 @@ flowchart TD
 |------|-------|-------|----------|
 | [ ] | #1 | sécurité dans le contrat vs seulement autour | oriente contracts + response. |
 | [ ] | #3 | plafonds / fenêtre quarantaine / mode Token Ghost | #5, #8, #18. |
-| [ ] | #2 | champs des modèles (CONTRACTS.md + shared/models.py) | presque tout le code (monitor, detection, response, llm). |
+| [ ] | #2 | champs des modèles (CONTRACTS.md + shared/models.py) | presque tout le code (monitor, detection, response, llm). _(marceaupatu123, en cours)_ |
 
 ## Vague 2 — Fondations de code (après #2)
 
 | Fait | Issue | Tâche | Dépend de |
 |------|-------|-------|-----------|
-| [ ] | #4 | Foundry + contrat vulnérable | #1 |
-| [ ] | #9 | monitor : écoute des mints | #2 |
+| [ ] | #4 | Foundry + contrat vulnérable | #1 — _(denybs, en cours)_ |
+| [ ] | #9 | monitor : écoute des mints | #2 — _(Yannis1307, en cours)_ |
 | [ ] | #10 | monitor : écoute des transferts | #2 |
 | [ ] | #5 | contrat protégé (montant dérivé on-chain) — volet 1 | #1, #3 |
 
