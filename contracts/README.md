@@ -27,7 +27,11 @@ contracts/
     ├── VulnerableMinter.t.sol
     ├── GuardianPausable.t.sol
     ├── ProtectedMinter.t.sol   # un test (ou plus) par invariant I1–I5
-    └── ScenarioA.t.sol         # même attaque rejouée sur les deux contrats
+    ├── ScenarioA.t.sol         # même attaque rejouée sur les deux contrats
+    ├── StolenServiceKey.fuzz.t.sol
+    └── invariant/
+        ├── ProtectedMinterHandler.sol
+        └── ProtectedMinter.invariant.t.sol
 ```
 
 ## Installer Foundry (Windows)
@@ -170,10 +174,79 @@ demande d'une victime traitée par l'attaquant va à la victime.
 forge test --match-contract ScenarioATest -vv   # affiche les montants mintés côte à côte
 ```
 
+## Volet 2 — perte maximale bornée (vérifiée par tests d'invariants)
+
+Tests Foundry à base de **handler** (`test/invariant/`) et de **fuzz** (`test/StolenServiceKey.fuzz.t.sol`)
+contre `ProtectedMinter`, avec un acteur détenant la clé `SERVICE_ROLE` **volée** (qui peut aussi
+déposer) et 4 déposants aléatoires. Les valeurs attendues sont **recalculées par le test**
+(`deposit × 1e12 × rate / 1e18`, taux suivi par le handler), sans appeler `quoteMint`.
+
+### Hypothèses
+
+- **H1** clés admin / `RATE_ADMIN_ROLE` **non compromises** (le taux est honnête) ;
+- **H2** clés des guardians **non compromises** ;
+- **H3** collatéral ERC20 standard (`MockUSDC`, pas de frais de transfert) ;
+- **H4** contrat non upgradable, code tel que testé ;
+- **H5** pas de burn ni de rachat dans ce périmètre.
+
+### Borne énoncée
+
+Sous H1–H5, dans tout état atteint par les séquences explorées :
+
+- `totalSupply == Σ_{demandes complétées} deposit_i × rate_i ≤ Σ_{demandes créées} deposit_i × rate_i`
+  (avec `rate_i` figé à la création, conversion 6 → 18 décimales, arrondi vers le bas) ;
+- chaque demande est complétée **au plus une fois**, et `minted_i == deposit_i × rate_i` ;
+- chaque mint va au **déposant** de la demande ;
+- le solde stable du détenteur de la clé de service volée est `≤ Σ deposit_j × rate_j` sur
+  **ses propres** dépôts : la clé volée ne crée **aucun** stable au-delà du collatéral déjà
+  déposé (perte attribuable au-delà des dépôts = 0).
+
+C'est **vérifié par tests d'invariants** avec les paramètres de `foundry.toml`, **pas prouvé**.
+
+| Invariant / fuzz | Ce qui est vérifié |
+|---|---|
+| `invariant_solvency` | `totalSupply ≤ Σ dépôts × taux` (toutes demandes créées) |
+| `invariant_supplyEqualsCompletedQuotes` | `totalSupply == Σ` des demandes complétées `== totalMinted` |
+| `invariant_collateralBacking` | collatéral détenu par le minter `== Σ dépôts == totalDeposited` |
+| `invariant_eachRequestCompletedAtMostOnce` | ≤ 1 complétion par demande, statut on-chain cohérent |
+| `invariant_mintedPerRequestEqualsQuote` | par demande : minté observé `==` delta de supply `== deposit × rate` |
+| `invariant_recipientIsDepositor` | solde de chaque acteur `==` somme de ses propres demandes complétées |
+| `invariant_stolenKeyBound` | borne ci-dessus pour la clé volée + aucune action interdite n'a réussi |
+| `testFuzz_stolenKey_*` | gonfler, rediriger, rejouer, minter directement, changer le taux, pauser |
+
+Actions de la clé volée explorées par le handler : traiter une demande (y compris déjà traitée
+ou pendant la pause), traiter une demande inexistante, appeler `stable.mint`, appeler
+`completeSwap(uint256,address,uint256)`, appeler `setRate`. Actions honnêtes : dépôts,
+`setRate` par l'admin, approbations de pause / dépause par les guardians.
+
+### Limites
+
+- La clé volée peut **ne pas traiter** des demandes (déni de service, collatéral immobilisé :
+  pas d'annulation ni de remboursement) et choisir le **moment** du traitement (sans effet sur le
+  montant grâce au snapshot du taux).
+- Un taux faux posé par un admin compromis sort de H1 : c'est le rôle du surveillant hors
+  chaîne (`docs/OPEN_ANSWERS.md` §1).
+- Exploration bornée : dépôts dans `[1, 1e18]` unités, taux honnête dans `[1e6, 1e24]`. Ce sont
+  des paramètres d'exploration, pas des mesures.
+
+### Lancer
+
+```bash
+forge test                                   # tout (profil default)
+forge test --match-path "test/invariant/*" -vv
+forge test --match-contract StolenServiceKeyFuzzTest -vv
+FOUNDRY_PROFILE=deep forge test              # bash : profil approfondi
+```
+
+PowerShell : `$env:FOUNDRY_PROFILE="deep"; forge test; Remove-Item Env:FOUNDRY_PROFILE`.
+
+| Profil | fuzz `runs` | invariant `runs` | invariant `depth` | `fail_on_revert` |
+|---|---|---|---|---|
+| `default` | 256 | 256 | 128 | false |
+| `deep` | 1024 | 512 | 256 | false |
+
 ## À produire plus tard — _proposé, à valider en équipe_
 
-- **Tests d'invariants / fuzzing** cherchant à dépasser la **perte maximale bornée** — **volet 2**.
-  À formuler comme « vérifié par tests d'invariants », jamais « prouvé ».
 - **Balise de risque** + **faux marché de prêt** (simulé, fictif) qui cesse d'accepter le token
   gelé comme garantie — **volet 3, optionnel**.
 - **Contrat ERC20 « Token Ghost »** (quarantaine liquide) : token temporaire **librement
