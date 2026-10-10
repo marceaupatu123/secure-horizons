@@ -26,7 +26,7 @@ Sous-questions liées (à ne pas trancher ici) :
 
 ## 0bis. Pivot « quarantaine liquide / Token Ghost » — _proposé, à valider en équipe_
 
-Questions existentielles ouvertes par ce pivot (le mint émet un **Token Ghost** librement
+Questions existentielles ouvertes par ce pivot (**tout transfert** émet un **Token Ghost** librement
 échangeable, converti 1:1 après délai sans anomalie, **détruit** si un gel est confirmé ; le
 risque est transféré vers un marché secondaire spéculatif) :
 
@@ -37,6 +37,38 @@ risque est transféré vers un marché secondaire spéculatif) :
   à 50 adresses différentes** (ou plus) ?
 - Quel est l'**impact sur la liquidité** (pools DeFi) si un jeton échangeable **disparaît
   soudainement** de leurs réserves ?
+
+### DÉCISION (2026-10-10, Marceau) — le Ghost s'applique à **tous les transferts**
+
+**Tranché : le Token Ghost n'est pas limité au mint. Tout transfert de token produit du Ghost chez
+le destinataire, converti 1:1 en vrai token après la fenêtre (ex. 10 min) sans anomalie.**
+
+Exemple de référence : A achète du token M à B → A reçoit du **M-Ghost** → devient du **M** après
+10 minutes sans anomalie.
+
+**Objectif visé par ce choix** (différent de l'objectif « anti-mint-frauduleux » initial) :
+pouvoir **récupérer / annuler des fonds après coup** (lutte contre le blanchiment), ce qu'un Ghost
+limité au mint ne permet pas — une fois le vrai token en circulation, plus rien n'est rattrapable.
+Argument complémentaire retenu : un Ghost limité au mint laisserait le **marché Coin/Coin-Ghost
+quasi vide** (on ne mint pas en continu), donc pas de marché parallèle observable pour la démo.
+
+**Conséquences assumées, à traiter comme du travail d'ingénierie (ne pas les perdre) :**
+
+1. **Liquidité gelée en continu** : 100 % des usages légitimes subissent la fenêtre de
+   quarantaine, et non plus le seul cas rare du mint volé. À mesurer, pas à estimer.
+2. **Compatibilité AMM / pools DeFi** : chaque swap produit du Ghost non convertible pendant la
+   fenêtre. Il faut déterminer si un pool peut encore fonctionner, et sinon quel traitement
+   particulier lui appliquer.
+3. **Destruction d'une chaîne de transferts** : annuler un échange suppose de défaire des Ghost
+   déjà **fragmentés chez N adresses**. Le problème déjà listé ci-dessus devient le cas normal,
+   plus le cas exceptionnel.
+4. **Choix de la fenêtre** (10 min proposé) : arbitrage entre capacité de récupération et friction
+   subie par les utilisateurs légitimes.
+
+**Option intermédiaire écartée par cette décision** (conservée ici pour mémoire, au cas où les
+points 1–3 se révéleraient bloquants à l'implémentation) : ne mettre en Ghost que les **transferts
+flaggés** par les surveillants (gros montant, adresse neuve, structuring), en s'appuyant sur la
+balise de risque et les signaux de la section 2.
 
 ## 1. Détection du mint anormal
 
