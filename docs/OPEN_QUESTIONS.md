@@ -271,3 +271,52 @@ ET **friction max bornée** (« même notre surveillance ne peut geler plus de X
   absolu suspect** (conservé, insensible à la dilution), pas seulement du ratio.
 - **Tous les seuils** (conversion, allongement, alerte balise, budget de quarantaine) sont **à
   mesurer** sur le trafic synthétique. Aucun chiffre inventé (cf. `docs/CLAIMS.md`).
+
+## 10. Lignage transactionnel — reverter les deux jambes d'un échange — _proposé, à valider en équipe_
+
+### Besoin
+
+Un échange est **atomique** : USDC ↔ Crypto-M, c'est deux jambes d'une même opération. Si une
+fraude est confirmée et qu'on revert la jambe M, il faut pouvoir revert **l'autre jambe** aussi —
+sinon l'attaquant qui a troqué son M suspect contre de l'USDC et s'est enfui avec l'USDC n'est pas
+rattrapé.
+
+### Idée initiale (évaluée) : un stablecoin pivot « Z »
+
+Faire transiter **tous** les échanges par un token maison **Z** (pool `Z / Z-Ghost`) : vendre M
+donnerait du M-Ghost à l'acheteur et du Z-Ghost au vendeur, les deux liés et traçables.
+
+**Écartée sous cette forme.** Raison : *où est le vrai USDC pendant que le Z-Ghost circule ?*
+
+- Si le contrat détient l'USDC et émet du Z adossé → on **reconstruit un stablecoin
+  collatéralisé** et on redevient **dépositaire de fonds réels** : cible n°1, risque recentralisé.
+  C'est précisément le type de brique que le projet combat (scénario Resolv).
+- Si Z n'est pas adossé → au premier doute, personne n'accepte Z, le pool est mort-né.
+- En plus : forcer 100 % des échanges par un token maison crée un **point de passage obligé
+  centralisé** — contraire à l'esprit **DORA** (réduire la dépendance à un prestataire critique
+  unique, pas en créer un).
+
+### Variante retenue à discuter : lignage transactionnel (sans token Z)
+
+Garder le bénéfice (reverter les deux jambes) **sans** émettre ni custodier de stablecoin :
+
+> Les deux jambes d'un même swap reçoivent un **identifiant de lignage commun** (`swap-id`).
+> L'échange produit du M-Ghost côté acheteur et un **Ghost sur l'actif sortant** côté vendeur, tous
+> deux marqués du même `swap-id`. En cas de gel, on revert les deux via ce lien.
+
+- Réutilise **exactement** le mécanisme de lignage par ratio déjà décidé (§9, #33) : le `swap-id`
+  est une **relation** « ces deux Ghost appartiennent au même swap », pas un nouveau token.
+- Pas de nouveau risque de garde, pas de stablecoin, pas de point central.
+
+### Questions ouvertes pour cette variante
+
+- Comment un **DEX/AMM tiers** (qu'on ne contrôle pas) marquerait-il les deux jambes d'un même
+  `swap-id` ? Faisable seulement sur **notre** pool, ou aussi en lecture d'événements externes ?
+- Que signifie « reverter la jambe sortante » si l'actif sortant est un **actif externe** (USDC)
+  qu'on ne peut pas détruire comme un Ghost maison ? (Probablement : on ne peut reverter que les
+  jambes **en Ghost sous notre contrôle** — à cadrer honnêtement.)
+- Interaction avec le ratio de contamination : le `swap-id` propage-t-il aussi le soupçon entre
+  jambes, ou seulement le lien de revert ?
+
+> **Statut** : l'option « token Z » est écartée ; la variante « lignage transactionnel » est
+> **proposée, non actée**. À trancher en équipe. Aucun chiffre, aucune promesse non mesurée.
