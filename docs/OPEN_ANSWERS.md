@@ -16,8 +16,81 @@ Règles :
 
 | § | Question tranchée | Date | Par | Statut | Source |
 |---|-------------------|------|-----|--------|--------|
+| 0 | Décision structurante : où vit la sécurité, et cœur du projet | 2026-10-10 | Équipe 20 | Tranché en équipe | — |
 | 0bis | Le Token Ghost s'applique-t-il au seul mint ou à tous les transferts ? | 2026-10-10 | Marceau | Tranché | PR #34 |
 | 9 | Volet 2 : surveillance adaptative, allongement de fenêtre ciblé, contamination par ratio | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | PR #38 |
+
+---
+
+## §0. Décision structurante — où vit la sécurité, et cœur du projet
+
+### DÉCISION (2026-10-10, Équipe 20) — sécurité **dans le contrat**, cœur = **pricer le risque** via le Token Ghost à contamination par ratio
+
+**La sécurité vit dans le contrat**, pas seulement autour. La surveillance « autour » arrive trop
+tard face à une clé de signature volée (scénario Resolv) : le mint est déjà valide. Les invariants
+durs (montant dérivé on-chain, bornes) vivent donc **on-chain** ; la surveillance et le LLM
+restent **autour** pour la démo et la conformité DORA.
+
+**Cœur du projet retenu : « pricer le risque ».** Le Token Ghost à **contamination par ratio**
+(cf. §9) n'est pas qu'un outil de police (geler/détruire) : le ratio par adresse est un **prix du
+risque** continu, publié sur la balise de risque et lisible par les protocoles en aval. On ne se
+contente pas de bloquer la fraude on/off, on la **rend visible et chiffrée**, et on laisse le
+marché et l'aval réagir à ce prix. C'est l'angle différenciant mis en avant au jury.
+
+#### Réponses aux sous-questions de la §0 d'`OPEN_QUESTIONS.md`
+
+- **Montant dérivé on-chain + signature.** Retenu (volet 1). La signature autorise « traiter la
+  demande n°X », pas un montant ; le contrat dérive lui-même le montant du dépôt enregistré
+  on-chain. Compatible avec le faux protocole via une structure `MintRequest`.
+- **Plafonds.** **Pas de plafond fixe par opération.** À la place, une **baseline adaptative** :
+  le système apprend le volume habituel (par jour / demi-journée, selon la date et la période de
+  l'année) et déclenche quand le trafic courant s'écarte anormalement de cette normale (ex. ~2×).
+  Précisions actées en §9 : **ratios normalisés** (pas de volumes absolus), baseline **médiane +
+  MAD** sur fenêtre glissante, et déclencheur = **volume élevé ET dispersion effondrée** (le
+  volume seul ne suffit pas, sinon chaque pic légitime déclenche). Au déclenchement : on allonge
+  la fenêtre Ghost du périmètre suspect et on attend un audit humain avant de « dégeler ».
+- **Perte maximale bornée vs plafonds.** Deux choses distinctes : la baseline/le gel est le
+  **mécanisme** ; la perte max bornée est la **garantie qui en découle**, énoncée et **vérifiée
+  par tests d'invariants / fuzzing Foundry** (jamais « prouvée »). Le volet 2 affirme **deux**
+  bornes testables : **perte max bornée** (côté attaquant) ET **friction max bornée** (côté
+  défense) — cf. §9.
+- **Qui gèle / qui lève (veto asymétrique).** Trois verbes (cf. §9) : **retarder** (surveillant /
+  IA seul, auto-expirant) ; **détruire** et **pause globale** (humains, **multisig**). Agir dans
+  le sens sûr est solitaire ; agir dans le sens risqué exige le multisig. Multisig = autorisation
+  on-chain « M parmi N » : voler une clé ne suffit plus.
+- **Volet 3 (balise de risque + marché).** **Retenu comme cœur**, pas comme option. La balise
+  publie le prix du risque (ratio) ; un faux marché de prêt / un marché secondaire price la
+  décote. Le volet 1 doit néanmoins exister et compiler en premier (il porte la démo
+  « vulnérable vs protégé », scénario A).
+- **Nombre et types de surveillants.** Deux suffisent pour la démo : un surveillant **règles** sur
+  le mint, un sur les **transferts anormaux**. ML en option (vague 5).
+- **Prédiction conforme.** Écartée pour 48 h : **seuils simples** mesurés sur trafic rejoué, plus
+  honnêtes et plus rapides à calibrer (règle « aucun chiffre sans mesure »).
+- **Ordre de priorité si le temps manque.** Inchangé : **volet 1 → volet 2 → volet 3**. Le volet 1
+  (montant dérivé) est non négociable ; le modèle de contamination par ratio est la pièce
+  maîtresse de la démo, mais ne se *voit* qu'avec le trafic synthétique du scénario D.
+
+#### Marge sur conversion token ⇄ Ghost (décidée en équipe)
+
+Une **marge est prélevée à la conversion** dans les deux sens (token → Ghost et Ghost → token).
+
+**Limite assumée (à dire au jury, pas à cacher)** : une marge **forfaitaire** sur toutes les
+conversions taxe aussi les utilisateurs légitimes et entre en tension avec l'argument « friction
+bornée et **locale**, proportionnelle à l'exposition réelle » (§9), ainsi qu'avec l'esprit DORA
+(protéger l'écosystème, pas en tirer une rente). Piste de cohérence recommandée, à confirmer :
+**indexer la marge sur le ratio de contamination** (convertir un Ghost propre coûte ~0, un Ghost
+contaminé coûte plus), et **affecter les montants collectés** à la couverture des destructions /
+un fonds d'assurance plutôt qu'au profit. Barème et affectation **à mesurer et acter**.
+
+### Reste ouvert
+
+- Barème exact de la marge, forfaitaire vs indexée sur le ratio, et affectation des montants
+  collectés (voir la limite assumée ci-dessus).
+- Grandeur affichée comme « risque » : **proportion suspecte** (ratio actuel) vs **probabilité de
+  fraude** — à trancher pour le pricing et la balise.
+- Tous les seuils (déclenchement, conversion, allongement, alerte) restent **à mesurer** sur le
+  trafic synthétique (cf. `docs/CLAIMS.md`).
+- Détail des sous-questions renvoyées à §9 (baseline, veto asymétrique) et §0bis (Token Ghost).
 
 ---
 

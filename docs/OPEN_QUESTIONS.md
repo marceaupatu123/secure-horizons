@@ -7,6 +7,11 @@ renvoi, tant que ses conséquences sont ouvertes).
 
 ## 0. Décision structurante — _proposé, à valider en équipe_
 
+> **TRANCHÉ par la décision §0 (2026-10-10, Équipe 20)** : sécurité **dans le contrat** ; cœur du
+> projet = **pricer le risque** via le Token Ghost à contamination par ratio ; pas de plafond fixe
+> mais une **baseline adaptative** ; volet 3 retenu comme cœur ; priorité volet 1 → 2 → 3 ; marge
+> à la conversion token ⇄ Ghost. Copie et détails dans `docs/OPEN_ANSWERS.md`.
+
 **La sécurité vit-elle dans le contrat (montant dérivé on-chain, plafonds, quarantaine, multisig)
 ou seulement autour (surveillance + pause) ?**
 
