@@ -9,8 +9,10 @@ from __future__ import annotations
 def main() -> None:
     """Point d'entree executable."""
     print(
-        "detection : surveillant de mint a regles disponible "
-        "(RuleBasedMonitor.check_mint) ; check_transfer a implementer (#12)."
+        "detection : surveillants a regles disponibles — mint "
+        "(RuleBasedMonitor.check_mint, #11) et transferts « volume eleve ET "
+        "dispersion effondree » (RuleBasedMonitor.check_transfer, #12) ; "
+        "parametres PROVISOIRES dans detection/params.py."
     )
 
 
