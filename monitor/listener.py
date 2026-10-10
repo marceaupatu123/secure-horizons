@@ -16,6 +16,15 @@ la boucle de polling. Meme mecanisme envisage pour les evenements
 d'administration (`Upgraded`, `RoleGranted`, OPEN_ANSWERS §1), non implementes
 ici : leur liste exacte reste ouverte.
 
+Transferts (issue #10) : meme evenement `Transfer` ERC-20 du meme contrat, lu
+par la meme boucle de polling. Sont exclus : les mints (`from == 0x0`, deja
+emis par `stream_mint_events`) et — PROVISOIRE, a valider par l'equipe — les
+burns (`to == 0x0`), qui ne sont pas des transferts entre deux adresses.
+
+GAP connu — `TransferEvent.is_ghost` : un `Transfer` ERC-20 ne dit pas si le
+token transfere est un Ghost. La valeur vient de `MonitorConfig.token_is_ghost`
+(defaut PROVISOIRE False) tant que le design du contrat Ghost n'est pas fixe.
+
 Le module produit des `MintEvent` et `TransferEvent` (`docs/CONTRACTS.md`) a
 destination du module `detection`.
 """
@@ -26,7 +35,7 @@ import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
 
 from web3 import Web3
 
@@ -46,6 +55,7 @@ ZERO_ADDRESS_TOPIC = "0x" + "00" * 32
 UNKNOWN_REQUEST_ID = 0
 
 RawLog = Mapping[str, Any]
+ChainEvent = TypeVar("ChainEvent", MintEvent, TransferEvent)
 
 
 class EthLike(Protocol):
@@ -90,6 +100,15 @@ class MintLogDecoder:
     decode: Callable[[RawLog], DecodedMint | None]
 
 
+@dataclass(frozen=True)
+class DecodedTransfer:
+    """Champs d'un `Transfer` ERC-20 brut (forme standard, 3 topics)."""
+
+    sender: str
+    recipient: str
+    amount: int
+
+
 def to_hex(value: Any) -> str:
     """Normalise une valeur hex web3 (bytes/HexBytes ou str) en `0x...` minuscule.
 
@@ -132,12 +151,37 @@ def topic_to_address(topic: str) -> str | None:
     return Web3.to_checksum_address("0x" + body[24:])
 
 
+def decode_erc20_transfer_log(log: RawLog) -> DecodedTransfer | None:
+    """Decode un `Transfer` ERC-20 brut, sans filtrage metier.
+
+    Ignore (retourne `None`) : autre topic0, forme ERC-721 (4 topics, tokenId
+    indexe), topics ou donnees mal formes.
+
+    Args:
+        log: log brut `eth_getLogs`.
+
+    Returns:
+        `(sender, recipient, amount)` (adresses checksum), ou `None`.
+    """
+    topics = [to_hex(t) for t in log.get("topics", ())]
+    if len(topics) != 3 or topics[0] != ERC20_TRANSFER_TOPIC:
+        return None
+    sender = topic_to_address(topics[1])
+    recipient = topic_to_address(topics[2])
+    if sender is None or recipient is None:
+        return None
+    data = to_hex(log.get("data", "0x"))
+    if len(data) != 2 + 64:
+        return None
+    return DecodedTransfer(sender=sender, recipient=recipient, amount=int(data, 16))
+
+
 def decode_erc20_mint(log: RawLog) -> DecodedMint | None:
     """Decode un `Transfer` ERC-20 emis depuis l'adresse nulle (= mint).
 
-    Ignore (retourne `None`) : autre topic0, forme ERC-721 (4 topics, tokenId
-    indexe), emetteur non nul (transfert ordinaire), donnees mal formees,
-    montant nul (`MintEvent.amount` exige `> 0`).
+    Ignore (retourne `None`) : log non decodable (`decode_erc20_transfer_log`),
+    emetteur non nul (transfert ordinaire), montant nul (`MintEvent.amount`
+    exige `> 0`).
 
     Args:
         log: log brut `eth_getLogs`.
@@ -145,22 +189,38 @@ def decode_erc20_mint(log: RawLog) -> DecodedMint | None:
     Returns:
         Le mint decode, avec `request_id = UNKNOWN_REQUEST_ID` (GAP), ou `None`.
     """
-    topics = [to_hex(t) for t in log.get("topics", ())]
-    if len(topics) != 3 or topics[0] != ERC20_TRANSFER_TOPIC:
-        return None
-    sender = topic_to_address(topics[1])
-    recipient = topic_to_address(topics[2])
-    if sender is None or recipient is None or sender != ZERO_ADDRESS:
-        return None
-    data = to_hex(log.get("data", "0x"))
-    if len(data) != 2 + 64:
-        return None
-    amount = int(data, 16)
-    if amount <= 0:
+    decoded = decode_erc20_transfer_log(log)
+    if decoded is None or decoded.sender != ZERO_ADDRESS or decoded.amount <= 0:
         return None
     return DecodedMint(
-        recipient=recipient, amount=amount, request_id=UNKNOWN_REQUEST_ID
+        recipient=decoded.recipient,
+        amount=decoded.amount,
+        request_id=UNKNOWN_REQUEST_ID,
     )
+
+
+def decode_erc20_transfer(log: RawLog) -> DecodedTransfer | None:
+    """Decode un transfert ERC-20 ordinaire (ni mint, ni burn).
+
+    Ignore (retourne `None`) : log non decodable (`decode_erc20_transfer_log`),
+    mint (`from == 0x0`), burn (`to == 0x0`, exclusion PROVISOIRE — a valider
+    par l'equipe), montant nul (`TransferEvent.amount` exige `> 0`).
+
+    Args:
+        log: log brut `eth_getLogs`.
+
+    Returns:
+        Le transfert decode, ou `None`.
+    """
+    decoded = decode_erc20_transfer_log(log)
+    if (
+        decoded is None
+        or decoded.sender == ZERO_ADDRESS
+        or decoded.recipient == ZERO_ADDRESS
+        or decoded.amount <= 0
+    ):
+        return None
+    return decoded
 
 
 # Decodeur par defaut : filtre cote RPC sur topic0 = Transfer ET from = 0x0.
@@ -169,6 +229,10 @@ ERC20_MINT_DECODER = MintLogDecoder(
     topics=(ERC20_TRANSFER_TOPIC, ZERO_ADDRESS_TOPIC),
     decode=decode_erc20_mint,
 )
+
+# Filtre RPC des transferts : topic0 = Transfer seulement (`eth_getLogs` ne sait
+# pas exprimer « from != 0x0 ») ; mints et burns sont exclus cote client.
+ERC20_TRANSFER_TOPICS: tuple[str | None, ...] = (ERC20_TRANSFER_TOPIC,)
 
 
 def block_ranges(start: int, end: int, batch_size: int) -> Iterator[tuple[int, int]]:
@@ -249,10 +313,79 @@ class ChainListener:
     def _safe_head(self) -> int:
         return max(self._eth.block_number - self._config.confirmations, 0)
 
+    def _fetch_events(
+        self,
+        from_block: int,
+        to_block: int,
+        sources: Sequence[
+            tuple[tuple[str | None, ...], Callable[[RawLog], ChainEvent | None]]
+        ],
+    ) -> list[ChainEvent]:
+        """Lit les logs du token par plages et les convertit (commun mints/transferts).
+
+        Args:
+            from_block: premier bloc.
+            to_block: dernier bloc (inclus).
+            sources: couples `(topics, convertisseur)` ; un appel `eth_getLogs`
+                par couple et par plage.
+
+        Returns:
+            Les evenements, tries par `(block_number, log_index)`.
+        """
+        token = self._token_address()
+        events: list[ChainEvent] = []
+        for start, end in block_ranges(
+            from_block, to_block, self._config.block_batch_size
+        ):
+            for topics, convert in sources:
+                logs = self._eth.get_logs(
+                    {
+                        "fromBlock": start,
+                        "toBlock": end,
+                        "address": token,
+                        "topics": list(topics),
+                    }
+                )
+                for log in logs:
+                    if log.get("removed"):
+                        # Log annule par une reorganisation de chaine.
+                        continue
+                    event = convert(log)
+                    if event is not None:
+                        events.append(event)
+        events.sort(key=lambda e: (e.block_number, e.log_index))
+        return events
+
+    def _poll(
+        self,
+        fetch: Callable[[int, int], list[ChainEvent]],
+        max_polls: int | None,
+    ) -> Iterator[ChainEvent]:
+        """Boucle de polling commune : lit les blocs nouveaux a chaque tour.
+
+        Commence a `config.start_block` (ou au bloc courant si None), puis a
+        chaque poll lit les blocs nouveaux jusqu'a la tete moins
+        `config.confirmations`, et attend `config.poll_interval_seconds`.
+        """
+        self._token_address()
+        next_block = self._config.start_block
+        polls = 0
+        while True:
+            head = self._safe_head()
+            if next_block is None:
+                next_block = head
+            if head >= next_block:
+                for start, end in block_ranges(
+                    next_block, head, self._config.block_batch_size
+                ):
+                    yield from fetch(start, end)
+                next_block = head + 1
+            polls += 1
+            if max_polls is not None and polls >= max_polls:
+                return
+            self._sleep(self._config.poll_interval_seconds)
+
     def _to_mint_event(self, log: RawLog, decoder: MintLogDecoder) -> MintEvent | None:
-        if log.get("removed"):
-            # Log annule par une reorganisation de chaine.
-            return None
         decoded = decoder.decode(log)
         if decoded is None:
             return None
@@ -282,26 +415,14 @@ class ChainListener:
         Raises:
             RuntimeError: si l'adresse du token ou l'URL RPC manque.
         """
-        token = self._token_address()
-        events: list[MintEvent] = []
-        for start, end in block_ranges(
-            from_block, to_block, self._config.block_batch_size
-        ):
-            for decoder in self._mint_decoders:
-                logs = self._eth.get_logs(
-                    {
-                        "fromBlock": start,
-                        "toBlock": end,
-                        "address": token,
-                        "topics": list(decoder.topics),
-                    }
-                )
-                for log in logs:
-                    event = self._to_mint_event(log, decoder)
-                    if event is not None:
-                        events.append(event)
-        events.sort(key=lambda e: (e.block_number, e.log_index))
-        return events
+        return self._fetch_events(
+            from_block,
+            to_block,
+            [
+                (decoder.topics, lambda log, d=decoder: self._to_mint_event(log, d))
+                for decoder in self._mint_decoders
+            ],
+        )
 
     def stream_mint_events(self, max_polls: int | None = None) -> Iterator[MintEvent]:
         """Emet les evenements de mint au fil de l'eau (polling).
@@ -320,28 +441,64 @@ class ChainListener:
         Raises:
             RuntimeError: si l'adresse du token ou l'URL RPC manque.
         """
-        self._token_address()
-        next_block = self._config.start_block
-        polls = 0
-        while True:
-            head = self._safe_head()
-            if next_block is None:
-                next_block = head
-            if head >= next_block:
-                for start, end in block_ranges(
-                    next_block, head, self._config.block_batch_size
-                ):
-                    yield from self.fetch_mint_events(start, end)
-                next_block = head + 1
-            polls += 1
-            if max_polls is not None and polls >= max_polls:
-                return
-            self._sleep(self._config.poll_interval_seconds)
+        return self._poll(self.fetch_mint_events, max_polls)
 
-    def stream_transfer_events(self) -> Iterator[TransferEvent]:
-        """Emet les evenements de transfert au fil de l'eau.
+    def _to_transfer_event(self, log: RawLog) -> TransferEvent | None:
+        decoded = decode_erc20_transfer(log)
+        if decoded is None:
+            return None
+        return TransferEvent(
+            tx_hash=to_hex(log["transactionHash"]),
+            log_index=_to_int(log["logIndex"]),
+            block_number=_to_int(log["blockNumber"]),
+            chain_id=self._config.chain_id,
+            observed_at=self._now(),
+            sender=decoded.sender,
+            recipient=decoded.recipient,
+            amount=decoded.amount,
+            is_ghost=self._config.token_is_ghost,
+        )
+
+    def fetch_transfer_events(
+        self, from_block: int, to_block: int
+    ) -> list[TransferEvent]:
+        """Lit les transferts d'une plage de blocs (bornes incluses).
+
+        Meme `Transfer` ERC-20 que les mints, hors mints (`from == 0x0`) et
+        burns (`to == 0x0`, exclusion PROVISOIRE). La plage est decoupee selon
+        `config.block_batch_size`.
+
+        Args:
+            from_block: premier bloc.
+            to_block: dernier bloc (inclus).
+
+        Returns:
+            Les transferts, tries par `(block_number, log_index)`.
+
+        Raises:
+            RuntimeError: si l'adresse du token ou l'URL RPC manque.
+        """
+        return self._fetch_events(
+            from_block,
+            to_block,
+            [(ERC20_TRANSFER_TOPICS, self._to_transfer_event)],
+        )
+
+    def stream_transfer_events(
+        self, max_polls: int | None = None
+    ) -> Iterator[TransferEvent]:
+        """Emet les evenements de transfert au fil de l'eau (polling).
+
+        Meme boucle que `stream_mint_events` (depart, confirmations, pause).
+
+        Args:
+            max_polls: nombre de polls avant arret (None = infini ; utile en
+                test).
 
         Yields:
-            Un `TransferEvent` par transfert observe.
+            Un `TransferEvent` par transfert observe, dans l'ordre de la chaine.
+
+        Raises:
+            RuntimeError: si l'adresse du token ou l'URL RPC manque.
         """
-        raise NotImplementedError("monitor.stream_transfer_events : a implementer")
+        return self._poll(self.fetch_transfer_events, max_polls)
