@@ -1,0 +1,14 @@
+# Source unique des dependances Python du projet.
+# Regle d'equipe : aucune dependance ajoutee ici sans prevenir l'equipe.
+# Versions non epinglees (contexte hackathon). A epingler si besoin de reproductibilite.
+
+boto3
+web3
+fastapi
+uvicorn
+pydantic
+pytest
+python-dotenv
+streamlit
+scikit-learn
+pandas

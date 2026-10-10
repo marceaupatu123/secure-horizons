@@ -1,0 +1,15 @@
+# CODEOWNERS — à compléter avec les propriétaires de modules (voir docs/TEAM.md).
+# Syntaxe : <chemin>   @utilisateur-github
+# Exemple :  /monitor/   @alice
+#
+# Laisser vide tant que la répartition n'est pas actée en équipe.
+
+# /contracts/   @
+# /monitor/     @
+# /detection/   @
+# /llm/         @
+# /response/    @
+# /dashboard/   @
+# /shared/      @
+# /data/        @
+# /docs/        @

@@ -1,0 +1,24 @@
+# --- Secrets (JAMAIS commites) ---
+.env
+*.pem
+*.key
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# --- Node / dashboard ---
+node_modules/
+
+# --- Foundry / Solidity ---
+out/
+cache/
+broadcast/
+
+# --- Divers ---
+*.db
+.DS_Store

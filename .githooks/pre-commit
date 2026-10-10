@@ -1,0 +1,46 @@
+#!/bin/sh
+# Pre-commit hook - equipe 20 "Guardians of Value".
+# Refuse un commit qui contient :
+#   1. un fichier .env (sauf .env.example, autorise)
+#   2. une chaine hexadecimale de 64 caracteres (ressemble a une cle privee)
+#
+# Active via : git config core.hooksPath .githooks  (fait par `make install`).
+
+fail=0
+
+# Fichiers stages (ajoutes/modifies), noms NUL-separes pour gerer les espaces.
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+
+# --- 1. Blocage des fichiers .env (mais .env.example autorise) ---
+for f in $staged; do
+  base=$(basename "$f")
+  case "$base" in
+    .env.example)
+      ;; # autorise
+    .env|.env.*)
+      echo "ERREUR pre-commit : fichier de secrets interdit au commit -> $f"
+      fail=1
+      ;;
+  esac
+done
+
+# --- 2. Blocage des chaines hex 64 chars (cle privee potentielle) ---
+# On inspecte le contenu stage ; .env.example est ignore (placeholders only).
+for f in $staged; do
+  base=$(basename "$f")
+  [ "$base" = ".env.example" ] && continue
+  # Recupere le contenu stage du fichier et cherche une suite hex de 64 chars.
+  if git show ":$f" 2>/dev/null | grep -Eiq '(^|[^0-9a-fx])[0-9a-f]{64}([^0-9a-f]|$)'; then
+    echo "ERREUR pre-commit : chaine hex de 64 caracteres detectee (cle privee ?) -> $f"
+    fail=1
+  fi
+done
+
+if [ "$fail" -ne 0 ]; then
+  echo ""
+  echo "Commit refuse. Retire les secrets/cles avant de recommencer."
+  echo "Si c'est un faux positif, discute-en avec l'equipe (ne contourne pas le hook sans raison)."
+  exit 1
+fi
+
+exit 0
