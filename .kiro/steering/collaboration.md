@@ -59,3 +59,8 @@ conséquences ouvertes (liquidité, compatibilité AMM, destruction en chaîne).
 
 Aucune décision de conception (archi, algorithmes, seuils, design du contrat) n'est tranchée par
 l'assistant : toute décision ambiguë va dans `docs/OPEN_QUESTIONS.md`.
+
+Dès qu'une question reçoit une réponse actée par l'équipe (marquée **DÉCISION**, avec date et
+auteur), elle est **copiée** dans `docs/OPEN_ANSWERS.md` (ligne d'index + texte), et la question
+d'origine dans `OPEN_QUESTIONS.md` reçoit un renvoi « → Tranché, voir `docs/OPEN_ANSWERS.md` ».
+Une proposition « à confirmer » n'y va pas tant que l'équipe ne l'a pas validée.
