@@ -1,63 +1,73 @@
 # data — données synthétiques
 
 - **Propriétaire** : @EnzoFB06 (voir `docs/TEAM.md`).
+- **Lancer** : `make data` ou `python -m data.generate --scenario <normal|A|B|all> --seed <n>` ;
+  tests : `python -m pytest data/`.
 
 > **Toutes les données de ce dossier sont FICTIVES.** Aucune vraie donnée on-chain, aucune vraie
 > adresse, aucune vraie clé. Faux secrets autorisés de type `FLAG{team20-canary}`.
 
-Ce dossier ne contient pour l'instant que cette description. **Aucune donnée n'est générée** —
-les scénarios ci-dessous seront produits plus tard par l'équipe (générateur à définir, voir
-`docs/OPEN_QUESTIONS.md`).
+Cadre : décision §6 de `docs/OPEN_ANSWERS.md` (format JSONL, scénarios recadrés, générateur
+reproductible), mesures de la §5.
 
-## Scénarios à produire — _proposé, à valider en équipe_
+## Format
 
-### Scénario A — même attaque rejouée (vulnérable vs protégé)
+- **JSONL**, une ligne = un modèle de `shared.models` (`MintRequest`, `MintEvent`,
+  `TransferEvent`), validé en Pydantic strict. Relecture : `data.generate.load_jsonl(path)` ou
+  `pd.read_json(path, lines=True)`.
+- Chaque fichier a un **manifeste** `<nom>.manifest.json` : graine, paramètres, comptes, et la
+  **vérité terrain** de l'attaque (adresses, `request_id`, tx, `started_at` = `t0`).
+- Horodatage = temps simulé du bloc (`t0`, UTC) ; `block_number` en dérive (temps de bloc ~2 s,
+  paramètre). Token fictif à **6 décimales** : les montants en base units tiennent en int64.
+- Sortie par défaut : `data/generated/`. **Ne pas committer** ces fichiers tant que l'équipe n'a
+  pas tranché (graine seule vs JSONL committés, `.gitignore`).
 
-Une **autorisation signée** demandant un **montant anormal**, rejouée **sur le contrat
-vulnérable** (qui l'accepte) **puis sur le contrat protégé** (où le montant est dérivé on-chain du
-dépôt). But : montrer la différence d'issue entre les deux contrats.
+## Jeux produits
 
-### Scénario B — une hypothèse du volet 1 tombe : les surveillants la voient-ils ?
+| Fichier | Contenu | Sert à |
+|---------|---------|--------|
+| `normal.jsonl` | trafic légitime seul : mints 1:1 vers le déposant (I1 + I3), transferts dispersés sur une population d'adresses anciennes, saisonnalité par créneau de 5 min, croissance progressive | baseline médiane + MAD (§9), **dénominateur du taux de faux positifs** (§5, #59) |
+| `scenario_a_vulnerable.jsonl` / `scenario_a_protected.jsonl` | même fond de trafic ; l'attaquant fait deux demandes (dépôt total 200 000) ; mint ×400 sur le contrat vulnérable, 1:1 sur le protégé | volet 1 : montant mintable pour un même dépôt (#24) |
+| `scenario_b.jsonl` | voir ci-dessous | surveillant hors chaîne, marge avant conversion (#24, #49) |
 
-Avec le volet 1 (montant dérivé on-chain) et sans plafond fixe (`docs/OPEN_ANSWERS.md` §0),
-« rester sous les plafonds » ne rapporte rien : un mint cohérent avec son dépôt (1:1) n'est pas
-une attaque, quelle que soit sa taille (§1). Le scénario B suppose donc qu'**une hypothèse du
-volet 1 tombe**, le contrat seul ne suffit plus, et on **mesure** si les surveillants le voient
-(détecté ou non, délai de détection) et si la réponse reste un **retard** (§3).
+Tous les jeux portent la fenêtre Ghost (§0bis) : `is_ghost` vaut `true` quand l'expéditeur dépense
+des fonds reçus il y a moins de `ghost_window_minutes`.
 
-**B1 — hypothèse qui tombe** (piste à choisir en équipe, une seule suffit pour la démo) :
+### Scénario B — une hypothèse du volet 1 tombe : détournement à 1:1 (I3)
 
-| Piste | Ce qui tombe | Ce que le surveillant de mint doit lever (§1) |
-|-------|--------------|-----------------------------------------------|
-| Clé admin volée | le contrat n'est plus celui qu'on croit (`Upgraded`, `RoleGranted`, nouveau rôle de mint) | événement d'administration non annoncé ; violation I5 si un chemin de mint parallèle apparaît |
-| Taux / oracle manipulé | I1 est respecté, mais avec un faux taux | écart du taux au-delà de δ vs la source de référence ; violation I6 (solvabilité) |
-| Destinataire détourné | I3 (« destinataire = déposant ») n'est pas appliqué | mint dont le destinataire ≠ déposant de la demande n°X |
+Avec le volet 1 et sans plafond fixe, « rester sous les plafonds » ne rapporte rien (§0, §1). Le
+scénario B suppose donc qu'**I3 (destinataire = déposant) n'est pas appliqué** :
 
-**B2 — transferts anormaux** (inchangé) : après le mint, l'attaquant fait sortir les fonds vers
-peu d'adresses neuves. Le surveillant de transferts doit lever une alerte sur **volume élevé ET
-dispersion effondrée** (§9).
+1. **B1** : la demande d'une victime est traitée vers une **adresse neuve** de l'attaquant. Le
+   bilan global reste à 1:1 (I1 tient), mais l'argent change de poche. Le surveillant de mint doit
+   lever : destinataire ≠ déposant de la demande n°X.
+2. **B2** : l'attaquant fait sortir les fonds vers `exit_hops` adresses neuves, puis vers un
+   **point de sortie** fictif, le tout **avant la fin de la fenêtre Ghost**. Le surveillant de
+   transferts doit lever : **volume élevé ET dispersion effondrée** (§9).
 
-Les valeurs δ, ε et les seuils de dispersion sont **à mesurer** sur ce trafic, pas à inventer.
+On mesure si l'alerte arrive avec une **marge positive avant conversion** (§5).
 
-### Scénario C — gel et pare-feu de contagion _(si volet 3 retenu)_
+Variante non générée : **événement d'administration** non annoncé (`Upgraded`, `RoleGranted`).
+Aucun modèle de `shared/` ne le représente aujourd'hui ; il faudrait d'abord l'ajouter à
+`docs/CONTRACTS.md` (zone partagée).
 
-Un **gel est publié** sur la balise de risque, puis on **compare les mauvaises créances** d'un
-**faux marché de prêt** (simulé, fictif) **avec et sans** lecture de la balise de risque. Les
-chiffres sont à **mesurer**, pas à inventer.
+### Scénarios C et D — pas encore générés (#25)
 
-### Scénario D — marché secondaire du Token Ghost _(si quarantaine liquide retenue)_
+- **C — contagion** : gel publié sur la balise, mauvaises créances d'un faux marché de prêt
+  **avec vs sans** lecture de la balise. Dépend de la balise + faux marché (#7).
+- **D — marché secondaire du Ghost** : Ghost fragmenté sur N adresses, contamination par ratio,
+  destruction proportionnelle au gel confirmé ; pertes protocole vs spéculateurs. Dépend de
+  l'ERC20 Ghost (#8).
 
-L'attaquant **génère des Tokens Ghost** et les **revend immédiatement** à des spéculateurs sur un
-**pool de liquidité simulé** (fictif). L'alerte est **confirmée**, les Tokens Ghost du lot suspect
-**disparaissent** (destruction par le contrat). On **mesure** les pertes **côté protocole**
-(attendu : zéro, à vérifier) **vs** les pertes **côté spéculateurs**. Les chiffres sont à
-**mesurer**, pas à inventer.
+## Paramètres — à calibrer, pas des mesures
 
-## À définir plus tard (ne pas trancher ici)
+Les valeurs par défaut de `GenerationParams` (200 utilisateurs, ~1 mint et ~12 transferts par
+créneau de 5 min, 24 h simulées, attaque à 75 % de la période) sont des **paramètres de
+génération**, pas des chiffres mesurés (`docs/CLAIMS.md`). Seule référence externe : Resolv
+(~200 000 déposés, ratio ~400×, cf. §1).
 
-- Format exact des fichiers (CSV / JSON / JSONL ?) et schéma des lignes.
-- Paramètres de chaque scénario (volumes, nombre d'adresses, timings, seuils implicites).
-- Piste retenue pour le scénario B1 (clé admin, oracle ou destinataire détourné).
-- Outil de génération et sa commande de lancement.
+## Reste ouvert
 
-Ces points sont listés dans `docs/OPEN_QUESTIONS.md`.
+- Committer les JSONL ou seulement le générateur + la graine (`.gitignore`).
+- Liste des adresses « point de sortie » (§2) : un seul point fictif pour l'instant.
+- Variante B « événement admin » : nécessite un modèle partagé.
