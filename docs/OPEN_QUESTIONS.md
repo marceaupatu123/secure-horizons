@@ -152,16 +152,22 @@ risque est transféré vers un marché secondaire spéculatif) :
 
 ## 7. Interfaces entre modules (voir `docs/CONTRACTS.md`)
 
+> → **Spécifié dans la PR #53 (issue #2), en relecture d'équipe** (zone sensible `shared/` +
+> `docs/CONTRACTS.md`, review à 2). Les 13 modèles sont figés en Pydantic strict (`extra="forbid"`),
+> identités EVM (adresses/hash validés), montants en entiers base units, timestamps UTC. Le soupçon
+> est porté par `contamination_ratio` (0–1) + `suspect_amount` (int). Détail complet et exemples
+> JSON dans `docs/CONTRACTS.md`. Reste à acter : relecture et merge de la PR.
+
 - Champs de `MintEvent`, `TransferEvent`, `Alert`, `ResponseAction`, `AuditLogEntry`.
 - Où vivent les modèles (`shared/`), format d'échange (JSON ?), versionnage éventuel.
 
-### Proposition (2026-10-10, Yannis) — _proposé, à valider en équipe, **non acté**_
+### Proposition (2026-10-10, Yannis) — _intégrée dans la PR #53_
 
 - **`Alert` doit désigner un périmètre, pas seulement « anomalie ».** Le modèle de contamination
   par ratio (§9) a besoin de savoir **quelles adresses marquer suspectes au départ** (les
-  « graines ») et pour **quels montants**. Proposition : `Alert` porte la liste des adresses
-  graines et le montant suspect associé à chacune. Champs exacts à définir ensemble.
-  → **À signaler au propriétaire de `shared/` (@marceaupatu123, #2).**
+  « graines ») et pour **quels montants**.
+  → **Pris en compte** : la PR #53 ajoute le modèle `AlertSeed` (adresse + `suspect_amount` +
+  `contamination_ratio`) et le champ `Alert.seeds: list[AlertSeed]`. À valider à la relecture.
 
 ## 8. `BEDROCK_MODEL_ID` — choix du modèle LLM (#28) — _proposé par défaut, à confirmer_
 
