@@ -476,6 +476,8 @@ NORMAL ────────────────────────�
 - Notification de l'audit humain : canal et destinataires (hors périmètre on-chain).
 - Alignement du code sur le vocabulaire acté (`response/orchestrator.py`, `CLAUDE.md`) et des
   champs `ResponseAction` dans `docs/CONTRACTS.md` sur cette machine à états.
+  → `response/orchestrator.py` **aligné** (PR #56 : machine à états, quorums 2/3 et 3/3, silence
+  = retour auto). Restent `CLAUDE.md` et `docs/CONTRACTS.md`.
 
 ---
 
@@ -697,6 +699,10 @@ jamais inventés (`docs/CLAIMS.md`).
 - Faut-il committer les JSONL générés ou seulement le générateur + la graine ? (taille vs
   reproductibilité). À trancher avec l'équipe et `.gitignore`.
 - Variante retenue pour B (détournement 1:1 vs événement admin) pour la démo principale.
+  Seul le détournement 1:1 est généré (PR #57) : l'événement admin n'a pas de modèle dans
+  `shared/`.
+- Implémentation (PR #57) : `--scenario <normal|A|B|all>` ; C et D pas encore générés (#25,
+  dépendent de #7 / #8). Sorties dans `data/generated/`, pas encore dans `.gitignore`.
 
 ---
 
