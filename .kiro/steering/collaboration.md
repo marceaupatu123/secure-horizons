@@ -40,6 +40,10 @@ confirmé ; surveillants multiples ; IA simple surveillant. Données **fictives*
 - Aucune dépendance sans l'ajouter à `requirements.txt` + prévenir l'équipe.
 - Jamais de vraie clé ni de vraies données (test Fuji + synthétique uniquement).
 - Appels Bedrock ≈ 1 req/s/personne, limiteur obligatoire, LLM appelé seulement sur alerte.
+- **Suivi des tâches** : quand on prend ou termine une tâche, penser à mettre à jour l'issue
+  GitHub (s'assigner, fermer via `Closes #N` dans la PR) et le board (Project n°5). Toute tâche
+  nouvelle = une issue avec labels `module:*` et `wave:*`, ajoutée au board. Détails et commandes
+  dans `docs/AI_WORKFLOW.md`. En tant qu'assistant, rappeler ces gestes à l'utilisateur.
 
 ## Consigne de périmètre (IMPORTANT)
 

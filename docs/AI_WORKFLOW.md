@@ -216,3 +216,60 @@ Via `.kiro/settings/mcp.json` (workspace) ou `~/.kiro/settings/mcp.json` (perso)
 2. Lancer `make install` (deps + hook anti-secrets git).
 3. Coder dans SON dossier : le hook `pytest-on-save` tourne à chaque sauvegarde.
 4. Rien d'autre à installer côté Kiro : tout est versionné dans `.kiro/`.
+
+---
+
+## Tenir les issues et le board à jour (NE PAS OUBLIER)
+
+Le suivi ne vaut que s'il reflète la réalité. **À chaque fois que tu commences, avances ou
+termines une tâche, mets l'issue et le board à jour.** Dis-le aussi explicitement à ton assistant
+IA — il ne le fera pas tout seul si tu ne le demandes pas.
+
+Références :
+- Issues : <https://github.com/marceaupatu123/secure-horizons/issues>
+- Board (Project n°5) : <https://github.com/users/marceaupatu123/projects/5>
+- Ordre de travail : `docs/ROADMAP.md` (vagues `wave:0` → `wave:5`).
+
+### Le réflexe à chaque étape
+
+| Moment | Action |
+|--------|--------|
+| Je prends une tâche | M'assigner l'issue + la passer en **In Progress** sur le board. |
+| J'ouvre une PR | Référencer l'issue dans la PR (`Closes #N`) pour la fermer automatiquement au merge. |
+| Je finis / la PR est mergée | Vérifier que l'issue est **close** et la carte en **Done**. |
+| Je découvre une tâche manquante | Créer une **nouvelle issue** (avec label `module:*` + `wave:*`) et l'ajouter au board. |
+| Je coche une case dans `ROADMAP.md` | Le faire aussi quand la tâche est réellement terminée. |
+
+### Commandes `gh` utiles
+
+```bash
+# Voir ce qu'il y a à faire maintenant
+gh issue list --label "wave:0"
+gh issue list --label "module:detection"
+
+# Prendre une issue : se l'assigner
+gh issue edit <N> --add-assignee "@me"
+
+# Ouvrir une PR qui ferme l'issue au merge
+gh pr create --fill            # puis écrire "Closes #<N>" dans la description
+
+# Fermer / rouvrir manuellement si besoin
+gh issue close <N>
+gh issue reopen <N>
+
+# Créer une nouvelle issue bien étiquetée
+gh issue create --title "<module>: ..." --label "module:<x>,wave:<n>"
+
+# Ajouter une issue au board (Project n°5)
+gh project item-add 5 --owner marceaupatu123 \
+  --url https://github.com/marceaupatu123/secure-horizons/issues/<N>
+```
+
+> Déplacer une carte entre colonnes (Todo / In Progress / Done) se fait le plus simplement **à la
+> main dans l'interface du board**. L'important : la colonne doit refléter l'état réel.
+
+### Phrase à donner à ton assistant IA
+
+> « Quand je prends ou termine une tâche, rappelle-moi de m'assigner l'issue, de la déplacer sur
+> le board (Project n°5) et de la fermer via `Closes #N` dans la PR. Si tu crées du travail
+> nouveau, ouvre une issue avec les labels `module:*` et `wave:*` et ajoute-la au board. »
