@@ -116,10 +116,10 @@ flowchart TD
 
 | Fait | Issue | Tâche | Dépend de |
 |------|-------|-------|-----------|
-| [ ] | #4 | Foundry + contrat vulnérable | #1 — _(denybs, en cours)_ |
+| [x] | #4 | Foundry + contrat vulnérable | #1 — _(denybs, en cours)_ |
 | [ ] | #9 | monitor : écoute des mints | #2 — _(Yannis1307, en cours)_ |
 | [ ] | #10 | monitor : écoute des transferts | #2 |
-| [ ] | #5 | contrat protégé (montant dérivé on-chain) — volet 1 | #1, #3 |
+| [x] | #5 | contrat protégé (montant dérivé on-chain) — volet 1 | #1, #3 |
 
 ## Vague 3 — Logique métier (après vague 2)
 
@@ -129,7 +129,7 @@ flowchart TD
 | [ ] | #12 | detection : surveillant transferts anormaux | #2, #10 |
 | [ ] | #14 | llm : client Bedrock Converse (rate limiter) | #28 |
 | [ ] | #17 | response : orchestration de la réponse graduée | #2, detection |
-| [ ] | #6 | contracts : invariants/fuzzing (perte max bornée) — volet 2 | #5 |
+| [x] | #6 | contracts : invariants/fuzzing (perte max bornée) — volet 2 | #5 |
 
 ## Vague 4 — Réponse complète + conformité
 
