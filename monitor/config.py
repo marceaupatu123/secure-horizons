@@ -47,12 +47,22 @@ DEFAULT_CONFIRMATIONS = 0
 # (pas de rattrapage de l'historique au demarrage).
 DEFAULT_START_BLOCK: int | None = None
 
+# PROVISOIRE — a valider par l'equipe. Valeur de `TransferEvent.is_ghost` pour
+# les transferts du token ecoute : un `Transfer` ERC-20 generique ne dit pas si
+# le token transfere est un Ghost (design du contrat Ghost non tranche). False =
+# le token ecoute est le vrai token.
+DEFAULT_TOKEN_IS_GHOST = False
+
 ENV_RPC_URL = "FUJI_RPC_URL"
 ENV_TOKEN_ADDRESS = "MONITOR_TOKEN_ADDRESS"
 ENV_POLL_INTERVAL_SECONDS = "MONITOR_POLL_INTERVAL_SECONDS"
 ENV_BLOCK_BATCH_SIZE = "MONITOR_BLOCK_BATCH_SIZE"
 ENV_CONFIRMATIONS = "MONITOR_CONFIRMATIONS"
 ENV_START_BLOCK = "MONITOR_START_BLOCK"
+ENV_TOKEN_IS_GHOST = "MONITOR_TOKEN_IS_GHOST"
+
+_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+_FALSE_VALUES = frozenset({"0", "false", "no", "off"})
 
 _ADDRESS_RE = re.compile(r"^0x[a-fA-F0-9]{40}$")
 
@@ -70,6 +80,8 @@ class MonitorConfig:
         block_batch_size: largeur max d'une plage `eth_getLogs` (A MESURER).
         confirmations: blocs de retard sous la tete (PROVISOIRE).
         start_block: premier bloc lu, None = bloc courant (PROVISOIRE).
+        token_is_ghost: valeur de `TransferEvent.is_ghost` pour le token
+            ecoute (PROVISOIRE).
     """
 
     rpc_url: str | None
@@ -79,6 +91,7 @@ class MonitorConfig:
     block_batch_size: int = DEFAULT_BLOCK_BATCH_SIZE
     confirmations: int = DEFAULT_CONFIRMATIONS
     start_block: int | None = DEFAULT_START_BLOCK
+    token_is_ghost: bool = DEFAULT_TOKEN_IS_GHOST
 
     def __post_init__(self) -> None:
         if self.token_address is not None:
@@ -139,6 +152,18 @@ def _float_from_env(env: Mapping[str, str], name: str, default: float) -> float:
         raise ValueError(f"{name} doit etre un nombre, recu {raw!r}") from exc
 
 
+def _bool_from_env(env: Mapping[str, str], name: str, default: bool) -> bool:
+    raw = _optional_str(env, name)
+    if raw is None:
+        return default
+    lowered = raw.lower()
+    if lowered in _TRUE_VALUES:
+        return True
+    if lowered in _FALSE_VALUES:
+        return False
+    raise ValueError(f"{name} doit etre un booleen (true/false), recu {raw!r}")
+
+
 def load_monitor_config(
     settings: Settings | None = None,
     env: Mapping[str, str] | None = None,
@@ -173,5 +198,8 @@ def load_monitor_config(
             None
             if start_raw is None
             else _int_from_env(source, ENV_START_BLOCK, 0)
+        ),
+        token_is_ghost=_bool_from_env(
+            source, ENV_TOKEN_IS_GHOST, DEFAULT_TOKEN_IS_GHOST
         ),
     )
