@@ -136,7 +136,7 @@ risque est transféré vers un marché secondaire spéculatif) :
 
 - Valeurs exactes (facteur d'allongement, durées, seuils d'escalade), **à mesurer**.
 - Canal et destinataires de la notification d'audit humain.
-- Alignement de `response/orchestrator.py`, `CLAUDE.md` et des champs `ResponseAction`
+- Alignement de `response/orchestrator.py` (fait, PR #56), `CLAUDE.md` et des champs `ResponseAction`
   (`docs/CONTRACTS.md`) sur le vocabulaire et la machine à états actés.
 
 #### Points faibles repérés (2026-10-10, Yannis) — _sur un exemple chiffré fictif, à traiter en équipe_
@@ -204,7 +204,9 @@ Exemple : mint frauduleux de 50M, réparti sur 3 adresses neuves puis envoyé ve
 - Valeurs exactes (volumes, saisonnalité, N adresses, ratios), **à mesurer**.
 - Liste des adresses « point de sortie » (coord. §2).
 - Committer les JSONL ou seulement le générateur + la graine ? (taille vs reproductibilité).
-- Variante retenue pour B (détournement 1:1 vs événement admin).
+- Variante retenue pour B (détournement 1:1 vs événement admin). Seul le détournement 1:1 est
+  généré : l'événement admin n'a pas de modèle partagé.
+- `.gitignore` pour `data/generated/` (sorties de `make data`).
 
 ## 7. Interfaces entre modules (voir `docs/CONTRACTS.md`)
 
