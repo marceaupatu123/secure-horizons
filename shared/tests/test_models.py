@@ -16,6 +16,7 @@ from pydantic import BaseModel, ValidationError
 
 from shared.models import (
     Alert,
+    AlertSeed,
     AuditLogEntry,
     FreezeRequest,
     GhostTokenBurnEvent,
@@ -68,6 +69,13 @@ ALERT: dict[str, Any] = {
     "dispersion_score": 0.04,
     "volume_zscore": 6.2,
     "reason": "Volume eleve ET dispersion effondree : 2 destinations, adresses neuves",
+    "seeds": [
+        {
+            "address": "0x2222222222222222222222222222222222222222",
+            "suspect_amount": 870000000000000000,
+            "contamination_ratio": 0.87,
+        }
+    ],
 }
 
 RESPONSE_ACTION: dict[str, Any] = {
@@ -235,6 +243,20 @@ INVALID_CASES: list[tuple[type[BaseModel], dict[str, Any]]] = [
     (TransferEvent, _mutate(TRANSFER_EVENT, recipient="0x1234")),
     # Ratio hors [0, 1].
     (Alert, _mutate(ALERT, contamination_ratio=1.5)),
+    # Graine avec ratio hors [0, 1] -> AlertSeed invalide, propage l'erreur.
+    (
+        Alert,
+        _mutate(
+            ALERT,
+            seeds=[
+                {
+                    "address": "0x2222222222222222222222222222222222222222",
+                    "suspect_amount": 870000000000000000,
+                    "contamination_ratio": 1.5,
+                }
+            ],
+        ),
+    ),
     # Champ extra interdit.
     (ResponseAction, _mutate(RESPONSE_ACTION, unexpected="x")),
     # Payload du mauvais type (doit etre dict[str, str]).

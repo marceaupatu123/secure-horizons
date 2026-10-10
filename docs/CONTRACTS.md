@@ -181,6 +181,11 @@ décidable par un surveillant/IA seul ; `destroy` et `global_pause` exigent le m
 | `dispersion_score` | `float \| None` | `ge=0.0` | mesure de dispersion (effondrée = concentration) |
 | `volume_zscore` | `float \| None` | — | écart du volume courant vs baseline médiane+MAD |
 | `reason` | `str` | non vide | explication lisible (règle déclenchée) |
+| `seeds` | `list[AlertSeed]` | défaut `[]` | adresses graines à marquer suspectes au départ et leur montant, pour amorcer la contamination (`OPEN_ANSWERS.md` §9). Les champs scalaires ci-dessus restent le résumé/raccourci |
+
+> Les champs scalaires `subject_address`, `contamination_ratio` et `suspect_amount` restent le
+> **résumé/raccourci** de l'alerte ; `seeds` est la **liste détaillée** (une entrée `AlertSeed` par
+> adresse) qui amorce la contamination par ratio.
 
 ### Exemple JSON
 
@@ -197,7 +202,46 @@ décidable par un surveillant/IA seul ; `destroy` et `global_pause` exigent le m
   "suspect_amount": 870000000000000000,
   "dispersion_score": 0.04,
   "volume_zscore": 6.2,
-  "reason": "Volume eleve ET dispersion effondree : 2 destinations, adresses neuves"
+  "reason": "Volume eleve ET dispersion effondree : 2 destinations, adresses neuves",
+  "seeds": [
+    {
+      "address": "0x2222222222222222222222222222222222222222",
+      "suspect_amount": 870000000000000000,
+      "contamination_ratio": 0.87
+    }
+  ]
+}
+```
+
+---
+
+## AlertSeed
+
+- **Producteur** : module `detection` (`Monitor.check_mint` / `check_transfer`), via le champ
+  `Alert.seeds`.
+- **Consommateur** : module `response` (`ResponseOrchestrator.handle_alert`), modèle de
+  contamination par ratio (`OPEN_ANSWERS.md` §9).
+- **Description** : adresse « graine » suspecte à marquer au départ de la contamination, avec son
+  propre soupçon (ratio + montant absolu). Une `Alert` en transporte une **liste** (`seeds`) :
+  c'est ce qui permet au modèle de contamination par ratio de savoir **quelles adresses** marquer
+  au départ et **pour quels montants** (besoin acté, cf. `OPEN_QUESTIONS.md` §7 / `OPEN_ANSWERS.md`
+  §9). Jamais embarqué seul : toujours comme élément de `Alert.seeds`.
+
+### Champs
+
+| Champ | Type | Borne / validation | Description |
+|-------|------|--------------------|-------------|
+| `address` | `Address` | regex adresse | adresse graine à marquer suspecte au départ |
+| `suspect_amount` | `int` | `ge=0` | montant absolu suspect de la graine, base units |
+| `contamination_ratio` | `float` | `ge=0.0, le=1.0` | fraction suspecte normalisée de la graine |
+
+### Exemple JSON
+
+```json
+{
+  "address": "0x2222222222222222222222222222222222222222",
+  "suspect_amount": 870000000000000000,
+  "contamination_ratio": 0.87
 }
 ```
 

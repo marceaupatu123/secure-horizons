@@ -181,6 +181,26 @@ class TransferEvent(_StrictModel):
     )
 
 
+class AlertSeed(_StrictModel):
+    """Adresse « graine » suspecte a marquer au depart de la contamination.
+
+    Chaque graine porte son propre soupcon (ratio + montant absolu) : le modele
+    de contamination par ratio (OPEN_ANSWERS §9) a besoin de savoir quelles
+    adresses marquer au depart et pour quels montants. Une `Alert` en transporte
+    une liste (champ `seeds`).
+    """
+
+    address: Address = Field(
+        ..., description="Adresse graine a marquer suspecte au depart."
+    )
+    suspect_amount: int = Field(
+        ..., ge=0, description="Montant absolu suspect de la graine, base units."
+    )
+    contamination_ratio: float = Field(
+        ..., ge=0.0, le=1.0, description="Fraction suspecte normalisee de la graine."
+    )
+
+
 class Alert(_StrictModel):
     """Anomalie detectee sur un mint, un transfert ou la baseline adaptative.
 
@@ -219,6 +239,14 @@ class Alert(_StrictModel):
     )
     reason: str = Field(
         ..., min_length=1, description="Explication lisible (regle declenchee)."
+    )
+    seeds: list[AlertSeed] = Field(
+        default_factory=list,
+        description=(
+            "Adresses graines a marquer suspectes au depart et leur montant, "
+            "pour amorcer la contamination par ratio (OPEN_ANSWERS §9). Les "
+            "champs scalaires ci-dessus restent le resume/raccourci de l'alerte."
+        ),
     )
 
 
