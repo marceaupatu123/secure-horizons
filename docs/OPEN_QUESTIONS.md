@@ -126,10 +126,17 @@ risque est transféré vers un marché secondaire spéculatif) :
 
 ## 4. Angle différenciant (à choisir)
 
-- Lien **incident / prestataire tiers critique** au sens **DORA** ?
-- **Protection des protocoles en aval** (effet de contagion) ?
-- **Supervision de l'agent de réponse** (garde-fou sur l'IA qui décide) ?
-- Autre angle proposé par l'équipe ?
+> **TRANCHÉ par la décision §4 (2026-10-10, Équipe 20)** — texte complet dans
+> `docs/OPEN_ANSWERS.md`. Résumé : pas un angle isolé mais **un principal + deux renforts**,
+> unifiés par la thèse « **pricer le risque** » (le risque comme signal continu). Principal =
+> **protection des protocoles en aval / anti-contagion** (seul angle démontrable, scénario C) ;
+> renfort A = **supervision de l'agent de réponse** (§3/§9) ; renfort B = **cadre DORA**
+> (journal d'audit + rapport d'incident, narratif, pas angle technique isolé).
+
+### Reste ouvert (voir §4 d'`OPEN_ANSWERS.md`)
+
+- Angle DORA « prestataire tiers critique » gardé comme narratif seulement.
+- Chiffres du scénario C (mauvaises créances avec vs sans balise), **à mesurer**.
 
 ## 5. Mesure de performance
 
