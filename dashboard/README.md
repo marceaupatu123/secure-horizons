@@ -58,9 +58,10 @@ brique n'est pas disponible afficherait « non disponible (dépend de #X) ».
 - Les grandeurs affichées sont **mesurées sur la simulation uniquement**, pas sur le contrat
   déployé (cf. `docs/CLAIMS.md`). Les « attendus » sont constatés (`OK` / `KO`), pas garantis.
 
-Brancher une vraie implémentation : remplacer le `runner` du `ScenarioSpec` concerné
-(`scenarios/catalog.py`, ou `scenarios.registry.register` avec un nouveau spec) par une fonction
-`(seed, params) -> ScenarioResult` qui appelle le vrai module. Un runner qui lève
+Brancher une vraie implémentation : remplacer, dans `scenarios/catalog.py`, le `runner` du
+`ScenarioSpec` concerné par une fonction `(seed, params) -> ScenarioResult` qui appelle le vrai
+module (`scenarios.registry.register` sert à ajouter un **nouvel** id : il refuse un id déjà
+enregistré). Un runner qui lève
 `NotImplementedError` donne automatiquement « non disponible (dépend de #X) ». La CLI et la page
 n'ont pas à changer.
 
