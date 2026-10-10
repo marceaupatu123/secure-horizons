@@ -73,15 +73,19 @@ risque est transféré vers un marché secondaire spéculatif) :
 
 ## 3. Réponse graduée — automatique vs validation humaine
 
-> **En grande partie répondu par la décision §9 (2026-10-10)** : trois verbes distincts
-> (retarder / détruire / pause globale), l'IA ne fait que **retarder** (auto-expirant), humains
-> multisig pour détruire et pour la pause globale. Voir §9.
+> **TRANCHÉ par la décision §3 (2026-10-10, Équipe 20)** — texte complet dans
+> `docs/OPEN_ANSWERS.md`. Résumé : « retarder » n'est pas « bloquer » ; pendant un retard les
+> Ghost **circulent** mais ne se **convertissent** pas ; silence = retour auto à la normale ;
+> quorums multisig **2/3 pour détruire**, **3/3 pour la pause globale** (levée par le même
+> multisig) ; machine à états `NORMAL → RETARDÉ → {NORMAL | DÉTRUIT | PAUSE_GLOBALE}`. S'appuie
+> sur les trois verbes de la §9.
 
-- Quels cas déclenchent un **blocage automatique** (pause réversible) ? → §9 : allongement de
-  fenêtre Ghost, auto-expirant, décidable par un surveillant/IA.
-- Quels cas exigent une **validation humaine** avant action ? → §9 : destruction et pause globale.
-- Comment garantir la **réversibilité** de la pause ? Qui a le droit de valider/relâcher ? → §9 :
-  l'allongement expire seul ; la levée d'une destruction/pause passe par multisig.
+### Reste ouvert (voir §3 d'`OPEN_ANSWERS.md`)
+
+- Valeurs exactes (facteur d'allongement, durées, seuils d'escalade), **à mesurer**.
+- Canal et destinataires de la notification d'audit humain.
+- Alignement de `response/orchestrator.py`, `CLAUDE.md` et des champs `ResponseAction`
+  (`docs/CONTRACTS.md`) sur le vocabulaire et la machine à états actés.
 
 ## 4. Angle différenciant (à choisir)
 
