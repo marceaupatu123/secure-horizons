@@ -25,6 +25,7 @@ Règles :
 | 1 | Détection du mint anormal : invariants, seuils, légitime vs malveillant | 2026-10-10 | denybs | Validée en session, à relire par l'équipe | PR #51 |
 | 3 | Réponse graduée : retarder ≠ bloquer, machine à états, quorums multisig | 2026-10-10 | Équipe 20 | Tranché en équipe | — |
 | 4 | Angle différenciant : anti-contagion (principal) + supervision IA + cadre DORA | 2026-10-10 | Équipe 20 | Tranché en équipe | — |
+| 5 | Mesure de performance : délai de détection, taux de faux positifs, baseline et critères de succès | 2026-10-10 | denybs | Validée en session, à relire par l'équipe | — |
 | 9 | Volet 2 : surveillance adaptative, allongement de fenêtre ciblé, contamination par ratio | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | PR #38 |
 
 ---
@@ -418,6 +419,107 @@ l'exposition réelle de chaque adresse — ce qui **limite** la contagion plutô
   l'équipe décide d'introduire un prestataire fictif dans la maquette.
 - Mesure du scénario C (mauvaises créances avec vs sans balise) : chiffres **à mesurer**, pas à
   inventer (cf. `docs/CLAIMS.md`).
+
+---
+
+## §5. Mesure de performance
+
+### DÉCISION (2026-10-10, denybs) — _validée en session, à relire par l'équipe_
+
+**Le temps de référence n'est pas une latence absolue, c'est la fenêtre Ghost normale (§0bis).**
+Tout se mesure par rapport à elle : une alerte qui arrive après la conversion des Ghost en vrai
+token (fin de fenêtre) est inutile, même si elle est « rapide » dans l'absolu. La §5 répond donc
+aux trois questions de `OPEN_QUESTIONS.md` en gardant ce fil : détecter **avant conversion**.
+
+Alignement : chaque métrique ci-dessous correspond à une ligne de `docs/CLAIMS.md` (règle « aucun
+chiffre affiché sans mesure »). Toutes les cases chiffrées restent **vides tant que non mesurées**.
+
+#### Q1 — Délai de détection
+
+On découpe le trajet « événement on-chain → périmètre retardé » en segments horodatés séparément,
+pour savoir **où** le temps part et le présenter honnêtement :
+
+```
+t0  événement on-chain (bloc)
+│   — latence d'observation —►   monitor voit l'événement
+t1  événement reçu par monitor
+│   — latence de décision ──►    detection calcule et lève l'Alert
+t2  Alert émise
+│   — latence de réponse ───►    response retarde le périmètre (allonge la fenêtre)
+t3  périmètre retardé
+```
+
+- **Délai de détection = `t2 − t0`.** C'est la métrique brute de la §5.
+- **Marge avant conversion = `fenêtre_Ghost − (t3 − t0)`.** C'est le chiffre à montrer au jury :
+  « quand on retarde, il reste X minutes avant que les fonds suspects deviennent du vrai token ».
+  Un délai est un **succès** seulement si cette marge est positive.
+- **Statistique** : rejouer un scénario N fois, rapporter **médiane et p95** (pas la moyenne,
+  sensible aux pics). Horodatage sur **`block.timestamp`** (cohérent avec §3), pour une mesure
+  reproductible et indépendante de l'horloge machine.
+- **Honnêteté Fuji** : le temps de bloc varie ; on sépare « délai en temps réel » et « délai en
+  nombre de blocs ». On démontre le **mécanisme**, pas une latence de production.
+
+#### Q2 — Taux de faux positifs
+
+- **Jeu de données** : le **trafic normal synthétique sans aucune attaque** (générateur `data/`,
+  @EnzoFB06, #24). C'est le dénominateur ; les scénarios d'attaque (A, B reformulé #49, D) servent
+  aux vrais positifs, pas aux faux.
+- **Unité de mesure** : une **fenêtre d'agrégation** (la durée sur laquelle le détecteur cumule le
+  trafic avant de décider). Sa valeur est **à mesurer** et porte une **contrainte dure** : elle
+  doit être **strictement plus courte que la fenêtre Ghost normale**, sinon l'alerte arrive après
+  la conversion et la mesure n'a pas de sens. (La proposition « tranche de 5 min » de Yannis en §2
+  est **une valeur candidate non actée** ; la décision ici ne fixe pas le chiffre.)
+- **Définition** : FP = une fenêtre de trafic normal qui déclenche à tort un allongement (`NORMAL
+  → RETARDÉ`, §3). Taux de FP = fenêtres déclenchées à tort / fenêtres normales totales.
+- **Second compteur, plus honnête** : la **part de l'offre inutilement retardée**. Un FP qui
+  retarde 0,1 % de l'offre n'a pas le coût d'un FP qui en retarde 20 % — ce compteur relie
+  directement la claim « friction bornée et locale » de `CLAIMS.md`.
+- **Vrais positifs / rappel** : sur les scénarios avec attaque, on mesure si l'attaque est détectée
+  **avant conversion**. Un TP qui arrive après la fenêtre compte comme un **échec**, pas un succès.
+- **Choix du seuil** : les seuils de déclenchement étant « à mesurer », on **balaie** le seuil et
+  on trace FP vs détection-avant-conversion ; on **choisit** un point sur la courbe, on ne le
+  devine pas.
+
+#### Q3 — Baseline et critères de succès
+
+**Baseline (le « avant », ce à quoi on se compare)** : le monde sans notre système = **Resolv tel
+quel** — mint accepté, aucune alerte, conversion immédiate, perte totale. Référence du hack réel :
+~200 000 USDC déposés, 80M USR mintés, dépeg en 17 min
+([post-mortem Resolv](https://resolv.xyz/blog/resolv-postmortem-march-22-2026-incident)).
+
+**Critères de succès de la démo, par scénario :**
+
+| Scénario | Métrique | Succès si |
+|----------|----------|-----------|
+| A — vulnérable vs protégé | montant mintable pour un même dépôt | protégé = 1:1 ; vulnérable = gonflé |
+| B reformulé (#49) | marge avant conversion | alerte émise avec marge **positive** (avant fin de fenêtre) |
+| trafic normal | taux de FP + part d'offre retardée | mesurés, et faibles au seuil retenu |
+| C — contagion | mauvaises créances aval, **avec vs sans** balise | avec < sans |
+| D — Token Ghost | perte côté protocole vs côté spéculateurs | protocole ≈ 0, perte reportée au marché secondaire |
+
+**Critère transversal** : chaque ligne de `docs/CLAIMS.md` doit avoir une mesure correspondante
+dans un de ces scénarios. Pas de claim sans métrique, pas de métrique sans jeu de données.
+
+#### Conséquences (à reporter, sans les trancher ici)
+
+- **#59 / `data`** (@EnzoFB06) : le générateur doit produire (a) un **timestamp par événement**
+  pour mesurer `t0`, et (b) un **jeu de trafic normal sans attaque** servant de dénominateur aux
+  FP. Issue dédiée créée (en plus de #24 qui ne couvre que les scénarios A/B avec attaque).
+- **`monitor` (#9) / `detection` (#11)** : horodater `t0`, `t1`, `t2` pour isoler chaque segment
+  de latence.
+- **`dashboard` (#20)** : afficher délai de détection (médiane / p95), marge avant conversion, et
+  taux de FP — ce sont les chiffres montrés au jury.
+- **Lien `CLAIMS.md`** : les lignes « taux de faux positifs mesuré » et « friction bornée / locale »
+  trouvent ici leur protocole de mesure.
+
+### Reste ouvert
+
+- Relecture par l'équipe.
+- Valeur de la **fenêtre d'agrégation** (candidate : 5 min, §2) et du **seuil de déclenchement**,
+  **à mesurer** sur le trafic synthétique.
+- Nombre de rejeux N et choix médiane / p95 à confirmer.
+- Dépend du générateur de données (#24) pour exister : sans trafic normal horodaté, aucune de ces
+  mesures n'est calculable.
 
 ---
 
