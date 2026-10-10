@@ -60,3 +60,6 @@ multiples (l'IA ne décide jamais seule), journal d'audit **DORA**. Détails : `
 4. `cp .env.example .env` et remplir avec des valeurs de **test** uniquement.
 5. `git checkout -b <prenom>/<module>`.
 6. Vérifier son accès RPC Fuji + faucet AVAX de test.
+7. **Installer et connecter GitHub CLI** : `winget install GitHub.cli` puis `gh auth login`.
+   Indispensable pour que l'assistant Kiro mette à jour les issues et le board tout seul
+   (voir `.kiro/steering/github-tracking.md`). Sans ça, le suivi GitHub automatique ne marche pas.
