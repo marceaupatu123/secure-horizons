@@ -1,15 +1,19 @@
 """Point d'entree du module detection : `python -m detection`.
 
-Affiche un message : la logique de detection reste a implementer dans
-`detection/detector.py`.
+Affiche l'etat des surveillants de `detection/detector.py`.
 """
 
 from __future__ import annotations
 
 
 def main() -> None:
-    """Point d'entree executable (squelette)."""
-    print("detection : squelette. Surveillants a implementer (voir detection/detector.py).")
+    """Point d'entree executable."""
+    print(
+        "detection : surveillants a regles disponibles — mint "
+        "(RuleBasedMonitor.check_mint, #11) et transferts « volume eleve ET "
+        "dispersion effondree » (RuleBasedMonitor.check_transfer, #12) ; "
+        "parametres PROVISOIRES dans detection/params.py."
+    )
 
 
 if __name__ == "__main__":

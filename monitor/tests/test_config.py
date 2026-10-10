@@ -10,6 +10,7 @@ from monitor.config import (
     DEFAULT_BLOCK_BATCH_SIZE,
     DEFAULT_CONFIRMATIONS,
     DEFAULT_POLL_INTERVAL_SECONDS,
+    DEFAULT_TOKEN_IS_GHOST,
     FUJI_CHAIN_ID,
     MonitorConfig,
     load_monitor_config,
@@ -27,6 +28,7 @@ def test_defaults_without_env() -> None:
     assert config.block_batch_size == DEFAULT_BLOCK_BATCH_SIZE
     assert config.confirmations == DEFAULT_CONFIRMATIONS
     assert config.start_block is None
+    assert config.token_is_ghost is DEFAULT_TOKEN_IS_GHOST is False
 
 
 def test_reads_env_overrides_and_checksums_token() -> None:
@@ -38,12 +40,14 @@ def test_reads_env_overrides_and_checksums_token() -> None:
             "MONITOR_BLOCK_BATCH_SIZE": "10",
             "MONITOR_CONFIRMATIONS": "1",
             "MONITOR_START_BLOCK": "123",
+            "MONITOR_TOKEN_IS_GHOST": "true",
         }
     )
     assert config.rpc_url == "http://rpc.test"
     assert config.token_address == Web3.to_checksum_address(TOKEN)
     assert (config.poll_interval_seconds, config.block_batch_size) == (0.5, 10)
     assert (config.confirmations, config.start_block) == (1, 123)
+    assert config.token_is_ghost is True
 
 
 def test_rpc_url_comes_from_shared_settings_when_given() -> None:
@@ -64,6 +68,7 @@ def test_rpc_url_comes_from_shared_settings_when_given() -> None:
         {"MONITOR_POLL_INTERVAL_SECONDS": "0"},
         {"MONITOR_CONFIRMATIONS": "-1"},
         {"MONITOR_START_BLOCK": "-5"},
+        {"MONITOR_TOKEN_IS_GHOST": "maybe"},
     ],
 )
 def test_invalid_values_are_rejected(env: dict[str, str]) -> None:
