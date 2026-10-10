@@ -128,17 +128,17 @@ flowchart TD
 | [ ] | #11 | detection : surveillant règles (mint) | #2, #9 |
 | [ ] | #12 | detection : surveillant transferts anormaux | #2, #10 |
 | [ ] | #14 | llm : client Bedrock Converse (rate limiter) | #28 |
-| [ ] | #17 | response : orchestration de la réponse graduée | #2, detection |
+| [x] | #17 | response : orchestration de la réponse graduée | #2, detection _(PR #56, mergée)_ |
 | [ ] | #6 | contracts : invariants/fuzzing (perte max bornée) — volet 2 | #5 |
 
 ## Vague 4 — Réponse complète + conformité
 
 | Fait | Issue | Tâche | Dépend de |
 |------|-------|-------|-----------|
-| [ ] | #18 | response : gel / levée (veto asymétrique, multisig) | #3, #17 |
-| [ ] | #19 | response : journal d'audit DORA | #2, #17 |
+| [x] | #18 | response : gel / levée (veto asymétrique, multisig) | #3, #17 _(PR #56, mergée)_ |
+| [x] | #19 | response : journal d'audit DORA | #2, #17 _(PR #56, mergée)_ |
 | [ ] | #15 | llm : rapport d'incident DORA | #14 |
-| [ ] | #24 | data : générateur scénarios A et B | #4, #5 |
+| [x] | #24 | data : générateur scénarios A et B | #4, #5 _(générateur JSONL, PR #57 ; + trafic normal #59)_ |
 
 ## Vague 5 — Démo + options (si le temps le permet)
 
