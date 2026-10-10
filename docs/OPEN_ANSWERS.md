@@ -22,12 +22,15 @@ Règles :
 | 0 | Décision structurante : où vit la sécurité, et cœur du projet | 2026-10-10 | Équipe 20 | Tranché en équipe | — |
 | 0bis | Le Token Ghost s'applique-t-il au seul mint ou à tous les transferts ? | 2026-10-10 | Marceau | Tranché | PR #34 |
 | 0bis-a | Quelle affirmation porte le Ghost devant le jury : solvabilité ou récupération ? (#37) | 2026-10-10 | Marceau | Tranché | Issue #37 |
+| 0bis-b | Que produit le transfert d'un Ghost ? Fenêtre portée par la valeur, tranches d'échéance (#35) | 2026-10-10 | denybs | Validée en session, à relire par l'équipe | Issue #35 |
+| 0bis-c | Collatéral libéré par la destruction d'un Ghost adossé : réserve de restitution (#36) | 2026-10-10 | denybs | Validée en session, à relire par l'équipe | Issue #36 |
 | 1 | Détection du mint anormal : invariants, seuils, légitime vs malveillant | 2026-10-10 | denybs | Validée en session, à relire par l'équipe | PR #51 |
 | 3 | Réponse graduée : retarder ≠ bloquer, machine à états, quorums multisig | 2026-10-10 | Équipe 20 | Tranché en équipe | — |
 | 4 | Angle différenciant : anti-contagion (principal) + supervision IA + cadre DORA | 2026-10-10 | Équipe 20 | Tranché en équipe | — |
 | 5 | Mesure de performance : délai de détection, taux de faux positifs, baseline et critères de succès | 2026-10-10 | denybs | Validée en session, à relire par l'équipe | — |
 | 6 | Données synthétiques : format JSONL, scénarios recadrés, générateur reproductible | 2026-10-10 | EnzoFB06 | Tranché (propriétaire `data/`) | — |
 | 9 | Volet 2 : surveillance adaptative, allongement de fenêtre ciblé, contamination par ratio | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | PR #38 |
+| 10 | Lignage d'un swap : `swap-id` sur notre pool, jambe sortante en règlement différé (#43) | 2026-10-10 | denybs | Validée en session, à relire par l'équipe | Issue #43 |
 
 ---
 
@@ -143,8 +146,10 @@ balise de risque et les signaux de la section 2.
   (destruction d'une chaîne).
 - Les trois questions existentielles de la §0bis dans `OPEN_QUESTIONS.md` (conformité DORA du
   transfert de perte, destruction d'un Ghost fragmenté, impact sur la liquidité).
-- #35 : que produit le transfert d'un Token Ghost (Ghost d'un Ghost) ?
-- #36 : que devient le collatéral quand on brûle un Ghost adossé (collatéral orphelin) ?
+- ~~#35 : que produit le transfert d'un Token Ghost (Ghost d'un Ghost) ?~~
+  → Tranché, voir §0bis-b ci-dessous.
+- ~~#36 : que devient le collatéral quand on brûle un Ghost adossé (collatéral orphelin) ?~~
+  → Tranché, voir §0bis-c ci-dessous.
 - ~~#37 : aligner `CLAIMS.md` sur l'objectif de la décision (solvabilité ou récupération).~~
   → Tranché, voir ci-dessous.
 
@@ -177,7 +182,113 @@ avec sa propre méthode de vérification.**
   dérivation du montant depuis le dépôt ; le Ghost est un renfort, pas le volet 1.
 
 **Reste ouvert :** #36 (sort du collatéral libéré) conditionne la colonne « limites » de
-l'affirmation de récupération.
+l'affirmation de récupération. → Tranché en §0bis-c ci-dessous.
+
+### DÉCISION §0bis-b (2026-10-10, denybs) — la fenêtre est portée par la valeur, pas par le transfert (#35)
+
+_Validée en session, à relire par l'équipe._
+
+**Tranché : il n'existe qu'un seul Ghost par token (M-Ghost), jamais de « Ghost d'un Ghost ». La
+fenêtre court depuis l'entrée de la valeur dans le Ghost et ne redémarre pas quand le Ghost
+circule.**
+
+- Transfert de **vrai M** : le destinataire reçoit du M-Ghost avec une échéance neuve
+  (`maintenant + W`, W = fenêtre normale, §0bis).
+- Transfert de **M-Ghost** : le destinataire reçoit du M-Ghost qui **garde son échéance
+  d'origine**. Le transfert transmet le Ghost, il n'en crée pas. « Tout transfert produit du Ghost
+  chez le destinataire » reste vrai : le destinataire reçoit toujours du Ghost.
+- La conversion Ghost → M reste explicite, avec la marge de la §0.
+
+C'est l'option (b) de l'issue #35. Les deux autres sont écartées :
+
+- **(a) Fenêtre remise à zéro à chaque transfert** : un token qui circule ne mature jamais. Et
+  c'est une faille : n'importe qui peut envoyer 1 wei de Ghost à une adresse pour repousser
+  l'échéance de tout son solde, autant de fois qu'il veut.
+- **(c) Transferts de Ghost interdits** : contredit « librement échangeable » et supprime le
+  marché secondaire (§0bis, scénario D, §4).
+
+#### Mise en œuvre : des tranches d'échéance bornées par adresse
+
+Deux façons simples de stocker l'échéance d'un solde ont des failles :
+
+- **Échéance moyenne pondérée** (le même calcul que le ratio de la §9) : faille de mélange. Une
+  adresse qui détient 1 000 Ghost presque mûrs et reçoit 100 Ghost frais suspects obtient une
+  échéance moyenne presque immédiate. Les 100 suspects se convertissent avant la fin de leur
+  propre fenêtre, et la détection perd le temps que la §5 lui garantit.
+- **Échéance maximale** (la plus tardive gagne) : faille de poussière. Envoyer un peu de Ghost
+  frais à une adresse bloque tout son solde ; répété toutes les W minutes, ça le gèle
+  indéfiniment.
+
+**Retenu :** chaque adresse range son solde Ghost en **N tranches d'échéance**. La fenêtre W est
+découpée en N créneaux fixes, et l'échéance est arrondie au créneau supérieur (le sens sûr).
+
+- Seules les tranches **échues** sont convertibles.
+- À l'envoi, les tranches **les plus anciennes partent en premier** : le destinataire reçoit
+  l'argent le plus proche de la maturité, le Ghost frais reste chez l'expéditeur.
+- Le coût par transfert est borné par N, quel que soit le nombre de transferts passés. Ce n'est
+  pas le FIFO par lots écarté en §9, dont le coût croît avec le nombre de transferts.
+- N est petit et fixe (proposition : des créneaux d'une minute), à ajuster selon le gas mesuré.
+
+Propriétés, à vérifier par tests d'invariants dans #8 :
+
+- **Aucune valeur ne devient convertible avant W après son entrée dans le Ghost** : le total
+  convertible à l'instant T est au plus le Ghost entré avant T − W.
+- La poussière ne retarde que la poussière ; mélanger des soldes ne raccourcit aucune échéance.
+
+#### Articulation avec les décisions existantes
+
+- **Ratio de contamination (§9)** : il reste **par adresse** et indépendant des tranches. La
+  tranche dit **quand** une valeur peut se convertir, le ratio dit **quelle part** est suspecte.
+- **Conversion autorisée si** la tranche est échue **et** l'adresse n'est pas en fenêtre allongée
+  (§3) **et** le ratio et le montant absolu suspect sont sous les seuils (§9).
+- **Délai de détection (§5)** : la fenêtre ne redémarre pas au fil des sauts. La marge avant
+  conversion se mesure donc depuis l'entrée de la valeur (`t0`), quel que soit le nombre de
+  transferts de l'attaquant.
+
+#### Conséquences
+
+- **#8** : le contrat Ghost implémente les tranches et teste les deux propriétés ci-dessus.
+- **`docs/CONTRACTS.md`** (zone sensible, non modifié) : `GhostTokenMintEvent` /
+  `GhostTokenRedemptionEvent` devront porter l'échéance (ou le créneau). Proposition à faire
+  valider par le propriétaire de `shared/`.
+
+### DÉCISION §0bis-c (2026-10-10, denybs) — le collatéral libéré va dans une réserve de restitution (#36)
+
+_Validée en session, à relire par l'équipe._
+
+**Tranché : l'invariant s'écrit `valeur(supply M + supply M-Ghost) ≤ collatéral` (cohérent avec
+§0bis-a). La différence est une réserve de restitution cantonnée : ni profit du protocole, ni
+redistribution automatique.**
+
+- Brûler un Ghost **non adossé** (une fraude qui a contourné le volet 1) réduit le déficit. Brûler
+  un Ghost **adossé** (de la valeur légitime volée puis transférée) crée un excédent. Le contrat
+  n'a pas besoin de savoir dans quel cas il se trouve : **réserve = collatéral − valeur(supply)**,
+  calculée et jamais négative tant que l'invariant tient.
+- **Restituer à une victime identifiée** est une décision **multisig 2/3**, distincte de la
+  destruction (même quorum, §3). Le montant restitué est **plafonné par la réserve**, donc une
+  restitution ne peut pas casser la solvabilité.
+- Ce qui n'est pas réclamé après un délai (à fixer) part au **fonds d'assurance**, la même
+  affectation que celle recommandée pour la marge de conversion (§0, à confirmer).
+
+Options écartées :
+
+- **Restitution automatique à la victime** : le contrat ne sait pas qui est la victime. Le ratio
+  dit quelle proportion d'un solde est suspecte, pas à qui elle a été prise (§9, limites).
+  Identifier la victime est une enquête, donc une décision humaine. C'est cohérent avec la
+  distinction de l'issue #36 : annuler un mint corrige une émission, annuler un transfert est une
+  confiscation suivie d'une redistribution.
+- **Excédent conservé par le protocole** : incitation à détruire, contraire à l'esprit DORA (§4).
+
+Effet sur la perte maximale bornée (volet 2) : le protocole ne perd rien (`supply ≤ collatéral`).
+Les porteurs de bonne foi perdent `ratio × solde Ghost non converti` (§9). Cette perte est en
+partie compensable par la réserve, jamais au-delà.
+
+#### Conséquences
+
+- **#8** : la destruction met à jour l'invariant en `≤` ; ajouter `reserve()` en lecture et une
+  restitution multisig 2/3 plafonnée par la réserve, avec tests d'invariants.
+- **`docs/CLAIMS.md`** : la colonne « limites » de l'affirmation de récupération (§0bis-a) peut
+  maintenant être remplie. Proposition au propriétaire de `docs/`, fichier non modifié.
 
 ---
 
@@ -365,6 +476,8 @@ NORMAL ────────────────────────�
 - Notification de l'audit humain : canal et destinataires (hors périmètre on-chain).
 - Alignement du code sur le vocabulaire acté (`response/orchestrator.py`, `CLAUDE.md`) et des
   champs `ResponseAction` dans `docs/CONTRACTS.md` sur cette machine à états.
+  → `response/orchestrator.py` **aligné** (PR #56 : machine à états, quorums 2/3 et 3/3, silence
+  = retour auto). Restent `CLAUDE.md` et `docs/CONTRACTS.md`.
 
 ---
 
@@ -586,6 +699,10 @@ jamais inventés (`docs/CLAIMS.md`).
 - Faut-il committer les JSONL générés ou seulement le générateur + la graine ? (taille vs
   reproductibilité). À trancher avec l'équipe et `.gitignore`.
 - Variante retenue pour B (détournement 1:1 vs événement admin) pour la démo principale.
+  Seul le détournement 1:1 est généré (PR #57) : l'événement admin n'a pas de modèle dans
+  `shared/`.
+- Implémentation (PR #57) : `--scenario <normal|A|B|all>` ; C et D pas encore générés (#25,
+  dépendent de #7 / #8). Sorties dans `data/generated/`, pas encore dans `.gitignore`.
 
 ---
 
@@ -702,4 +819,49 @@ ET **friction max bornée** (« même notre surveillance ne peut geler plus de X
 - Valeur de tous les seuils, à mesurer sur le trafic synthétique.
 - §2 n'est que **complétée** : définitions d'« adresse neuve » et de « point de sortie », choix
   final des signaux et de leur combinaison (règles, score, ML).
-- #35 et #36 ne sont pas abordés par cette décision.
+- #35 et #36 ne sont pas abordés par cette décision. → Tranchés en §0bis-b et §0bis-c.
+- #33 (détruire une chaîne de Ghost fragmentés) : le mécanisme est choisi et justifié ici
+  (contamination par ratio). Les tests d'invariants demandés par #33 (profondeur de chaîne,
+  fragmentation large, conservation du soupçon) sont réalisés dans #8.
+
+---
+
+## §10. Lignage transactionnel — reverter les deux jambes d'un échange
+
+### DÉCISION (2026-10-10, denybs) — `swap-id` sur notre pool seulement, jambe sortante en règlement différé (#43)
+
+_Validée en session, à relire par l'équipe._
+
+**Tranché : sur notre pool, un swap ne paie pas l'actif sortant tout de suite. Il crée une créance
+liée au swap (`swap-id`), réclamable quand le Ghost vendu arrive à échéance. Si la fraude est
+confirmée, les deux jambes sont annulées ensemble.**
+
+Exemple : un attaquant vend du M-Ghost suspect au pool contre de l'USDC.
+
+1. Le pool reçoit le M-Ghost avec son échéance (§0bis-b) et le ratio du vendeur (§9).
+2. Le vendeur ne reçoit pas l'USDC : il reçoit une **créance** `swap-id` qui porte le montant, son
+   ratio au moment du swap et l'échéance du Ghost vendu.
+3. À l'échéance, sans destruction confirmée, le vendeur réclame son USDC.
+4. Si une destruction est confirmée (multisig 2/3, §3) : le pool perd la part suspecte du Ghost
+   acheté (`ratio × solde`, §9), et la créance du vendeur est annulée à hauteur de
+   `ratio × montant`. L'USDC non payé reste dans le pool et compense sa perte. Les deux jambes
+   s'annulent pour le pool.
+
+Réponses aux questions de la §10 d'`OPEN_QUESTIONS.md` :
+
+- **Pas de stablecoin pivot, pas de nouveau dépositaire.** L'USDC est déjà dans le pool (c'est sa
+  liquidité) ; on retarde seulement son paiement. L'objection faite au token Z ne s'applique pas.
+- **DEX tiers** : pas de `swap-id` possible, on ne contrôle pas leur règlement. Limite assumée : un
+  pool tiers n'est couvert que par son ratio (une adresse comme une autre, §9) et par la balise de
+  risque (§4). L'USDC qu'un DEX tiers a déjà payé à un attaquant n'est pas récupérable.
+- **Propagation du soupçon** : le `swap-id` est seulement un **lien de revert**. Le soupçon passe
+  par le ratio côté M (§9). La créance garde le ratio du vendeur au moment du swap, uniquement pour
+  savoir quelle part annuler.
+- **Friction** : le vendeur attend la même fenêtre que n'importe quel détenteur de Ghost (§0bis).
+  Aucune friction supplémentaire.
+
+### Reste ouvert
+
+- Relecture par l'équipe.
+- Priorité : **vague 5**, après #8 (Ghost) et #7 (balise + marché de prêt), dans le pool simulé du
+  scénario D.

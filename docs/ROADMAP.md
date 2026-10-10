@@ -64,6 +64,7 @@ flowchart TD
         I20["#20 dashboard"]
         I7["#7 balise + faux marche (V3)"]
         I8["#8 ERC20 Token Ghost"]
+        I65["#65 pool swap-id"]
         I13["#13 ML / conforme"]
         I25["#25 data C/D"]
     end
@@ -89,8 +90,12 @@ flowchart TD
     I5 --> I24
     I17 --> I20
     I3 --> I8
+    I5 --> I8
+    I8 --> I7
+    I8 --> I65
     I7 --> I25
     I8 --> I25
+    I65 --> I25
 ```
 
 ---
@@ -116,10 +121,10 @@ flowchart TD
 
 | Fait | Issue | Tâche | Dépend de |
 |------|-------|-------|-----------|
-| [x] | #4 | Foundry + contrat vulnérable | #1 — _(denybs, en cours)_ |
+| [x] | #4 | Foundry + contrat vulnérable | #1 _(PR #71)_ |
 | [ ] | #9 | monitor : écoute des mints | #2 — _(Yannis1307, en cours)_ |
 | [ ] | #10 | monitor : écoute des transferts | #2 |
-| [x] | #5 | contrat protégé (montant dérivé on-chain) — volet 1 | #1, #3 |
+| [x] | #5 | contrat protégé (montant dérivé on-chain) — volet 1 | #1, #3 _(PR #71)_ |
 
 ## Vague 3 — Logique métier (après vague 2)
 
@@ -128,25 +133,27 @@ flowchart TD
 | [ ] | #11 | detection : surveillant règles (mint) | #2, #9 |
 | [ ] | #12 | detection : surveillant transferts anormaux | #2, #10 |
 | [ ] | #14 | llm : client Bedrock Converse (rate limiter) | #28 |
-| [ ] | #17 | response : orchestration de la réponse graduée | #2, detection |
-| [x] | #6 | contracts : invariants/fuzzing (perte max bornée) — volet 2 | #5 |
+| [x] | #17 | response : orchestration de la réponse graduée | #2, detection _(PR #56, mergée)_ |
+| [x] | #6 | contracts : invariants/fuzzing (perte max bornée) — volet 2 | #5 _(PR #71)_ |
 
 ## Vague 4 — Réponse complète + conformité
 
 | Fait | Issue | Tâche | Dépend de |
 |------|-------|-------|-----------|
-| [ ] | #18 | response : gel / levée (veto asymétrique, multisig) | #3, #17 |
-| [ ] | #19 | response : journal d'audit DORA | #2, #17 |
+| [x] | #18 | response : gel / levée (veto asymétrique, multisig) | #3, #17 _(PR #56, mergée)_ |
+| [x] | #19 | response : journal d'audit DORA | #2, #17 _(PR #56, mergée)_ |
 | [ ] | #15 | llm : rapport d'incident DORA | #14 |
-| [ ] | #24 | data : générateur scénarios A et B | #4, #5 |
+| [x] | #24 | data : générateur scénarios A et B | #4, #5 _(générateur JSONL, PR #57 ; + trafic normal #59)_ |
 
 ## Vague 5 — Démo + options (si le temps le permet)
 
 | Fait | Issue | Tâche | Note |
 |------|-------|-------|------|
-| [ ] | #20 | dashboard : vue alertes + réponse (Streamlit) | une fois qu'il y a des alertes. |
-| [ ] | #7 | contracts : balise de risque + faux marché — volet 3 | `optional` |
-| [ ] | #8 | contracts : ERC20 Token Ghost + burn guardian | `optional`, dépend de #3 |
+| [x] | #20 | dashboard : vue alertes + réponse (Streamlit) | une fois qu'il y a des alertes. |
+| [x] | #47 | dashboard : outil de génération et rejeu des scénarios de démo (CLI + page Streamlit) | `optional` ; simulation hors chaîne, forme à valider en équipe |
+| [ ] | #8 | contracts : ERC20 Token Ghost + burn guardian | dépend de #5. Spec tranchée : §0bis-b (tranches d'échéance, #35), §0bis-c (réserve de restitution, #36), §9 (ratio) ; tests d'invariants de #33 inclus. |
+| [ ] | #7 | contracts : balise de risque + faux marché — volet 3 | **cœur du projet** (§0, §4), plus optionnel ; dépend de #8 (lit le ratio). |
+| [ ] | #65 | contracts : pool simulé M-Ghost/USDC, règlement différé `swap-id` (§10, #43) | dépend de #8 ; sert le scénario D (#25). |
 | [ ] | #13 | detection : surveillant ML / prédiction conforme | `optional` |
 | [ ] | #25 | data : scénarios C et D (contagion + Token Ghost) | `optional`, dépend de #7/#8 |
 
@@ -157,7 +164,8 @@ flowchart TD
 - **#2 (champs des modèles)** est le plus gros goulot : il débloque monitor, detection, response,
   llm. À trancher tôt.
 - **#28 (setup)** débloque tout ce qui touche la chaîne et Bedrock.
-- Les contrats suivent **#1 → #5 → #6**, puis les options (#7, #8).
+- Les contrats suivent **#1 → #4 → #5 → #6**, puis **#8 → #7 → #65** (décisions #33, #35, #36,
+  #43 tranchées dans `OPEN_ANSWERS.md`, PR #66).
 - Tout ce qui est `optional` (vague 5) ne se fait que si le reste tient debout.
 
 > Ce fichier est un guide, pas une loi : si une dépendance saute (ex. on fige les modèles plus
