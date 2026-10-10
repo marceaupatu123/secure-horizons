@@ -136,7 +136,7 @@ risque est transféré vers un marché secondaire spéculatif) :
 
 - Valeurs exactes (facteur d'allongement, durées, seuils d'escalade), **à mesurer**.
 - Canal et destinataires de la notification d'audit humain.
-- Alignement de `response/orchestrator.py` (fait, PR #56), `CLAUDE.md` et des champs `ResponseAction`
+- Alignement de `response/orchestrator.py` (fait, PR #56), `CLAUDE.md` (fait) et des champs `ResponseAction`
   (`docs/CONTRACTS.md`) sur le vocabulaire et la machine à états actés.
 
 #### Points faibles repérés (2026-10-10, Yannis) — _sur un exemple chiffré fictif, à traiter en équipe_
