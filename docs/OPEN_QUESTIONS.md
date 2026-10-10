@@ -163,9 +163,20 @@ risque est transféré vers un marché secondaire spéculatif) :
 
 ## 6. Données synthétiques (voir `data/README.md`)
 
-- Format des fichiers (CSV / JSON / JSONL ?) et schéma des lignes.
-- Paramètres précis des scénarios **A** (mint détecté) et **B** (transferts détectés).
-- Outil de génération et commande de lancement.
+> **TRANCHÉ par la décision §6 (2026-10-10, EnzoFB06, propriétaire `data/`)** — texte complet dans
+> `docs/OPEN_ANSWERS.md`. Résumé : format **JSONL** (une ligne = un événement) ; **schéma = les
+> modèles figés de `docs/CONTRACTS.md`** (pas de schéma dupliqué) ; scénarios recadrés — **A** mint
+> gonflé (Resolv), **B** reformulé en détournement 1:1 / hypothèse du volet 1 qui tombe (ferme
+> #49), **C** contagion et **D** marché Ghost inchangés ; **flux de trafic normal** par créneaux de
+> 5 min comme base de calibration ; générateur `data/generate.py` (`make data`) à graine fixe,
+> important les modèles de `shared/`.
+
+### Reste ouvert (voir §6 d'`OPEN_ANSWERS.md`)
+
+- Valeurs exactes (volumes, saisonnalité, N adresses, ratios), **à mesurer**.
+- Liste des adresses « point de sortie » (coord. §2).
+- Committer les JSONL ou seulement le générateur + la graine ? (taille vs reproductibilité).
+- Variante retenue pour B (détournement 1:1 vs événement admin).
 
 ## 7. Interfaces entre modules (voir `docs/CONTRACTS.md`)
 
