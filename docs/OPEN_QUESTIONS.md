@@ -140,9 +140,23 @@ risque est transféré vers un marché secondaire spéculatif) :
 
 ## 5. Mesure de performance
 
+> → **Tranché**, voir `docs/OPEN_ANSWERS.md` §5 (validée en session, à relire par l'équipe).
+> Résumé : tout se mesure par rapport à la fenêtre Ghost (détecter **avant conversion**) ; délai =
+> `t2 − t0` + **marge avant conversion** ; FP mesurés sur un **jeu de trafic normal sans attaque**
+> (#24), par fenêtre d'agrégation (plus courte que la fenêtre Ghost) ET en part d'offre retardée ;
+> baseline = Resolv tel quel ; critères de succès par scénario (A/B/C/D) ; chaque claim de
+> `CLAIMS.md` doit avoir sa mesure.
+
 - Comment mesurer le **délai de détection** (de l'événement on-chain à l'alerte) ?
 - Comment mesurer le **taux de faux positifs** (et sur quel jeu de données) ?
 - Quelle **baseline** et quels critères de succès pour la démo ?
+
+### Reste ouvert (voir §5 d'`OPEN_ANSWERS.md`)
+
+- Valeur de la fenêtre d'agrégation (candidate : 5 min, §2) et du seuil de déclenchement, **à
+  mesurer**.
+- Nombre de rejeux N, choix médiane / p95.
+- Dépend du générateur de données (#24) : trafic normal horodaté sans attaque.
 
 ## 6. Données synthétiques (voir `data/README.md`)
 
