@@ -70,13 +70,9 @@ contract ProtectedMinter is AccessControl, GuardianPausable {
     error RequestNotFound(uint256 requestId);
     error RequestNotPending(uint256 requestId);
 
-    constructor(
-        IERC20 collateral_,
-        address admin,
-        address service,
-        uint256 initialRate,
-        address[3] memory guardians_
-    ) GuardianPausable(guardians_) {
+    constructor(IERC20 collateral_, address admin, address service, uint256 initialRate, address[3] memory guardians_)
+        GuardianPausable(guardians_)
+    {
         if (address(collateral_) == address(0) || admin == address(0) || service == address(0)) {
             revert ZeroAddress();
         }

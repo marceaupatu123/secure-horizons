@@ -133,8 +133,8 @@ contract ProtectedMinterTest is BaseTest {
     function test_I3_noRecipientOverload() public {
         uint256 id = _requestProtected(minter, alice, DEPOSIT);
         vm.prank(service);
-        (bool ok,) = address(minter)
-            .call(abi.encodeWithSignature("completeSwap(uint256,address,uint256)", id, service, 1e30));
+        (bool ok,) =
+            address(minter).call(abi.encodeWithSignature("completeSwap(uint256,address,uint256)", id, service, 1e30));
         assertFalse(ok);
         assertEq(stable.totalSupply(), 0);
         assertEq(uint8(minter.getRequest(id).status), uint8(ProtectedMinter.RequestStatus.Pending));

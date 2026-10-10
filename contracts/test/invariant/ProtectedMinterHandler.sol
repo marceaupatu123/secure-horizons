@@ -140,8 +140,8 @@ contract ProtectedMinterHandler is Test {
         calls["stolenKeyInflatedCall"]++;
         uint256 id = requestIds.length == 0 ? idSeed : requestIds[idSeed % requestIds.length];
         vm.prank(service);
-        (bool ok,) = address(minter)
-            .call(abi.encodeWithSignature("completeSwap(uint256,address,uint256)", id, service, amount));
+        (bool ok,) =
+            address(minter).call(abi.encodeWithSignature("completeSwap(uint256,address,uint256)", id, service, amount));
         if (ok) ghost_unexpectedSuccess = true;
     }
 

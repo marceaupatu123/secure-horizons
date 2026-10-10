@@ -20,7 +20,9 @@ abstract contract GuardianPausable is Pausable {
     uint256 public approvals;
     mapping(uint256 => mapping(address => bool)) public hasApproved;
 
-    event GuardianApproval(address indexed guardian, uint256 indexed round, bool indexed pauseAction, uint256 approvals);
+    event GuardianApproval(
+        address indexed guardian, uint256 indexed round, bool indexed pauseAction, uint256 approvals
+    );
 
     error NotGuardian(address caller);
     error AlreadyApproved(address guardian, uint256 round);
