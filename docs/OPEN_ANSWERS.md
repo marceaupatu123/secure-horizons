@@ -26,6 +26,7 @@ Règles :
 | 3 | Réponse graduée : retarder ≠ bloquer, machine à états, quorums multisig | 2026-10-10 | Équipe 20 | Tranché en équipe | — |
 | 4 | Angle différenciant : anti-contagion (principal) + supervision IA + cadre DORA | 2026-10-10 | Équipe 20 | Tranché en équipe | — |
 | 5 | Mesure de performance : délai de détection, taux de faux positifs, baseline et critères de succès | 2026-10-10 | denybs | Validée en session, à relire par l'équipe | — |
+| 6 | Données synthétiques : format JSONL, scénarios recadrés, générateur reproductible | 2026-10-10 | EnzoFB06 | Tranché (propriétaire `data/`) | — |
 | 9 | Volet 2 : surveillance adaptative, allongement de fenêtre ciblé, contamination par ratio | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | PR #38 |
 
 ---
@@ -520,6 +521,71 @@ dans un de ces scénarios. Pas de claim sans métrique, pas de métrique sans je
 - Nombre de rejeux N et choix médiane / p95 à confirmer.
 - Dépend du générateur de données (#24) pour exister : sans trafic normal horodaté, aucune de ces
   mesures n'est calculable.
+
+---
+
+## §6. Données synthétiques (voir `data/README.md`)
+
+### DÉCISION (2026-10-10, EnzoFB06 — propriétaire `data/`) — _tranché_
+
+Les données alimentent la détection (§1, §9), les mesures de performance (§5) et la démo des
+angles (§4). Elles sont donc **cadrées par les décisions déjà actées**, pas inventées librement.
+Les scénarios A et B d'origine (`data/README.md`) sont **recadrés** car le volet 1 et l'absence de
+plafond fixe les ont rendus caducs (issue #49).
+
+#### Q1 — Format des fichiers et schéma des lignes
+
+- **Format : JSONL** (une ligne = un événement JSON). Retenu car : événements **hétérogènes**
+  (`MintEvent` ≠ `TransferEvent`) mal servis par un CSV à colonnes vides ; **rejouable** ligne à
+  ligne par le `monitor` comme un flux on-chain ; **épouse les modèles Pydantic** de `shared/`
+  (une ligne = un `.model_validate_json()`).
+- **Le schéma des lignes n'est PAS redéfini ici.** Il **est** celui des modèles figés dans
+  `docs/CONTRACTS.md` (PR #53, issue #2) : `MintEvent`, `TransferEvent`, `MintRequest`, `Alert`…
+  Le générateur **doit produire du JSONL qui valide contre ces modèles** (Pydantic strict
+  `extra="forbid"`). Conséquences directes à respecter :
+  - montants en **entiers base units** (jamais de float) ;
+  - timestamps **UTC ISO 8601** ;
+  - adresses / hash au **format EVM** validé par regex ;
+  - `MintEvent.request_id` corrèle avec `MintRequest.request_id` ; le montant du mint est **dérivé
+    on-chain**, pas choisi.
+- **Dashboard** : pas de second format. Le JSONL se lit en DataFrame
+  (`pd.read_json(path, lines=True)`).
+
+#### Q2 — Scénarios recadrés
+
+Un **flux de trafic normal** horodaté sous-tend tous les scénarios : volume par **créneaux de
+5 min** (§2/§5), nombreuses adresses, saisonnalité par créneau. C'est la base de calibration de la
+baseline **médiane + MAD** (§9) et la seule façon de mesurer le **taux de faux positifs** (§5).
+C'est le gros du travail, avant les attaques.
+
+| Scénario | Démontre | Mécanisme | Statut |
+|----------|----------|-----------|--------|
+| **A — mint gonflé (Resolv rejoué)** | volet 1 | demande n°X dont le mint tenté ≫ dépôt (ratio type ~400×) ; contrat vulnérable accepte, protégé bloque (I1) | recadré : montant incohérent, pas « gros » |
+| **B — hypothèse du volet 1 qui tombe** | surveillant hors chaîne | **détournement à 1:1** (I3) : la demande d'une victime est traitée vers l'adresse de l'attaquant ; bilan global 1:1, mais l'argent change de poche. Variante : événement admin non annoncé (upgrade/clé volée) | reformulé (ferme #49) |
+| **C — contagion** | angle principal §4 | gel publié sur la balise ; mauvaises créances d'un faux marché de prêt **avec vs sans** lecture de la balise | inchangé |
+| **D — marché secondaire du Ghost** | §0bis / §9 | Ghost fragmenté sur N adresses ; contamination par ratio ; destruction proportionnelle au gel confirmé | inchangé |
+
+Tous les **chiffres** (volumes, nombre d'adresses, timings, ratios) sont **à mesurer / calibrer**,
+jamais inventés (`docs/CLAIMS.md`).
+
+#### Q3 — Outil de génération et commande
+
+- Script Python **`data/generate.py`**, lançable par `python -m data.generate --scenario <A|B|C|D>
+  --seed <n>` et exposé par une cible **`make data`**.
+- **Graine aléatoire fixe** par défaut → reproductibilité (exigée par `CLAIMS.md`).
+- Le script **importe les modèles de `shared/`** et sérialise via Pydantic : garantit que le JSONL
+  produit reste valide si le schéma évolue (une seule source de vérité, pas de schéma dupliqué).
+- Sortie dans `data/` (ex. `data/normal.jsonl`, `data/scenario_a.jsonl`, …), **non commitée** si
+  volumineuse (à régler dans `.gitignore` avec l'équipe).
+
+### Reste ouvert
+
+- Relecture par l'équipe.
+- Valeurs exactes (volumes par créneau, saisonnalité, N adresses, ratios d'attaque), **à mesurer**.
+- Liste fixe des adresses « point de sortie » (exchange/bridge) à produire — cf. §2, à coordonner.
+- Faut-il committer les JSONL générés ou seulement le générateur + la graine ? (taille vs
+  reproductibilité). À trancher avec l'équipe et `.gitignore`.
+- Variante retenue pour B (détournement 1:1 vs événement admin) pour la démo principale.
 
 ---
 
