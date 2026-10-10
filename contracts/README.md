@@ -2,31 +2,37 @@
 
 - **Rôle** : smart contracts Solidity (**Foundry**), cible **Avalanche Fuji** (testnet).
 - **Propriétaire** : @denybs (voir `docs/TEAM.md`).
-- **Lancer** : installer Foundry (ci-dessous), puis `forge build` / `forge test` depuis `contracts/`.
+- **Lancer** : installer Foundry et les dépendances (ci-dessous), puis `forge build` /
+  `forge test` depuis `contracts/`.
 
-> Le projet Foundry n'est **pas encore initialisé** (`forge` n'était pas installé au moment du
-> setup). Le propriétaire du module initialise Foundry après installation (voir plus bas).
+> Données **fictives** uniquement (collatéral `MockUSDC`, stables « (fictif) »). Jamais de vraie
+> clé privée : les tests utilisent des adresses `makeAddr(...)`, sans clé.
 
-## À produire plus tard — _proposé, à valider en équipe_
+## Contenu
 
-Aucun code n'est écrit pour l'instant. Éléments envisagés (orientation « sécurité dans le
-contrat ») :
-
-- **Contrat « vulnérable »** : accepte tout montant tant que la signature est valide (reproduit le
-  schéma d'attaque à des fins de démo).
-- **Contrat « protégé »** : le montant est **dérivé on-chain** du dépôt (la signature autorise
-  seulement « traiter la demande n°X ») + les garde-fous retenus (plafonds, quarantaine, multisig,
-  séparation des clés) — **volet 1**.
-- **Tests d'invariants / fuzzing** cherchant à dépasser la **perte maximale bornée** — **volet 2**.
-  À formuler comme « vérifié par tests d'invariants », jamais « prouvé ».
-- **Balise de risque** + **faux marché de prêt** (simulé, fictif) qui cesse d'accepter le token
-  gelé comme garantie — **volet 3, optionnel**.
-- **Contrat ERC20 « Token Ghost »** (quarantaine liquide) : token temporaire **librement
-  échangeable**, convertible 1:1 contre le vrai token après délai sans anomalie, avec une
-  **fonction de destruction réservée au guardian** pour annuler les ghosts d'un lot suspect en cas
-  de gel confirmé — _proposé, à valider_.
-
-Détails et arbitrages ouverts : voir `docs/OPEN_QUESTIONS.md` et `docs/CLAIMS.md`.
+```
+contracts/
+├── foundry.toml            # solc 0.8.33, evm cancun, profils default / deep
+├── .gitignore              # lib/ (dépendances installées localement), .plan/
+├── DEPLOYMENTS.md          # adresses déployées sur Fuji (aucune pour l'instant)
+├── src/
+│   ├── MockUSDC.sol        # collatéral FICTIF, 6 décimales, faucet ouvert
+│   ├── StableToken.sol     # stable FICTIF, 18 décimales, mint réservé au minter (immuable)
+│   ├── VulnerableMinter.sol# VOLONTAIREMENT vulnérable (démo de l'attaque)
+│   ├── GuardianPausable.sol# pause globale, multisig simulé 3/3
+│   └── ProtectedMinter.sol # volet 1 : montant et destinataire dérivés on-chain
+└── test/
+    ├── utils/BaseTest.sol
+    ├── Tokens.t.sol
+    ├── VulnerableMinter.t.sol
+    ├── GuardianPausable.t.sol
+    ├── ProtectedMinter.t.sol   # un test (ou plus) par invariant I1–I5
+    ├── ScenarioA.t.sol         # même attaque rejouée sur les deux contrats
+    ├── StolenServiceKey.fuzz.t.sol
+    └── invariant/
+        ├── ProtectedMinterHandler.sol
+        └── ProtectedMinter.invariant.t.sol
+```
 
 ## Installer Foundry (Windows)
 
@@ -41,26 +47,211 @@ foundryup
 
 **Option B — Git Bash** : même commande que ci-dessus, depuis Git Bash.
 
+**Option C — zip officiel** : télécharger `foundry_stable_win32_amd64.zip` depuis les releases
+<https://github.com/foundry-rs/foundry/releases> et extraire `forge.exe` (par ex. dans
+`%USERPROFILE%\.foundry\bin`).
+
 Vérifier l'installation :
 
 ```bash
 forge --version
 ```
 
+Si `forge` n'est pas dans le `PATH` (PowerShell) : appeler le binaire directement,
+`& "$env:USERPROFILE\.foundry\bin\forge.exe" test`.
+
 Doc officielle : https://book.getfoundry.sh/getting-started/installation
 
-## Initialiser le projet Foundry (après installation)
+## Dépendances (une commande, tags figés)
 
-Depuis le dossier `contracts/` :
+Choix : **`lib/` n'est pas versionné** (gitignoré) ; chacun installe les dépendances à des tags
+figés avec `--no-git` (pas de sous-module git, pas de `.gitmodules`). Raison : OpenZeppelin
+complet représente des centaines de fichiers, illisibles en revue de PR si on les vendore.
+
+Depuis `contracts/` :
 
 ```bash
-forge init --no-git .        # --no-git : le repo git existe deja a la racine
-forge build
-forge test
+forge install --no-git foundry-rs/forge-std@v1.17.0 OpenZeppelin/openzeppelin-contracts@v5.4.0
 ```
 
-`forge init` crée `foundry.toml`, `src/`, `test/` et un contrat d'exemple. Pense à configurer la
-cible Fuji (RPC + chain id) dans `foundry.toml` et à utiliser un **compte de test** uniquement.
+- `forge-std` **v1.17.0**, `openzeppelin-contracts` **v5.4.0** (remappings dans `foundry.toml`).
+- **Toujours `--no-git`** : sans cette option, `forge install` ajoute des sous-modules git à la
+  racine du dépôt — à éviter.
+- Repli si `forge install` échoue (réseau, proxy) : télécharger
+  `https://github.com/foundry-rs/forge-std/archive/refs/tags/v1.17.0.zip` et
+  `https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v5.4.0.zip`, puis
+  extraire leur contenu dans `contracts/lib/forge-std/` et
+  `contracts/lib/openzeppelin-contracts/` (même arborescence que le dépôt d'origine).
 
-> Rappel sécurité : `out/`, `cache/` et `broadcast/` sont déjà ignorés par `.gitignore`. Jamais
-> de vraie clé privée — comptes de test Fuji seulement.
+Le projet n'a pas été créé par `forge init` : `foundry.toml` est écrit à la main (équivalent),
+ce qui évite le contrat d'exemple `Counter` et l'écrasement de ce README.
+
+## Compiler et tester
+
+```bash
+forge build
+forge test -vv
+```
+
+> Rappel : `out/`, `cache/` et `broadcast/` sont ignorés par le `.gitignore` racine.
+
+## Contrat vulnérable (`VulnerableMinter`) — démo uniquement
+
+**Volontairement vulnérable, à ne jamais déployer comme « vrai » contrat.** Il reproduit le
+schéma Resolv :
+
+1. un utilisateur appelle `requestSwap(depositAmount)` : le collatéral est prélevé et la demande
+   enregistrée ;
+2. un compte `SERVICE_ROLE` appelle `completeSwap(requestId, recipient, mintAmount)` : le contrat
+   vérifie le rôle et que la demande est en attente, mais **mint le montant choisi vers le
+   destinataire choisi**, sans lien avec le dépôt.
+
+Une clé de service volée transforme donc un petit dépôt réel en mint arbitraire.
+Tests : `test/VulnerableMinter.t.sol` (`test_attack_smallDepositHugeMint`,
+`test_attack_mintToArbitraryRecipient`, `testFuzz_vulnerable_mintsAnyAmount`). Les montants
+utilisés (200 000 USDC déposés, 80 M de stables mintés) sont des **fixtures** reprenant l'ordre
+de grandeur de l'incident cité dans `docs/OPEN_ANSWERS.md` §1, pas des mesures.
+
+```bash
+forge test --match-contract VulnerableMinterTest -vv
+```
+
+## Contrat protégé (`ProtectedMinter`) — volet 1
+
+La clé `SERVICE_ROLE` n'autorise plus que **« traiter la demande n°X »** :
+`completeSwap(requestId)` n'a **ni montant ni destinataire**. Tout est dérivé de la demande
+enregistrée on-chain au moment du dépôt.
+
+| Invariant | Appliqué par |
+|---|---|
+| **I1** `minted = deposit × rate` | `quoteMint(deposit, rate) = deposit × 1e12 × rate / 1e18` (6 → 18 décimales), arrondi vers le bas, **ε = 0** (aucun frais). Le taux est **figé à la création de la demande** (snapshot) : le moment où la clé de service traite la demande ne change pas le montant. |
+| **I2** demande existante, en attente, traitée une seule fois | statut `None / Pending / Completed` ; `RequestNotFound` (demande inventée ou future), `RequestNotPending` (rejeu). |
+| **I3** destinataire = déposant | pas de paramètre destinataire : le mint va à `request.depositor`. |
+| **I4** un seul chemin de mint | `StableToken.minter` est immuable et égal au `ProtectedMinter` (déployé par son constructeur) ; seul `completeSwap` appelle `mint`. |
+| **I5** (côté contrat) `totalSupply == totalMinted` | pas de burn ni de rachat dans ce périmètre. |
+
+Ce que peut faire une clé de service volée : traiter (ou ne pas traiter) des demandes existantes,
+au moment de son choix. Ce qu'elle ne peut pas faire : choisir un montant, choisir un
+destinataire, rejouer une demande, inventer une demande, minter directement, changer le taux,
+pauser / dépauser, s'attribuer un rôle.
+
+- **Taux** : valeur on-chain `rate` (précision `1e18` = 1 stable pour 1 USDC), `> 0`, modifiable
+  seulement par `RATE_ADMIN_ROLE` (`setRate`), qui émet `RateChanged`. Pas d'oracle externe.
+- **Rôles** (OpenZeppelin `AccessControl`) : `admin` = `DEFAULT_ADMIN_ROLE` + `RATE_ADMIN_ROLE` ;
+  `service` = `SERVICE_ROLE` ; le constructeur refuse `admin == service`.
+- **Pause globale** (`GuardianPausable`) : multisig **simulé** de 3 guardians figés au
+  déploiement ; pause **3/3** (`approvePause`), dépause **3/3** par le même multisig
+  (`approveUnpause`) ; aucun acteur seul, admin compris, ne peut pauser ni dépauser. La pause
+  bloque `requestSwap` et `completeSwap` ; `setRate` reste possible.
+- **Pas de plafond fixe par opération** (`docs/OPEN_ANSWERS.md` §0).
+- **Token Ghost / quarantaine : hors périmètre** de ce contrat (issue #8).
+- Collatéral attendu : ERC20 standard à 6 décimales (vérifié au constructeur), sans frais de
+  transfert. Contrat non upgradable. Pas d'annulation ni de remboursement de demande.
+
+### Événements pour le monitor
+
+| Événement | Champs |
+|---|---|
+| `SwapRequested` | `requestId` (indexé), `depositor` (indexé), `depositAmount`, `rate` |
+| `SwapCompleted` | `requestId`, `depositor`, `recipient` (indexés), `depositAmount`, `mintedAmount`, `rate` |
+| `RateChanged` | `oldRate`, `newRate`, `changedBy` (indexé) ; émis aussi au déploiement (`oldRate = 0`) |
+| `GuardianApproval` | `guardian`, `round`, `pauseAction` (indexés), `approvals` |
+| `Paused` / `Unpaused` | `account` (OpenZeppelin `Pausable`) |
+| `RoleGranted` / `RoleRevoked` / `RoleAdminChanged` | OpenZeppelin `AccessControl` |
+
+`StableToken` émet en plus le `Transfer(address(0), depositor, minted)` standard de l'ERC20.
+
+### Scénario A — même attaque, deux contrats
+
+`test/ScenarioA.t.sol` rejoue la même séquence avec le même attaquant détenteur de
+`SERVICE_ROLE` : dépôt de 200 000 USDC fictifs, puis tentative de mint de 80 M de stables vers
+lui-même (fixtures, ordre de grandeur `docs/OPEN_ANSWERS.md` §1). Sur `VulnerableMinter` le mint
+gonflé passe ; sur `ProtectedMinter` l'appel avec montant/destinataire n'existe pas, le seul
+appel possible mint exactement le dépôt converti (1:1 au taux 1e18), et le rejeu échoue. Une
+demande d'une victime traitée par l'attaquant va à la victime.
+
+```bash
+forge test --match-contract ScenarioATest -vv   # affiche les montants mintés côte à côte
+```
+
+## Volet 2 — perte maximale bornée (vérifiée par tests d'invariants)
+
+Tests Foundry à base de **handler** (`test/invariant/`) et de **fuzz** (`test/StolenServiceKey.fuzz.t.sol`)
+contre `ProtectedMinter`, avec un acteur détenant la clé `SERVICE_ROLE` **volée** (qui peut aussi
+déposer) et 4 déposants aléatoires. Les valeurs attendues sont **recalculées par le test**
+(`deposit × 1e12 × rate / 1e18`, taux suivi par le handler), sans appeler `quoteMint`.
+
+### Hypothèses
+
+- **H1** clés admin / `RATE_ADMIN_ROLE` **non compromises** (le taux est honnête) ;
+- **H2** clés des guardians **non compromises** ;
+- **H3** collatéral ERC20 standard (`MockUSDC`, pas de frais de transfert) ;
+- **H4** contrat non upgradable, code tel que testé ;
+- **H5** pas de burn ni de rachat dans ce périmètre.
+
+### Borne énoncée
+
+Sous H1–H5, dans tout état atteint par les séquences explorées :
+
+- `totalSupply == Σ_{demandes complétées} deposit_i × rate_i ≤ Σ_{demandes créées} deposit_i × rate_i`
+  (avec `rate_i` figé à la création, conversion 6 → 18 décimales, arrondi vers le bas) ;
+- chaque demande est complétée **au plus une fois**, et `minted_i == deposit_i × rate_i` ;
+- chaque mint va au **déposant** de la demande ;
+- le solde stable du détenteur de la clé de service volée est `≤ Σ deposit_j × rate_j` sur
+  **ses propres** dépôts : la clé volée ne crée **aucun** stable au-delà du collatéral déjà
+  déposé (perte attribuable au-delà des dépôts = 0).
+
+C'est **vérifié par tests d'invariants** avec les paramètres de `foundry.toml`, **pas prouvé**.
+
+| Invariant / fuzz | Ce qui est vérifié |
+|---|---|
+| `invariant_solvency` | `totalSupply ≤ Σ dépôts × taux` (toutes demandes créées) |
+| `invariant_supplyEqualsCompletedQuotes` | `totalSupply == Σ` des demandes complétées `== totalMinted` |
+| `invariant_collateralBacking` | collatéral détenu par le minter `== Σ dépôts == totalDeposited` |
+| `invariant_eachRequestCompletedAtMostOnce` | ≤ 1 complétion par demande, statut on-chain cohérent |
+| `invariant_mintedPerRequestEqualsQuote` | par demande : minté observé `==` delta de supply `== deposit × rate` |
+| `invariant_recipientIsDepositor` | solde de chaque acteur `==` somme de ses propres demandes complétées |
+| `invariant_stolenKeyBound` | borne ci-dessus pour la clé volée + aucune action interdite n'a réussi |
+| `testFuzz_stolenKey_*` | gonfler, rediriger, rejouer, minter directement, changer le taux, pauser |
+
+Actions de la clé volée explorées par le handler : traiter une demande (y compris déjà traitée
+ou pendant la pause), traiter une demande inexistante, appeler `stable.mint`, appeler
+`completeSwap(uint256,address,uint256)`, appeler `setRate`. Actions honnêtes : dépôts,
+`setRate` par l'admin, approbations de pause / dépause par les guardians.
+
+### Limites
+
+- La clé volée peut **ne pas traiter** des demandes (déni de service, collatéral immobilisé :
+  pas d'annulation ni de remboursement) et choisir le **moment** du traitement (sans effet sur le
+  montant grâce au snapshot du taux).
+- Un taux faux posé par un admin compromis sort de H1 : c'est le rôle du surveillant hors
+  chaîne (`docs/OPEN_ANSWERS.md` §1).
+- Exploration bornée : dépôts dans `[1, 1e18]` unités, taux honnête dans `[1e6, 1e24]`. Ce sont
+  des paramètres d'exploration, pas des mesures.
+
+### Lancer
+
+```bash
+forge test                                   # tout (profil default)
+forge test --match-path "test/invariant/*" -vv
+forge test --match-contract StolenServiceKeyFuzzTest -vv
+FOUNDRY_PROFILE=deep forge test              # bash : profil approfondi
+```
+
+PowerShell : `$env:FOUNDRY_PROFILE="deep"; forge test; Remove-Item Env:FOUNDRY_PROFILE`.
+
+| Profil | fuzz `runs` | invariant `runs` | invariant `depth` | `fail_on_revert` |
+|---|---|---|---|---|
+| `default` | 256 | 256 | 128 | false |
+| `deep` | 1024 | 512 | 256 | false |
+
+## À produire plus tard — _proposé, à valider en équipe_
+
+- **Balise de risque** + **faux marché de prêt** (simulé, fictif) qui cesse d'accepter le token
+  gelé comme garantie — **volet 3, optionnel**.
+- **Contrat ERC20 « Token Ghost »** (quarantaine liquide) : token temporaire **librement
+  échangeable**, convertible 1:1 contre le vrai token après délai sans anomalie, avec une
+  **fonction de destruction réservée au guardian** pour annuler les ghosts d'un lot suspect en cas
+  de gel confirmé — _proposé, à valider_.
+
+Détails et arbitrages ouverts : voir `docs/OPEN_QUESTIONS.md` et `docs/CLAIMS.md`.
