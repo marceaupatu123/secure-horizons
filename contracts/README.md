@@ -1,7 +1,7 @@
 # contracts
 
 - **Rôle** : smart contracts Solidity (**Foundry**), cible **Avalanche Fuji** (testnet).
-- **Propriétaire** : _(à renseigner — voir `docs/TEAM.md`)_
+- **Propriétaire** : @denybs (voir `docs/TEAM.md`).
 - **Lancer** : installer Foundry (ci-dessous), puis `forge build` / `forge test` depuis `contracts/`.
 
 > Le projet Foundry n'est **pas encore initialisé** (`forge` n'était pas installé au moment du

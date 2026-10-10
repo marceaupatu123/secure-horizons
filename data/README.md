@@ -1,5 +1,7 @@
 # data — données synthétiques
 
+- **Propriétaire** : @EnzoFB06 (voir `docs/TEAM.md`).
+
 > **Toutes les données de ce dossier sont FICTIVES.** Aucune vraie donnée on-chain, aucune vraie
 > adresse, aucune vraie clé. Faux secrets autorisés de type `FLAG{team20-canary}`.
 
