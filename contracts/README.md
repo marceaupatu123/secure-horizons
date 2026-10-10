@@ -18,11 +18,16 @@ contracts/
 ├── src/
 │   ├── MockUSDC.sol        # collatéral FICTIF, 6 décimales, faucet ouvert
 │   ├── StableToken.sol     # stable FICTIF, 18 décimales, mint réservé au minter (immuable)
-│   └── VulnerableMinter.sol# VOLONTAIREMENT vulnérable (démo de l'attaque)
+│   ├── VulnerableMinter.sol# VOLONTAIREMENT vulnérable (démo de l'attaque)
+│   ├── GuardianPausable.sol# pause globale, multisig simulé 3/3
+│   └── ProtectedMinter.sol # volet 1 : montant et destinataire dérivés on-chain
 └── test/
     ├── utils/BaseTest.sol
     ├── Tokens.t.sol
-    └── VulnerableMinter.t.sol
+    ├── VulnerableMinter.t.sol
+    ├── GuardianPausable.t.sol
+    ├── ProtectedMinter.t.sol   # un test (ou plus) par invariant I1–I5
+    └── ScenarioA.t.sol         # même attaque rejouée sur les deux contrats
 ```
 
 ## Installer Foundry (Windows)
@@ -107,11 +112,66 @@ de grandeur de l'incident cité dans `docs/OPEN_ANSWERS.md` §1, pas des mesures
 forge test --match-contract VulnerableMinterTest -vv
 ```
 
+## Contrat protégé (`ProtectedMinter`) — volet 1
+
+La clé `SERVICE_ROLE` n'autorise plus que **« traiter la demande n°X »** :
+`completeSwap(requestId)` n'a **ni montant ni destinataire**. Tout est dérivé de la demande
+enregistrée on-chain au moment du dépôt.
+
+| Invariant | Appliqué par |
+|---|---|
+| **I1** `minted = deposit × rate` | `quoteMint(deposit, rate) = deposit × 1e12 × rate / 1e18` (6 → 18 décimales), arrondi vers le bas, **ε = 0** (aucun frais). Le taux est **figé à la création de la demande** (snapshot) : le moment où la clé de service traite la demande ne change pas le montant. |
+| **I2** demande existante, en attente, traitée une seule fois | statut `None / Pending / Completed` ; `RequestNotFound` (demande inventée ou future), `RequestNotPending` (rejeu). |
+| **I3** destinataire = déposant | pas de paramètre destinataire : le mint va à `request.depositor`. |
+| **I4** un seul chemin de mint | `StableToken.minter` est immuable et égal au `ProtectedMinter` (déployé par son constructeur) ; seul `completeSwap` appelle `mint`. |
+| **I5** (côté contrat) `totalSupply == totalMinted` | pas de burn ni de rachat dans ce périmètre. |
+
+Ce que peut faire une clé de service volée : traiter (ou ne pas traiter) des demandes existantes,
+au moment de son choix. Ce qu'elle ne peut pas faire : choisir un montant, choisir un
+destinataire, rejouer une demande, inventer une demande, minter directement, changer le taux,
+pauser / dépauser, s'attribuer un rôle.
+
+- **Taux** : valeur on-chain `rate` (précision `1e18` = 1 stable pour 1 USDC), `> 0`, modifiable
+  seulement par `RATE_ADMIN_ROLE` (`setRate`), qui émet `RateChanged`. Pas d'oracle externe.
+- **Rôles** (OpenZeppelin `AccessControl`) : `admin` = `DEFAULT_ADMIN_ROLE` + `RATE_ADMIN_ROLE` ;
+  `service` = `SERVICE_ROLE` ; le constructeur refuse `admin == service`.
+- **Pause globale** (`GuardianPausable`) : multisig **simulé** de 3 guardians figés au
+  déploiement ; pause **3/3** (`approvePause`), dépause **3/3** par le même multisig
+  (`approveUnpause`) ; aucun acteur seul, admin compris, ne peut pauser ni dépauser. La pause
+  bloque `requestSwap` et `completeSwap` ; `setRate` reste possible.
+- **Pas de plafond fixe par opération** (`docs/OPEN_ANSWERS.md` §0).
+- **Token Ghost / quarantaine : hors périmètre** de ce contrat (issue #8).
+- Collatéral attendu : ERC20 standard à 6 décimales (vérifié au constructeur), sans frais de
+  transfert. Contrat non upgradable. Pas d'annulation ni de remboursement de demande.
+
+### Événements pour le monitor
+
+| Événement | Champs |
+|---|---|
+| `SwapRequested` | `requestId` (indexé), `depositor` (indexé), `depositAmount`, `rate` |
+| `SwapCompleted` | `requestId`, `depositor`, `recipient` (indexés), `depositAmount`, `mintedAmount`, `rate` |
+| `RateChanged` | `oldRate`, `newRate`, `changedBy` (indexé) ; émis aussi au déploiement (`oldRate = 0`) |
+| `GuardianApproval` | `guardian`, `round`, `pauseAction` (indexés), `approvals` |
+| `Paused` / `Unpaused` | `account` (OpenZeppelin `Pausable`) |
+| `RoleGranted` / `RoleRevoked` / `RoleAdminChanged` | OpenZeppelin `AccessControl` |
+
+`StableToken` émet en plus le `Transfer(address(0), depositor, minted)` standard de l'ERC20.
+
+### Scénario A — même attaque, deux contrats
+
+`test/ScenarioA.t.sol` rejoue la même séquence avec le même attaquant détenteur de
+`SERVICE_ROLE` : dépôt de 200 000 USDC fictifs, puis tentative de mint de 80 M de stables vers
+lui-même (fixtures, ordre de grandeur `docs/OPEN_ANSWERS.md` §1). Sur `VulnerableMinter` le mint
+gonflé passe ; sur `ProtectedMinter` l'appel avec montant/destinataire n'existe pas, le seul
+appel possible mint exactement le dépôt converti (1:1 au taux 1e18), et le rejeu échoue. Une
+demande d'une victime traitée par l'attaquant va à la victime.
+
+```bash
+forge test --match-contract ScenarioATest -vv   # affiche les montants mintés côte à côte
+```
+
 ## À produire plus tard — _proposé, à valider en équipe_
 
-- **Contrat « protégé »** : le montant est **dérivé on-chain** du dépôt (la clé de service
-  autorise seulement « traiter la demande n°X ») + les garde-fous retenus (multisig, séparation
-  des clés ; pas de plafond fixe, `docs/OPEN_ANSWERS.md` §0) — **volet 1**.
 - **Tests d'invariants / fuzzing** cherchant à dépasser la **perte maximale bornée** — **volet 2**.
   À formuler comme « vérifié par tests d'invariants », jamais « prouvé ».
 - **Balise de risque** + **faux marché de prêt** (simulé, fictif) qui cesse d'accepter le token
