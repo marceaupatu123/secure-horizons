@@ -49,8 +49,16 @@ risque est transféré vers un marché secondaire spéculatif) :
 ### DÉCISION (2026-10-10, Marceau) — le Ghost s'applique à **tous les transferts**
 
 > → **Tranché**, voir `docs/OPEN_ANSWERS.md` §0bis (texte complet de la décision, conséquences
-> assumées et option intermédiaire écartée). Les questions existentielles ci-dessus et les
-> questions dérivées #35 et #36 restent ouvertes.
+> assumées et option intermédiaire écartée). Les questions existentielles ci-dessus restent
+> ouvertes.
+>
+> **#35 (transfert d'un Ghost)** → Tranché, voir `docs/OPEN_ANSWERS.md` §0bis-b : un seul Ghost
+> par token, la fenêtre est portée par la valeur et ne redémarre pas en circulant ; tranches
+> d'échéance bornées par adresse.
+>
+> **#36 (collatéral orphelin)** → Tranché, voir `docs/OPEN_ANSWERS.md` §0bis-c : invariant `≤`,
+> l'excédent forme une réserve de restitution cantonnée, restitution par multisig 2/3 plafonnée
+> par la réserve.
 >
 > **#37 (solvabilité vs récupération dans `CLAIMS.md`)** → Tranché, voir `docs/OPEN_ANSWERS.md`
 > §0bis (deux affirmations distinctes, solvabilité en tête).
@@ -249,7 +257,8 @@ la reproductibilité.
 
 > → **Tranché**, voir `docs/OPEN_ANSWERS.md` §9 (texte complet : principe, trois verbes,
 > distinction attaque/croissance, contamination par ratio, garde-fous et limites assumées). Reste
-> ouvert : valeur de tous les seuils (à mesurer), relecture d'équipe, et #35/#36.
+> ouvert : valeur de tous les seuils (à mesurer) et relecture d'équipe. #35/#36 tranchés en
+> §0bis-b/§0bis-c d'`OPEN_ANSWERS.md`.
 
 #### Point faible repéré (2026-10-10, Yannis) — _sur un exemple chiffré fictif, à traiter en équipe_
 
@@ -262,6 +271,11 @@ la reproductibilité.
   Les autres points faibles du même exemple sont en §3.
 
 ## 10. Lignage transactionnel — reverter les deux jambes d'un échange — _proposé, à valider en équipe_
+
+> → **Tranché (#43)**, voir `docs/OPEN_ANSWERS.md` §10 : `swap-id` sur **notre** pool seulement ;
+> la jambe sortante (USDC) est payée en **règlement différé** à l'échéance du Ghost vendu, et
+> annulée à hauteur du ratio du vendeur si une destruction est confirmée. DEX tiers : limite
+> assumée (ratio + balise de risque seulement). Le texte ci-dessous est conservé pour l'historique.
 
 ### Besoin
 
