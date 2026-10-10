@@ -1,15 +1,29 @@
-# CODEOWNERS — à compléter avec les propriétaires de modules (voir docs/TEAM.md).
+# CODEOWNERS — propriétaires de modules (voir docs/TEAM.md).
 # Syntaxe : <chemin>   @utilisateur-github
-# Exemple :  /monitor/   @alice
+# La DERNIÈRE règle qui matche un fichier l'emporte (ordre important).
 #
-# Laisser vide tant que la répartition n'est pas actée en équipe.
+# Répartition actée le 2026-10-10 (équipe 20, 4 membres pour 8 modules).
+# Toute PR touchant un dossier requiert la review de son/ses propriétaire(s).
 
-# /contracts/   @
-# /monitor/     @
-# /detection/   @
-# /llm/         @
-# /response/    @
-# /dashboard/   @
-# /shared/      @
-# /data/        @
-# /docs/        @
+# --- Modules de code ---
+/contracts/    @denybs
+/monitor/      @Yannis1307
+/detection/    @Yannis1307
+/llm/          @denybs
+/response/     @EnzoFB06
+/dashboard/    @marceaupatu123
+/shared/       @marceaupatu123
+/data/         @EnzoFB06
+
+# --- Documentation ---
+/docs/         @marceaupatu123
+
+# --- Fichiers sensibles : partagés, review renforcée ---
+# shared/ et docs/CONTRACTS.md définissent les interfaces communes : on ne les
+# modifie pas sans accord. On exige la review de 2 propriétaires.
+/shared/            @marceaupatu123 @denybs
+/docs/CONTRACTS.md  @marceaupatu123 @denybs
+
+# --- Steering & config partagée (impactent tout le monde) ---
+/.kiro/steering/    @marceaupatu123
+/CLAUDE.md          @marceaupatu123
