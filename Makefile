@@ -4,14 +4,15 @@
 
 PYTHON ?= python
 
-.PHONY: install test lint run-dashboard help
+.PHONY: install test lint run-dashboard dashboard-progress help
 
 help:
 	@echo "Cibles disponibles :"
-	@echo "  make install        Installe les dependances + active le pre-commit hook"
-	@echo "  make test           Lance les tests pytest (test de fumee par module)"
-	@echo "  make lint           Verification syntaxique basique (compileall)"
-	@echo "  make run-dashboard   Lance le dashboard Streamlit"
+	@echo "  make install            Installe les dependances + active le pre-commit hook"
+	@echo "  make test               Lance les tests pytest (test de fumee par module)"
+	@echo "  make lint               Verification syntaxique basique (compileall)"
+	@echo "  make run-dashboard      Lance le dashboard metier Streamlit (dashboard/app.py)"
+	@echo "  make dashboard-progress Lance le tableau de bord d'avancement (issues GitHub via gh)"
 
 install:
 	$(PYTHON) -m pip install --upgrade pip
@@ -27,3 +28,6 @@ lint:
 
 run-dashboard:
 	$(PYTHON) -m streamlit run dashboard/app.py
+
+dashboard-progress:
+	$(PYTHON) -m streamlit run tools/progress_dashboard.py
