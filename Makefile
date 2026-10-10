@@ -3,8 +3,9 @@
 # Sous Windows, lancer via `make` (Git Bash / WSL / choco install make).
 
 PYTHON ?= python
+ARGS ?= list
 
-.PHONY: install test lint data run-dashboard dashboard-progress help
+.PHONY: install test lint data run-dashboard dashboard-progress demo help
 
 help:
 	@echo "Cibles disponibles :"
@@ -14,6 +15,7 @@ help:
 	@echo "  make data               Genere les jeux synthetiques JSONL (data/generated, SEED=42)"
 	@echo "  make run-dashboard      Lance le dashboard metier Streamlit (dashboard/app.py)"
 	@echo "  make dashboard-progress Lance le tableau de bord d'avancement (issues GitHub via gh)"
+	@echo "  make demo ARGS=\"run A --seed 20\"  Liste/lance les scenarios de demo (#47)"
 
 install:
 	$(PYTHON) -m pip install --upgrade pip
@@ -37,3 +39,5 @@ run-dashboard:
 
 dashboard-progress:
 	$(PYTHON) -m streamlit run tools/progress_dashboard.py
+demo:
+	$(PYTHON) -m dashboard.demo $(ARGS)
