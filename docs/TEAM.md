@@ -12,21 +12,27 @@ multiples (l'IA ne décide jamais seule), journal d'audit **DORA**. Détails : `
 
 ## Répartition des modules
 
-À compléter : un propriétaire par module, une branche par personne/fonctionnalité.
+Actée le 2026-10-10. 4 membres pour 8 modules de code : certains en portent deux. Un propriétaire
+par module, une branche par personne/fonctionnalité. Reporté dans `.github/CODEOWNERS`.
 
-| Module       | Propriétaire | Branche                 |
-|--------------|--------------|-------------------------|
-| `contracts`  | _(à définir)_ | _(ex: `prenom/contracts`)_ |
-| `monitor`    | _(à définir)_ | _(ex: `prenom/monitor`)_   |
-| `detection`  | _(à définir)_ | _(ex: `prenom/detection`)_ |
-| `llm`        | _(à définir)_ | _(ex: `prenom/llm`)_       |
-| `response`   | _(à définir)_ | _(ex: `prenom/response`)_  |
-| `dashboard`  | _(à définir)_ | _(ex: `prenom/dashboard`)_ |
-| `shared`     | _(à définir)_ | _(ex: `prenom/shared`)_    |
-| `data`       | _(à définir)_ | _(ex: `prenom/data`)_      |
+| Module       | Propriétaire       | Branche type              |
+|--------------|--------------------|---------------------------|
+| `contracts`  | @denybs            | `denybs/contracts`        |
+| `monitor`    | @Yannis1307        | `yannis/monitor`          |
+| `detection`  | @Yannis1307        | `yannis/detection`        |
+| `llm`        | @denybs            | `denybs/llm`              |
+| `response`   | @EnzoFB06          | `enzo/response`           |
+| `dashboard`  | @marceaupatu123    | `marceau/dashboard`       |
+| `shared`     | @marceaupatu123    | `marceau/shared`          |
+| `data`       | @EnzoFB06          | `enzo/data`               |
+| `docs`       | @marceaupatu123    | `marceau/docs`            |
 
-> Pensez à reporter les propriétaires dans `.github/CODEOWNERS` **et** dans l'en-tête de chaque
-> `README.md` de module.
+**Fichiers sensibles (review de 2 propriétaires)** : `shared/` et `docs/CONTRACTS.md` définissent
+les interfaces communes — on ne les modifie pas sans accord. Idem `/.kiro/steering/` et `CLAUDE.md`
+(impactent toutes les sessions).
+
+> Reporté dans `.github/CODEOWNERS` **et** à reporter dans l'en-tête de chaque `README.md` de module
+> (champ « Propriétaire »).
 
 ## Règles de collaboration
 
