@@ -52,6 +52,18 @@ conséquences ouvertes (liquidité, compatibilité AMM, destruction en chaîne).
   nouvelle = une issue avec labels `module:*` et `wave:*`, ajoutée au board. Détails et commandes
   dans `docs/AI_WORKFLOW.md`. En tant qu'assistant, rappeler ces gestes à l'utilisateur.
 
+## Documentation à jour en continu (IMPORTANT)
+
+> Toute décision ou changement de conception se répercute **dans la même PR** sur **toute** la
+> documentation concernée, pas seulement le fichier de décision.
+
+À chaque décision actée, passer la checklist : `docs/OPEN_QUESTIONS.md` (décision datée),
+`docs/CLAIMS.md` (affirmations vérifiables, chiffres à mesurer), **doc narrative `docs-site/`**
+(pages + diagrammes `.mmd` — l'oubli le plus fréquent), **steering** (`CLAUDE.md`,
+`.kiro/steering/*.md`) si le mécanisme change, et `README.md` / `docs/ROADMAP.md` concernés. Une
+décision n'est **pas finie** tant que la narration dit encore l'inverse. Si une page ne peut pas
+être réécrite tout de suite, y poser un **bandeau d'avertissement** pointant la décision.
+
 ## Consigne de périmètre (IMPORTANT)
 
 > Tu ne modifies que le dossier du module qui t'est assigné. Tu ne touches pas à `/shared` ni à

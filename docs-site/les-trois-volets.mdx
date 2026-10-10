@@ -24,22 +24,48 @@ si on vole ta signature, on ne peut pas écrire le montant qu'on veut.
 Options possibles (à décider par l'équipe) : un plafond par opération, un plafond par heure,
 exiger plusieurs signataires, ou séparer les clés.
 
-## Volet 2 — La perte maximale est plafonnée
+## Volet 2 — La perte maximale est plafonnée, et une surveillance adaptative réagit
 
 <Note>
-**Objectif : pouvoir dire « même avec les clés volées, la perte maximale est de X ».**
+**Objectif : pouvoir dire « même avec les clés volées, la perte maximale est de X » — et réagir si
+le trafic devient anormal, sans pénaliser une croissance normale.**
 </Note>
 
-On fixe des **plafonds** et une **fenêtre de sécurité** (voir les garde-fous). Résultat : il
-existe un **montant maximum** que le voleur peut faire perdre, et pas plus.
+**Deux étages.**
+
+**a) La borne statique.** On fixe des **plafonds** et une **fenêtre de sécurité** : il existe un
+**montant maximum** que le voleur peut faire perdre, et pas plus.
+
+**b) La surveillance adaptative** (deuxième sécurité, par-dessus le Token Ghost permanent). Si le
+trafic du jour est anormal, on **allonge la fenêtre Ghost de la zone suspecte**, on **prévient les
+applications en aval** via la balise de risque (volet 3), et on **attend un audit humain**. Comme
+l'allongement **expire tout seul**, une fausse alerte se résorbe sans intervention.
+
+Deux difficultés qu'on traite explicitement :
+
+<CardGroup cols={2}>
+  <Card title="Ne pas confondre attaque et croissance" icon="chart-line">
+    On ne regarde pas des **volumes bruts** (ils cassent dès que le protocole grandit) mais des
+    **ratios** et surtout la **dispersion** : une vraie croissance est large (beaucoup d'adresses),
+    une attaque est concentrée (une clé, des adresses neuves, sortie rapide).
+  </Card>
+  <Card title="Frapper juste, pas tout geler" icon="crosshairs">
+    Chaque adresse porte une **part de soupçon** (un ratio) qui se propage au fil des transferts.
+    On allonge/détruit **proportionnellement**, uniquement là où le soupçon est réel — le reste du
+    token continue normalement. Fractionner un lot suspect **ne le nettoie pas** : le soupçon total
+    est conservé.
+  </Card>
+</CardGroup>
 
 Comment on le vérifie ? Avec des **tests automatiques** qui essaient par tous les moyens de
-dépasser cette limite (on appelle ça des *tests d'invariants* et du *fuzzing* — des robots qui
-bombardent le contrat de scénarios).
+dépasser les limites (*tests d'invariants* et *fuzzing* — des robots qui bombardent le contrat de
+scénarios). On vérifie **deux** bornes : la **perte maximale** et la **friction maximale** (notre
+propre surveillance ne peut pas mettre en quarantaine plus d'une part donnée de l'offre).
 
 <Warning>
 On dit toujours **« vérifié par des tests »**, **jamais « prouvé »**. Un test qui ne trouve pas de
-faille ne garantit pas qu'il n'y en a aucune. Honnêteté avant tout, surtout face au jury.
+faille ne garantit pas qu'il n'y en a aucune. Les seuils (plafonds, durée de fenêtre, part max en
+quarantaine) sont **à mesurer**, pas inventés. Honnêteté avant tout, surtout face au jury.
 </Warning>
 
 ## Volet 3 — Le mur anti-contagion

@@ -54,6 +54,27 @@ le vrai token après un délai sans anomalie (ex. 10 min), et **détruit** si un
 - **Appels Bedrock** : limite d'environ **1 requête par seconde par personne**. Prévoir un petit
   limiteur et ne jamais appeler le LLM en boucle serrée. Le LLM n'est appelé **que sur alerte**.
 
+## Documentation à jour en continu (IMPORTANT)
+
+> Toute décision ou changement de conception se répercute **dans la même PR** sur **toute** la
+> documentation concernée, pas seulement sur le fichier de décision.
+
+Checklist à passer à chaque décision actée :
+
+- `docs/OPEN_QUESTIONS.md` : la décision (datée, attribuée) ou son renvoi.
+- `docs/CLAIMS.md` : toute nouvelle affirmation vérifiable (colonnes « comment on vérifie » /
+  « limites »), chiffres **à mesurer**, jamais inventés.
+- **Doc narrative `docs-site/`** : les pages concernées (`token-ghost.mdx`, `les-trois-volets.mdx`,
+  `les-garde-fous.mdx`, `le-parcours-dune-attaque.mdx`, `index.mdx`, `glossaire.mdx`, diagrammes
+  `.mmd`). C'est souvent **l'oubli** : une décision n'est pas finie tant que la narration dit
+  encore l'inverse.
+- **Steering** (`CLAUDE.md`, `.kiro/steering/*.md`) s'il décrit le mécanisme changé — sinon il
+  ramène tout le monde vers l'ancien modèle à chaque session.
+- `README.md` du module touché, et `docs/ROADMAP.md` (cases) le cas échéant.
+
+Si une page devient fausse mais ne peut pas être réécrite tout de suite, y poser un **bandeau
+d'avertissement** qui pointe la décision, plutôt que de la laisser mentir en silence.
+
 ## Consigne de périmètre (IMPORTANT)
 
 > Tu ne modifies que le dossier du module qui t'est assigné. Tu ne touches pas à `/shared` ni à

@@ -13,13 +13,13 @@ flowchart TD
     A[Un voleur a volé une clé valide] --> B[Il demande de minter des jetons]
     B --> C{Volet 1 : le contrat calcule<br/>le montant depuis le vrai dépôt}
     C -->|Montant gonflé impossible| D[Il ne peut pas choisir le montant<br/>→ attaque de masse neutralisée]
-    C -->|Il reste sous les plafonds| E[Émission d'un TOKEN GHOST<br/>pas le vrai jeton]
+    C -->|Il reste sous les plafonds| E[TOKEN GHOST<br/>tout transfert en produit, pas le vrai jeton]
     E --> F[Fenêtre d'observation ~10 min]
     F --> G{Les surveillants voient-ils<br/>une anomalie ?}
     G -->|Non| H[Conversion 1:1 en vrai jeton<br/>→ activité légitime, tout va bien]
-    G -->|Oui| I[Un surveillant demande un GEL]
+    G -->|Oui| I[Un surveillant RETARDE<br/>la zone suspecte auto-expirant]
     I --> J[Un humain multisig confirme]
-    J --> K[Les Tokens Ghost suspects<br/>sont DÉTRUITS]
+    J --> K[Les Tokens Ghost suspects<br/>sont DÉTRUITS proportionnellement]
     K --> L[Balise de risque activée<br/>→ les autres plateformes refusent le jeton]
     L --> M[Journal d'audit + rapport DORA]
 ```
@@ -33,20 +33,22 @@ flowchart TD
     est neutralisée ici.
   </Step>
   <Step title="Le voleur ruse et reste discret">
-    Il tente de rester **sous les plafonds** pour ne pas déclencher le contrat. Il reçoit alors
-    des **Tokens Ghost** (pas le vrai jeton) et doit attendre la fenêtre d'observation.
+    Il tente de rester **sous les plafonds** pour ne pas déclencher le contrat. Mais **tout
+    transfert** passe par un **Token Ghost** (pas le vrai jeton) : il doit attendre la fenêtre
+    d'observation comme tout le monde.
   </Step>
   <Step title="Les surveillants observent">
     Pendant la fenêtre, les gardiens (règles, IA, signaux) analysent. Mouvement suspect ?
-    N'importe lequel peut **demander un gel**.
+    N'importe lequel peut **retarder** la zone concernée en allongeant sa fenêtre — une action
+    **auto-expirante**, qui ne touche que le périmètre où le soupçon est réel.
   </Step>
   <Step title="Un humain tranche">
-    Le gel est confirmé par une **validation humaine à plusieurs** (multisig). L'IA n'a pas décidé
-    seule.
+    Pour **détruire** (irréversible), il faut une **validation humaine à plusieurs** (multisig).
+    L'IA n'a pas décidé seule : elle a seulement retardé.
   </Step>
   <Step title="Les faux jetons disparaissent">
-    Les Tokens Ghost du lot suspect sont **détruits** avant d'être convertis. Le vrai jeton n'a
-    jamais été créé frauduleusement : **le protocole reste intact**.
+    Les Tokens Ghost suspects sont **détruits proportionnellement au soupçon** avant d'être
+    convertis. Le vrai jeton n'a jamais été créé frauduleusement : **le protocole reste intact**.
   </Step>
   <Step title="On protège les autres + on documente">
     La **balise de risque** prévient les autres plateformes (anti-contagion), et le **journal

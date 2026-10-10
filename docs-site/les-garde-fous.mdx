@@ -14,8 +14,9 @@ qui crée un **marché parallèle** et transfère le risque hors du protocole.
   Le marché parallèle, le prix décoté, qui gagne et qui perd.
 </Card>
 
-En deux mots : un mint produit des **Tokens Ghost** (pas le vrai jeton), échangeables pendant une
-courte fenêtre ; convertis **1:1** si tout va bien, **détruits** si une fraude est confirmée.
+En deux mots : **chaque transfert** (pas seulement le mint) crédite le destinataire en **Tokens
+Ghost**, échangeables pendant une courte fenêtre ; convertis **1:1** si tout va bien, **détruits**
+si une fraude est confirmée.
 
 ## Les surveillants multiples
 
@@ -27,21 +28,26 @@ On a plusieurs **surveillants** qui regardent l'activité : des **règles** simp
 **d'IA / machine learning**, et des **signaux** sur les mouvements suspects (gros montant vers une
 adresse toute neuve, découpage en petits morceaux, sorties rapides…).
 
-Règle d'or de sécurité, le **veto asymétrique** :
+Règle d'or de sécurité, le **veto asymétrique**, décliné en **trois actions distinctes** :
 
-<CardGroup cols={2}>
-  <Card title="Tout surveillant peut RALENTIR" icon="hand">
-    N'importe quel gardien peut demander un **gel** (mettre en pause). Dans le doute, on ralentit.
+<CardGroup cols={3}>
+  <Card title="RETARDER" icon="hourglass">
+    Allonger la fenêtre Ghost du périmètre suspect. Un surveillant (y compris l'IA) peut le faire
+    **seul** — c'est **auto-expirant** : si personne ne confirme, ça revient tout seul à la normale.
   </Card>
-  <Card title="Personne ne peut ACCÉLÉRER" icon="ban">
-    Aucun gardien ne peut forcer une libération. Seul un **humain** (via une validation à
-    plusieurs, dite *multisig*) peut lever un gel.
+  <Card title="DÉTRUIRE" icon="fire">
+    Brûler le Ghost suspect d'un périmètre. Irréversible → réservé aux **humains** (validation à
+    plusieurs, *multisig*).
+  </Card>
+  <Card title="PAUSE GLOBALE" icon="ban">
+    Mettre tout le protocole en pause. Dernier recours, coûteux → **multisig** également.
   </Card>
 </CardGroup>
 
-Conséquence : le **pire cas** d'une erreur de surveillant, c'est un simple **retard**, jamais une
-perte. Et l'**IA n'est qu'un gardien parmi d'autres** — elle alerte, elle ne décide jamais seule
-d'un blocage définitif.
+Conséquence : le **pire cas** d'une erreur de surveillant, c'est un simple **retard** qui se
+résorbe seul, jamais une perte ni un blocage définitif. L'**IA n'est qu'un gardien parmi
+d'autres** : elle peut **retarder**, mais ne décide jamais seule d'une **destruction** ni d'une
+**pause globale**.
 
 ## La preuve de conformité (DORA)
 
