@@ -78,16 +78,28 @@ balise de risque et les signaux de la section 2.
 
 ## 2. Signaux de transferts anormaux
 
+> **Complété par la décision §9 (2026-10-10)** : le discriminant retenu contre les faux positifs
+> de croissance est **volume élevé ET dispersion effondrée** sur des **ratios normalisés** (pas de
+> volumes absolus), baseline **médiane + MAD**. Voir §9.
+
 - Quels **signaux** retenir : gros montant vers adresse neuve, découpage (structuring), vitesse de
   sortie, concentration vers des points de sortie (échanges) ?
+- **Volume agrégé anormal** (journalier/horaire) normalisé par le collatéral ou l'offre en
+  circulation — signal ajouté par §9.
 - Comment pondérer/combiner ces signaux (règles, score, modèle `scikit-learn`) ?
 - Qu'est-ce qu'une « adresse neuve » et un « point de sortie » dans notre modèle ?
 
 ## 3. Réponse graduée — automatique vs validation humaine
 
-- Quels cas déclenchent un **blocage automatique** (pause réversible) ?
-- Quels cas exigent une **validation humaine** avant action ?
-- Comment garantir la **réversibilité** de la pause ? Qui a le droit de valider/relâcher ?
+> **En grande partie répondu par la décision §9 (2026-10-10)** : trois verbes distincts
+> (retarder / détruire / pause globale), l'IA ne fait que **retarder** (auto-expirant), humains
+> multisig pour détruire et pour la pause globale. Voir §9.
+
+- Quels cas déclenchent un **blocage automatique** (pause réversible) ? → §9 : allongement de
+  fenêtre Ghost, auto-expirant, décidable par un surveillant/IA.
+- Quels cas exigent une **validation humaine** avant action ? → §9 : destruction et pause globale.
+- Comment garantir la **réversibilité** de la pause ? Qui a le droit de valider/relâcher ? → §9 :
+  l'allongement expire seul ; la levée d'une destruction/pause passe par multisig.
 
 ## 4. Angle différenciant (à choisir)
 
@@ -139,3 +151,110 @@ la reproductibilité.
 > Rappel : le compte atelier est **temporaire** (credentials de session STS qui expirent). Le
 > `BEDROCK_MODEL_ID` ne dépend pas du compte et reste valable ; seuls les credentials sont à
 > renouveler à chaque session.
+
+## 9. Volet 2 — surveillance adaptative, allongement de fenêtre ciblé et modèle de contamination par ratio
+
+### DÉCISION (2026-10-10, Marceau) — _validée en session, à relire par l'équipe_
+
+Le volet 2 n'est **pas** une garantie statique seule : c'est une **deuxième sécurité réactive**
+posée au-dessus du Token Ghost permanent (fenêtre normale courte, ex. 10 min, sur tous les
+transferts — cf. §0bis).
+
+#### Principe
+
+Quand le trafic du jour est jugé anormal, on **allonge la fenêtre Ghost** du périmètre suspect, on
+**publie une alerte sur la balise de risque** (lecture par les protocoles DeFi en aval, volet 3),
+et on **attend un audit humain**. L'allongement est **auto-expirant** : si l'humain ne confirme
+rien, la fenêtre revient d'elle-même à la normale. Aucune action humaine n'est requise pour
+« défaire » une fausse alerte.
+
+#### Trois verbes distincts (lève la contradiction « l'IA ne décide jamais seule » vs « tout surveillant peut geler »)
+
+| Action | Qui décide | Réversibilité |
+| ------ | ---------- | ------------- |
+| **Retarder** (allonger la fenêtre d'un périmètre) | surveillant / IA, seul | **expire tout seul** |
+| **Détruire** le Ghost suspect d'un périmètre | humains, **multisig** | irréversible |
+| **Pause globale** du protocole | humains, **multisig** | réversible, coûteuse, dernier recours |
+
+L'IA ne « bloque » jamais : elle **retarde**, localement, de façon auto-expirante (veto
+asymétrique respecté — direction sûre uniquement, jamais raccourcir ni libérer). La formulation
+« l'IA ne décide jamais seule d'un blocage » (CLAUDE.md, response/orchestrator.py) doit se lire :
+l'IA ne décide jamais seule d'une **destruction** ni d'une **pause globale**.
+
+Exception purement on-chain, sans IA : si un invariant dur est violé (émis > f(collatéral)), le
+contrat refuse. C'est le volet 1.
+
+#### Distinguer attaque et croissance légitime (répond à §2)
+
+- **Ratios normalisés**, jamais de volumes absolus : mint/collatéral, volume/offre en circulation.
+  La croissance légitime laisse les ratios stables → invisible pour le détecteur.
+- **Dispersion** comme discriminant principal : la croissance légitime est **large** (beaucoup
+  d'adresses/contreparties, adresses anciennes) ; l'attaque est **concentrée** (peu de
+  destinations, adresses neuves, sortie rapide). Déclencheur = **volume élevé ET dispersion
+  effondrée**, pas volume élevé seul.
+- Baseline **médiane + écart absolu médian (MAD)** sur fenêtre glissante (robuste au bruit qu'un
+  attaquant injecterait pour élargir une baseline moyenne/écart-type ; s'adapte seule à la
+  croissance progressive).
+- Soupape : **reconnaissance de croissance signée en multisig** pour relever la baseline sur un
+  événement connu (listing, campagne).
+
+#### Ciblage chirurgical — modèle de contamination par **ratio par adresse**
+
+**Condition** : le ciblage n'est possible que si le Ghost porte sa **provenance**. Sans lignage,
+c'est tout-ou-rien (allonger pour tout le monde). Ce lignage est **le même** que celui requis par
+#33 (destruction d'une chaîne) → un seul mécanisme, deux usages (retarder ET détruire).
+
+**Mécanisme retenu** (on écarte FIFO/lots : coût gas explosif + manipulable par micro-lots ; et
+« le plus suspect gagne » : effet tache d'huile qui marque tout le token) :
+
+> On ne suit pas des pièces. Chaque adresse porte **un seul nombre** : la **fraction suspecte** de
+> son solde Ghost (son « ratio de contamination »). À chaque transfert, le montant envoyé porte le
+> **ratio courant de l'expéditeur** ; le destinataire met à jour son ratio en **moyenne pondérée
+> par les montants**.
+
+Propriétés :
+
+- **Coût constant** par transfert (une multiplication) — indépendant de la profondeur/fragmentation.
+  Supprime le problème de limite de gas de #33.
+- **Conservation du soupçon** : fractionner et disperser **ne nettoie pas** (la somme des soupçons
+  est conservée) → anti-blanchiment par construction.
+- **Pas de tache d'huile** : une grosse adresse légitime touchée par une goutte de suspect finit à
+  un ratio minuscule → faux positifs limités.
+- **Réversible** : audit blanchissant → ratios concernés remis à 0.
+
+#### Réponses aux questions associées (anciennement ouvertes dans #33)
+
+- **Que détruit-on ?** La **fraction suspecte** de chaque adresse (ratio × solde Ghost non
+  converti), pas tout le solde. Porteur de bonne foi à 2 % de contamination → perd 2 %.
+  Proportionnel à l'exposition réelle.
+- **Ghost déjà converti avant le gel ?** Irréversible, et **voulu**. La conversion n'est permise
+  que si le ratio (et le **montant absolu suspect**, cf. ci-dessous) est sous seuil au moment de la
+  conversion. Un lignage marqué suspect **avant** conversion reste en fenêtre allongée.
+- **Gas / profondeur de chaîne ?** Supprimé : plus de chaîne à parcourir, un ratio par adresse mis
+  à jour à la volée.
+- **Pools AMM ?** Un pool est une adresse avec un ratio ; il se redistribue au retrait de
+  liquidité (soupçon conservé). La balise de risque publie le ratio du pool ; l'aval peut le
+  refuser en garantie au-dessus d'un seuil. Pool ni figé ni vidé.
+
+#### Garde-fou sur le surveillant lui-même (extension du volet 2)
+
+Pour qu'une IA buguée/compromise ne gèle pas l'économie :
+
+- facteur d'allongement **maximal** par périmètre ;
+- **budget de quarantaine** : part maximale de l'offre sous fenêtre allongée à un instant donné ;
+  au-delà, extension = humain requis.
+
+→ le volet 2 affirme alors **deux** bornes testables par fuzzing Foundry : **perte max bornée**
+ET **friction max bornée** (« même notre surveillance ne peut geler plus de X % de l'offre »).
+
+#### Limites assumées (à dire au jury, pas à cacher)
+
+- Pouvoir annuler des transferts = **pouvoir de clawback** : hypothèse de confiance, pas gratuit.
+  « Le protocole peut récupérer des fonds » ⇒ « le protocole peut vous en reprendre ».
+- Le ratio dit « quelle **proportion** est suspecte », pas « quelles pièces » — suffisant pour
+  geler/détruire/alerter proportionnellement.
+- **Auto-contamination défensive** : un attaquant peut se mélanger du légitime pour baisser son
+  ratio sous le seuil. Parade : seuils de conversion/allongement dépendant **aussi du montant
+  absolu suspect** (conservé, insensible à la dilution), pas seulement du ratio.
+- **Tous les seuils** (conversion, allongement, alerte balise, budget de quarantaine) sont **à
+  mesurer** sur le trafic synthétique. Aucun chiffre inventé (cf. `docs/CLAIMS.md`).
