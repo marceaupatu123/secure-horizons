@@ -164,8 +164,13 @@ vague, répartition par module, tâches en cours. **Lecture seule** (ne modifie 
 
 ## 7. Toute la documentation
 
+> 🆕 **Nouveau sur le projet et novice en crypto ?** Commence par la doc illustrée dans
+> **`docs-site/`** (Mintlify) : elle explique tout avec des analogies simples. Lance-la avec
+> `cd docs-site && mintlify dev`, ou lis directement les fichiers `.mdx`.
+
 | Fichier | Contenu |
 |---------|---------|
+| `docs-site/` | **Doc grand public illustrée (Mintlify), pour comprendre le projet sans jargon.** |
 | `docs/AI_WORKFLOW.md` | **Comment dialoguer avec ton IA sans empiéter sur les autres. À lire en premier.** |
 | `docs/ROADMAP.md` | Ordre de travail en vagues + dépendances entre tâches. |
 | `docs/TEAM.md` | Qui possède quel module, branches, contraintes AWS, checklist de démarrage. |

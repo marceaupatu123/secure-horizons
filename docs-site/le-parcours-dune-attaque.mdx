@@ -1,0 +1,61 @@
+---
+title: "Le parcours d'une attaque"
+description: "On suit un voleur étape par étape et on voit où il est stoppé."
+---
+
+Voici comment le bouclier réagit, selon ce que tente le voleur. On suit le chemin d'une demande
+de création de jetons.
+
+## Le schéma complet
+
+```mermaid
+flowchart TD
+    A[Un voleur a volé une clé valide] --> B[Il demande de minter des jetons]
+    B --> C{Volet 1 : le contrat calcule<br/>le montant depuis le vrai dépôt}
+    C -->|Montant gonflé impossible| D[Il ne peut pas choisir le montant<br/>→ attaque de masse neutralisée]
+    C -->|Il reste sous les plafonds| E[Émission d'un TOKEN GHOST<br/>pas le vrai jeton]
+    E --> F[Fenêtre d'observation ~10 min]
+    F --> G{Les surveillants voient-ils<br/>une anomalie ?}
+    G -->|Non| H[Conversion 1:1 en vrai jeton<br/>→ activité légitime, tout va bien]
+    G -->|Oui| I[Un surveillant demande un GEL]
+    I --> J[Un humain multisig confirme]
+    J --> K[Les Tokens Ghost suspects<br/>sont DÉTRUITS]
+    K --> L[Balise de risque activée<br/>→ les autres plateformes refusent le jeton]
+    L --> M[Journal d'audit + rapport DORA]
+```
+
+## Lecture pas à pas
+
+<Steps>
+  <Step title="Le voleur tente un mint énorme">
+    **Volet 1** entre en jeu : le contrat ne lit pas le montant demandé, il le **recalcule** à
+    partir du vrai dépôt. Le gros montant frauduleux est **impossible**. L'attaque « à la Resolv »
+    est neutralisée ici.
+  </Step>
+  <Step title="Le voleur ruse et reste discret">
+    Il tente de rester **sous les plafonds** pour ne pas déclencher le contrat. Il reçoit alors
+    des **Tokens Ghost** (pas le vrai jeton) et doit attendre la fenêtre d'observation.
+  </Step>
+  <Step title="Les surveillants observent">
+    Pendant la fenêtre, les gardiens (règles, IA, signaux) analysent. Mouvement suspect ?
+    N'importe lequel peut **demander un gel**.
+  </Step>
+  <Step title="Un humain tranche">
+    Le gel est confirmé par une **validation humaine à plusieurs** (multisig). L'IA n'a pas décidé
+    seule.
+  </Step>
+  <Step title="Les faux jetons disparaissent">
+    Les Tokens Ghost du lot suspect sont **détruits** avant d'être convertis. Le vrai jeton n'a
+    jamais été créé frauduleusement : **le protocole reste intact**.
+  </Step>
+  <Step title="On protège les autres + on documente">
+    La **balise de risque** prévient les autres plateformes (anti-contagion), et le **journal
+    d'audit + rapport DORA** gardent la trace de tout.
+  </Step>
+</Steps>
+
+<Note>
+**Le point important** : à chaque étape, soit l'attaque est bloquée, soit le pire cas est un
+**retard** (le temps que les surveillants et l'humain tranchent). Jamais une perte directe pour le
+protocole.
+</Note>

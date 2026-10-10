@@ -1,0 +1,73 @@
+---
+title: "Les trois volets"
+description: "Les trois protections qui composent le bouclier, expliquées simplement."
+---
+
+Notre bouclier a **trois couches**. Chacune bloque le voleur à un endroit différent.
+
+## Volet 1 — Le montant est verrouillé
+
+<Note>
+**Le voleur ne choisit plus combien minter. Le contrat le calcule lui-même.**
+</Note>
+
+Avant : la signature disait « fabrique 80 millions de jetons ». Le voleur mettait le chiffre qu'il
+voulait.
+
+Maintenant : la signature dit seulement **« traite la demande n°42 »**. Le contrat va regarder
+**le vrai dépôt** associé à cette demande et fabrique **exactement ce qui correspond** — pas un
+jeton de plus.
+
+**Analogie** : au lieu de signer un chèque en blanc, tu signes « rembourse la facture n°42 ». Même
+si on vole ta signature, on ne peut pas écrire le montant qu'on veut.
+
+Options possibles (à décider par l'équipe) : un plafond par opération, un plafond par heure,
+exiger plusieurs signataires, ou séparer les clés.
+
+## Volet 2 — La perte maximale est plafonnée
+
+<Note>
+**Objectif : pouvoir dire « même avec les clés volées, la perte maximale est de X ».**
+</Note>
+
+On fixe des **plafonds** et une **fenêtre de sécurité** (voir les garde-fous). Résultat : il
+existe un **montant maximum** que le voleur peut faire perdre, et pas plus.
+
+Comment on le vérifie ? Avec des **tests automatiques** qui essaient par tous les moyens de
+dépasser cette limite (on appelle ça des *tests d'invariants* et du *fuzzing* — des robots qui
+bombardent le contrat de scénarios).
+
+<Warning>
+On dit toujours **« vérifié par des tests »**, **jamais « prouvé »**. Un test qui ne trouve pas de
+faille ne garantit pas qu'il n'y en a aucune. Honnêteté avant tout, surtout face au jury.
+</Warning>
+
+## Volet 3 — Le mur anti-contagion
+
+<Note>
+**Empêcher les dégâts de se propager aux autres acteurs.**
+</Note>
+
+Dans l'attaque Resolv, une partie des dégâts est venue d'**autres plateformes** qui ont continué
+à accepter le jeton compromis comme s'il avait de la valeur.
+
+Notre idée : une **« balise de risque »** — un petit panneau numérique où les surveillants peuvent
+afficher « ⚠️ danger sur ce jeton ». Un **faux marché de prêt** (une maquette, pour la démo) lit
+cette balise et **cesse immédiatement d'accepter le jeton** comme garantie.
+
+**Analogie** : quand une banque signale une carte volée, tous les commerçants la refusent d'un
+coup. La balise joue ce rôle de signalement partagé.
+
+Pour la démo, on compte **mesurer** les pertes évitées (avec balise) vs subies (sans balise). Les
+chiffres seront mesurés, pas inventés.
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Les garde-fous" icon="lock" href="/les-garde-fous">
+    La quarantaine « Token Ghost » et les surveillants multiples.
+  </Card>
+  <Card title="Parcours d'une attaque" icon="route" href="/le-parcours-dune-attaque">
+    On voit les trois volets à l'œuvre, étape par étape.
+  </Card>
+</CardGroup>

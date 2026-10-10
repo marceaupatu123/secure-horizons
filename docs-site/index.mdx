@@ -1,0 +1,51 @@
+---
+title: "Secure Horizons"
+description: "Un bouclier automatique contre le vol d'argent dans la finance décentralisée. Expliqué simplement."
+---
+
+<Note>
+Cette doc est écrite pour des **novices en crypto**. Aucun jargon n'est supposé connu : tout est
+expliqué avec des images du quotidien. Pour la doc technique de l'équipe, voir le dossier `docs/`.
+</Note>
+
+## En une phrase
+
+**Secure Horizons détecte et bloque automatiquement un vol d'argent sur la blockchain, même quand
+le voleur possède une clé valide.**
+
+Notre inspiration : le hack **Resolv** (mars 2026), où un attaquant a volé une clé de signature,
+fabriqué une énorme quantité de jetons sans contrepartie, puis s'est enfui avec les fonds.
+
+## L'analogie à retenir
+
+Imagine une **banque** où une imprimante fabrique des billets.
+
+- Normalement, un employé signe une autorisation, et l'imprimante fabrique le montant autorisé.
+- Un voleur a **copié la signature de l'employé**. Il peut donc demander à l'imprimante de
+  fabriquer **autant de faux billets qu'il veut**, puis partir avec.
+
+La plupart des systèmes de sécurité surveillent la sortie et donnent l'alerte… **après** que les
+billets soient imprimés et sortis. Trop tard.
+
+**Notre pari : rendre l'imprimante elle-même intelligente**, pour qu'une signature volée ne
+permette presque rien.
+
+<CardGroup cols={2}>
+  <Card title="Le problème" icon="triangle-exclamation" href="/le-probleme">
+    Pourquoi une clé volée est si dangereuse, et pourquoi réagir après coup ne suffit pas.
+  </Card>
+  <Card title="L'idée clé" icon="lightbulb" href="/lidee-cle">
+    « La sécurité vit dans le contrat » : qu'est-ce que ça veut dire concrètement.
+  </Card>
+  <Card title="Les trois volets" icon="layer-group" href="/les-trois-volets">
+    Les trois protections qui composent le bouclier.
+  </Card>
+  <Card title="Parcours d'une attaque" icon="route" href="/le-parcours-dune-attaque">
+    On suit un voleur étape par étape et on voit où il est stoppé.
+  </Card>
+</CardGroup>
+
+<Warning>
+Tout ce projet utilise des **données et des comptes de test** uniquement. Aucune vraie valeur,
+aucune vraie clé. Et on ne promet au jury **que ce qu'on a mesuré** — jamais « prouvé ».
+</Warning>

@@ -1,0 +1,81 @@
+---
+title: "Les garde-fous"
+description: "La quarantaine Token Ghost et les surveillants multiples."
+---
+
+En plus des trois volets, deux renforts rendent le système plus solide.
+
+## La quarantaine « Token Ghost »
+
+<Note>
+**Un jeton fraîchement créé n'est pas tout de suite « le vrai » : c'est d'abord un fantôme en
+observation.**
+</Note>
+
+Au lieu de bloquer sèchement les nouveaux jetons, on émet un **Token Ghost** (jeton fantôme) :
+
+<Steps>
+  <Step title="Création">
+    Un mint produit un **Token Ghost**, pas encore le vrai jeton.
+  </Step>
+  <Step title="Période d'observation (ex. 10 min)">
+    Le Token Ghost est **librement échangeable** pendant un court délai. Les surveillants
+    regardent s'il y a une anomalie.
+  </Step>
+  <Step title="Si tout va bien">
+    Le Token Ghost est converti **1 pour 1** en vrai jeton. Rien d'anormal, tout le monde est
+    content.
+  </Step>
+  <Step title="Si fraude détectée et gel confirmé">
+    Les Tokens Ghost issus du lot suspect sont **purement et simplement détruits**. Le vrai jeton
+    n'a jamais été émis frauduleusement.
+  </Step>
+</Steps>
+
+**L'idée économique** (astucieuse) : le risque est transféré à un **marché secondaire**. Des
+spéculateurs peuvent acheter des Tokens Ghost moins cher (par ex. 0,95 au lieu de 1), en pariant
+qu'ils seront convertis. S'ils se trompent (fraude), **c'est eux qui absorbent la perte, pas le
+protocole**.
+
+<Warning>
+C'est une piste **proposée, à valider en équipe**. Elle soulève de vraies questions (est-ce juste
+vis-à-vis des spéculateurs ? conforme à l'esprit de la régulation ?) — listées dans
+`docs/OPEN_QUESTIONS.md`.
+</Warning>
+
+## Les surveillants multiples
+
+<Note>
+**Plusieurs gardiens indépendants, et aucun n'a tous les pouvoirs.**
+</Note>
+
+On a plusieurs **surveillants** qui regardent l'activité : des **règles** simples, un modèle
+**d'IA / machine learning**, et des **signaux** sur les mouvements suspects (gros montant vers une
+adresse toute neuve, découpage en petits morceaux, sorties rapides…).
+
+Règle d'or de sécurité, le **veto asymétrique** :
+
+<CardGroup cols={2}>
+  <Card title="Tout surveillant peut RALENTIR" icon="hand">
+    N'importe quel gardien peut demander un **gel** (mettre en pause). Dans le doute, on ralentit.
+  </Card>
+  <Card title="Personne ne peut ACCÉLÉRER" icon="ban">
+    Aucun gardien ne peut forcer une libération. Seul un **humain** (via une validation à
+    plusieurs, dite *multisig*) peut lever un gel.
+  </Card>
+</CardGroup>
+
+Conséquence : le **pire cas** d'une erreur de surveillant, c'est un simple **retard**, jamais une
+perte. Et l'**IA n'est qu'un gardien parmi d'autres** — elle alerte, elle ne décide jamais seule
+d'un blocage définitif.
+
+## La preuve de conformité (DORA)
+
+**DORA** est une réglementation européenne sur la résilience numérique du secteur financier. Pour
+y répondre, le système tient automatiquement :
+
+- un **journal d'audit** : la trace horodatée de chaque alerte et décision ;
+- un **rapport d'incident pré-rempli** : généré par l'IA quand un incident est confirmé.
+
+**Analogie** : la boîte noire d'un avion. Tout est enregistré pour pouvoir expliquer ce qui s'est
+passé, après coup.

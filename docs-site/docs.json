@@ -1,0 +1,46 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Secure Horizons",
+  "colors": {
+    "primary": "#2563EB",
+    "light": "#60A5FA",
+    "dark": "#1E3A8A"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Comprendre le projet",
+        "groups": [
+          {
+            "group": "Démarrer ici",
+            "pages": [
+              "index",
+              "le-probleme",
+              "lidee-cle"
+            ]
+          },
+          {
+            "group": "Comment ça marche",
+            "pages": [
+              "les-trois-volets",
+              "les-garde-fous",
+              "le-parcours-dune-attaque"
+            ]
+          },
+          {
+            "group": "Pour l'équipe",
+            "pages": [
+              "qui-fait-quoi",
+              "glossaire"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "footerSocials": {
+    "github": "https://github.com/marceaupatu123/secure-horizons"
+  }
+}

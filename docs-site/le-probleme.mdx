@@ -1,0 +1,53 @@
+---
+title: "Le problème"
+description: "Pourquoi une clé volée est si dangereuse en finance décentralisée."
+---
+
+## C'est quoi, « minter » ?
+
+Sur une blockchain, **minter** = **fabriquer de nouveaux jetons** (des unités de monnaie
+numérique). C'est comme une imprimante à billets, mais numérique.
+
+Normalement, on ne fabrique de nouveaux jetons que si quelqu'un a déposé une vraie contrepartie
+(appelée **collatéral** — pense à une garantie, un dépôt réel). Un jeton = une vraie valeur
+derrière.
+
+## C'est quoi, une « clé » ?
+
+Pour autoriser une action sur la blockchain, on la **signe** avec une **clé privée** (un mot de
+passe secret ultra-puissant). Celui qui a la clé peut agir au nom de son propriétaire.
+
+<Warning>
+Une clé privée, c'est **tout le pouvoir**. Si quelqu'un la vole, le système pense que c'est le
+vrai propriétaire qui agit. Il n'y a pas de « mot de passe oublié ».
+</Warning>
+
+## Ce qui s'est passé chez Resolv (notre inspiration)
+
+<Steps>
+  <Step title="Vol de la clé">
+    L'attaquant met la main sur une clé qui a le droit d'autoriser des créations de jetons.
+  </Step>
+  <Step title="Fabrication massive">
+    Avec cette clé, il s'autorise lui-même à minter une **énorme quantité** de jetons **sans
+    aucune contrepartie réelle**. Des jetons « vides ».
+  </Step>
+  <Step title="Fuite">
+    Il revend ou déplace rapidement ces jetons avant que quiconque réagisse, et récupère de la
+    vraie valeur en échange.
+  </Step>
+</Steps>
+
+## Pourquoi « surveiller et réagir » ne suffit pas
+
+Beaucoup de systèmes posent une alarme : « tiens, un gros mint bizarre, alerte ! ». Le souci :
+
+- Le mint frauduleux **a déjà eu lieu** quand l'alarme sonne.
+- Sur une blockchain, une opération validée est **très difficile à annuler**.
+- Le voleur peut vider les fonds en quelques secondes.
+
+<Note>
+C'est le cœur de notre réflexion : si la seule défense est de **réagir après**, on a déjà perdu
+la première salve. Il faut empêcher le dégât **au moment où il se produit**. → voir
+[L'idée clé](/lidee-cle).
+</Note>
