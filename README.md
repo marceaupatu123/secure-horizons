@@ -69,7 +69,7 @@ Puis **vérifier son accès RPC Fuji + faucet AVAX de test** et le `BEDROCK_MODE
 Vérifier que tout marche :
 
 ```bash
-make test        # 6 tests de fumée (un par module) doivent passer
+make test        # tous les tests doivent passer (au moins un test de fumée par module)
 ```
 
 > `make` pas installé sous Windows ? Soit `winget install GnuWin32.Make` / Git Bash / WSL, soit
@@ -88,7 +88,7 @@ make test        # 6 tests de fumée (un par module) doivent passer
 | `response/` | Orchestration de la réponse graduée (gel, validation humaine, journal). |
 | `dashboard/` | Interface de démo métier (Streamlit). |
 | `shared/` | Code commun : config (`.env`), limiteur Bedrock, modèles de données. **Zone sensible.** |
-| `data/` | Données synthétiques (fictives) — scénarios décrits dans son README. |
+| `data/` | Générateur de données synthétiques (fictives, JSONL) : `make data`. Scénarios décrits dans son README. |
 | `docs/` | Toute la doc d'équipe (voir §7). |
 | `tools/` | Outils d'équipe hors modules (ex. dashboard d'avancement). |
 | `.github/` | CI (GitHub Actions), gabarit de PR, CODEOWNERS. |
@@ -96,7 +96,9 @@ make test        # 6 tests de fumée (un par module) doivent passer
 | `.kiro/` | Config Kiro partagée : steering (règles), hooks (automatisations). |
 
 Chaque module a un `README.md` (rôle, propriétaire, comment le lancer) et un dossier `tests/`.
-Chaque `python -m <module>` tourne déjà (squelette qui affiche « à implémenter »).
+Chaque `python -m <module>` tourne seul. Déjà implémentés : `response` (`python -m response`,
+démo fictive de la réponse graduée + journal d'audit) et `data` (`python -m data.generate`). Les
+autres affichent encore « à implémenter ».
 
 ---
 
