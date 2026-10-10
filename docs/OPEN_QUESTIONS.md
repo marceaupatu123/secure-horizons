@@ -3,6 +3,27 @@
 Ce fichier liste les décisions de conception **non tranchées**. Aucune n'est décidée par un
 assistant IA : on les discute et on les acte ici (ajouter la décision + la date sous chaque point).
 
+## 0. Décision structurante — _proposé, à valider en équipe_
+
+**La sécurité vit-elle dans le contrat (montant dérivé on-chain, plafonds, quarantaine, multisig)
+ou seulement autour (surveillance + pause) ?**
+
+Sous-questions liées (à ne pas trancher ici) :
+
+- Le **montant dérivé on-chain** est-il compatible avec notre faux protocole, et que devient la
+  **signature** (autorise « traiter la demande n°X » plutôt qu'un montant) ?
+- Quels **plafonds** (par opération, par heure, éventuellement adaptatifs) et quelle **fenêtre de
+  quarantaine**, et quel impact sur les utilisateurs légitimes ?
+- Comment **calculer et présenter la perte maximale bornée**, et sous quelles **hypothèses**
+  (plafonds appliqués on-chain, clés d'administration non compromises) ?
+- **Qui peut geler, qui peut lever un gel**, et comment (multisig, rôles, veto asymétrique) ?
+- Faut-il construire la **balise de risque** et le **faux marché de prêt** (volet 3), ou rester
+  sur le **contrat seul** si le temps manque ?
+- **Combien de surveillants** et de quels types (règles, ML, signaux de transferts) ?
+- Faut-il tenter la **prédiction conforme** pour borner les faux positifs, ou rester sur des
+  **seuils simples** ?
+- **Ordre de priorité si le temps manque** (proposition : volet 1, puis volet 2, puis volet 3).
+
 ## 1. Détection du mint anormal
 
 - Quels **invariants** doit respecter le système de mint (ex : tokens émis ≤ f(collatéral)) ?

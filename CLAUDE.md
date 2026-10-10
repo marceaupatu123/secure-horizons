@@ -1,13 +1,20 @@
 # CLAUDE.md — consignes pour les assistants IA du projet
 
-## But du projet (5 lignes)
+## But du projet (5 lignes) — _proposé, à valider en équipe_
 
-Détecter et répondre automatiquement à un exploit DeFi, inspiré du hack Resolv (clé compromise,
-mint massif de tokens non collatéralisés, puis sortie des fonds). On surveille deux moments :
-le **mint anormal** (trop de tokens par rapport au collatéral) et les **transferts anormaux**
-(gros montants vers adresses neuves, découpage, sorties rapides). La réponse est **graduée**
-(alerte → pause réversible → validation humaine), avec une dimension conformité **DORA**
-(journal d'audit, rapport d'incident pré-rempli). Toutes les données sont fictives.
+Constat (inspiré Resolv) : l'attaquant détient une clé valide et signe lui-même ses autorisations
+de mint ; réagir **après coup** arrive trop tard. La sécurité doit donc vivre **dans le contrat**,
+au moment où il valide l'autorisation — principe « une clé volée ne doit presque rien valoir ».
+Trois volets proposés : **(1)** la signature autorise « traiter la demande n°X », le contrat
+dérive lui-même le montant du dépôt on-chain ; **(2)** perte maximale **bornée et testée** (tests
+d'invariants/fuzzing Foundry, jamais « prouvée ») ; **(3)** pare-feu de contagion (balise de
+risque + faux marché de prêt). Renforts : quarantaine à veto asymétrique, surveillants multiples,
+IA simple surveillant. Données **fictives** uniquement.
+
+## Principe de conception — _proposé, à valider en équipe_
+
+> La sécurité vit dans le contrat ; la surveillance est un renfort ; l'IA ne décide jamais seule
+> d'un blocage ; on ne promet que ce qu'on mesure.
 
 ## Conventions de code
 

@@ -1,5 +1,15 @@
 # TEAM.md — organisation de l'équipe 20
 
+## Résumé du projet — _proposé, à valider en équipe_
+
+Défense contre un exploit DeFi (inspiré Resolv). Orientation proposée : **la sécurité vit dans le
+contrat** (« une clé volée ne doit presque rien valoir »). Trois volets : **(1)** montant du mint
+**dérivé on-chain** (la signature autorise « traiter la demande n°X ») ; **(2)** **perte maximale
+bornée et testée** (invariants/fuzzing, jamais « prouvée ») ; **(3)** **pare-feu de contagion**
+(balise de risque + faux marché de prêt). Renforts : quarantaine à veto asymétrique, surveillants
+multiples (l'IA ne décide jamais seule), journal d'audit **DORA**. Détails : `docs/OPEN_QUESTIONS.md`,
+`docs/CLAIMS.md`.
+
 ## Répartition des modules
 
 À compléter : un propriétaire par module, une branche par personne/fonctionnalité.

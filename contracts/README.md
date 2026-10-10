@@ -5,7 +5,24 @@
 - **Lancer** : installer Foundry (ci-dessous), puis `forge build` / `forge test` depuis `contracts/`.
 
 > Le projet Foundry n'est **pas encore initialisé** (`forge` n'était pas installé au moment du
-> setup). Le propriétaire du module initialise Foundry après installation.
+> setup). Le propriétaire du module initialise Foundry après installation (voir plus bas).
+
+## À produire plus tard — _proposé, à valider en équipe_
+
+Aucun code n'est écrit pour l'instant. Éléments envisagés (orientation « sécurité dans le
+contrat ») :
+
+- **Contrat « vulnérable »** : accepte tout montant tant que la signature est valide (reproduit le
+  schéma d'attaque à des fins de démo).
+- **Contrat « protégé »** : le montant est **dérivé on-chain** du dépôt (la signature autorise
+  seulement « traiter la demande n°X ») + les garde-fous retenus (plafonds, quarantaine, multisig,
+  séparation des clés) — **volet 1**.
+- **Tests d'invariants / fuzzing** cherchant à dépasser la **perte maximale bornée** — **volet 2**.
+  À formuler comme « vérifié par tests d'invariants », jamais « prouvé ».
+- **Balise de risque** + **faux marché de prêt** (simulé, fictif) qui cesse d'accepter le token
+  gelé comme garantie — **volet 3, optionnel**.
+
+Détails et arbitrages ouverts : voir `docs/OPEN_QUESTIONS.md` et `docs/CLAIMS.md`.
 
 ## Installer Foundry (Windows)
 

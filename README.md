@@ -1,12 +1,15 @@
 # Secure Horizons — Guardians of Value (Équipe 20)
 
-Système de détection et de réponse automatique à un exploit DeFi, inspiré du hack Resolv
-(mars 2026 : clé de signature compromise, mint de ~80M de tokens non collatéralisés, puis
-sortie des fonds). On surveille **deux moments** de l'attaque : le **mint anormal** (trop de
-tokens pour le collatéral) et les **transferts anormaux** (gros montants vers adresses neuves,
-découpage, sorties rapides vers des échanges). La réponse est **graduée** (alerte → pause
-réversible → validation humaine) et complétée par une dimension **conformité DORA** (journal
-d'audit, rapport d'incident pré-rempli).
+Système de défense contre un exploit DeFi, inspiré du hack Resolv (mars 2026 : clé de signature
+compromise, mint de tokens non collatéralisés, puis sortie des fonds). **Orientation proposée (à
+valider en équipe)** : comme l'attaquant détient une clé valide, réagir après coup arrive trop
+tard, donc **la sécurité vit dans le contrat** (« une clé volée ne doit presque rien valoir »).
+Trois volets : **(1)** la signature autorise « traiter la demande n°X » et le contrat **dérive le
+montant** du dépôt on-chain ; **(2)** une **perte maximale bornée et testée** (invariants/fuzzing
+Foundry, jamais « prouvée ») ; **(3)** un **pare-feu de contagion** (balise de risque + faux
+marché de prêt). En renfort : quarantaine à veto asymétrique, **surveillants** multiples (règles,
+ML, transferts anormaux) qui peuvent demander un gel sans jamais décider seuls, journal d'audit
+**DORA** et rapport d'incident. Voir `CLAUDE.md`, `docs/OPEN_QUESTIONS.md` et `docs/CLAIMS.md`.
 
 > ESSECKATHON — Track « Fintech Security : Guardians of Value ». Hackathon 48h.
 

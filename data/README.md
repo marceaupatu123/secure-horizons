@@ -7,20 +7,25 @@ Ce dossier ne contient pour l'instant que cette description. **Aucune donnée n'
 les scénarios ci-dessous seront produits plus tard par l'équipe (générateur à définir, voir
 `docs/OPEN_QUESTIONS.md`).
 
-## Scénarios à produire
+## Scénarios à produire — _proposé, à valider en équipe_
 
-### Scénario A — mint anormal de type Resolv (détecté au mint)
+### Scénario A — même attaque rejouée (vulnérable vs protégé)
 
-Trafic **normal** pendant une période, puis un **mint anormal** : émission d'un volume de tokens
-disproportionné par rapport au collatéral déposé (reproduit le schéma Resolv : clé compromise →
-mint massif non collatéralisé). L'anomalie doit être **détectable au moment du mint**.
+Une **autorisation signée** demandant un **montant anormal**, rejouée **sur le contrat
+vulnérable** (qui l'accepte) **puis sur le contrat protégé** (où le montant est dérivé on-chain du
+dépôt). But : montrer la différence d'issue entre les deux contrats.
 
-### Scénario B — mint discret, détection sur les transferts
+### Scénario B — attaquant sous les plafonds
 
-Variante où le **mint passe sous le radar** (volume suffisamment faible ou étalé pour ne pas
-déclencher l'alerte de mint). Ce sont alors les **transferts anormaux** qui déclenchent l'alerte :
-gros montants vers des **adresses neuves**, **découpage** (structuring) en plusieurs transferts,
-**sorties rapides** vers des points de sortie (échanges).
+L'attaquant **reste sous les plafonds** on-chain pour ne pas être arrêté par le contrat seul. Ce
+sont alors les **surveillants** (règles, ML, signaux de transferts anormaux) qui doivent le
+repérer et, le cas échéant, demander un gel.
+
+### Scénario C — gel et pare-feu de contagion _(si volet 3 retenu)_
+
+Un **gel est publié** sur la balise de risque, puis on **compare les mauvaises créances** d'un
+**faux marché de prêt** (simulé, fictif) **avec et sans** lecture de la balise de risque. Les
+chiffres sont à **mesurer**, pas à inventer.
 
 ## À définir plus tard (ne pas trancher ici)
 

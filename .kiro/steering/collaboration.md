@@ -3,12 +3,20 @@
 Ce fichier de steering est toujours inclus. Il reprend les règles de `CLAUDE.md` pour les
 assistants travaillant dans Kiro.
 
-## But du projet
+## But du projet — _proposé, à valider en équipe_
 
-Détection + réponse automatique à un exploit DeFi (inspiré Resolv : clé compromise, mint massif
-non collatéralisé, sortie des fonds). Surveillance du **mint anormal** et des **transferts
-anormaux**, réponse **graduée** (alerte → pause → validation humaine), conformité **DORA**
-(audit, rapport d'incident). Données **fictives** uniquement.
+Constat (inspiré Resolv) : l'attaquant détient une clé valide et signe lui-même ses mints ;
+réagir **après coup** arrive trop tard. La sécurité doit vivre **dans le contrat** (« une clé
+volée ne doit presque rien valoir »). Trois volets proposés : **(1)** la signature autorise
+« traiter la demande n°X », le contrat dérive le montant du dépôt on-chain ; **(2)** perte
+maximale **bornée et testée** (invariants/fuzzing Foundry, jamais « prouvée ») ; **(3)** pare-feu
+de contagion (balise de risque + faux marché de prêt). Renforts : quarantaine à veto asymétrique,
+surveillants multiples, IA simple surveillant. Données **fictives** uniquement.
+
+## Principe de conception — _proposé, à valider en équipe_
+
+> La sécurité vit dans le contrat ; la surveillance est un renfort ; l'IA ne décide jamais seule
+> d'un blocage ; on ne promet que ce qu'on mesure.
 
 ## Conventions de code
 
