@@ -21,6 +21,7 @@ Règles :
 |---|-------------------|------|-----|--------|--------|
 | 0 | Décision structurante : où vit la sécurité, et cœur du projet | 2026-10-10 | Équipe 20 | Tranché en équipe | — |
 | 0bis | Le Token Ghost s'applique-t-il au seul mint ou à tous les transferts ? | 2026-10-10 | Marceau | Tranché | PR #34 |
+| 3 | Réponse graduée : retarder ≠ bloquer, machine à états, quorums multisig | 2026-10-10 | Équipe 20 | Tranché en équipe | — |
 | 9 | Volet 2 : surveillance adaptative, allongement de fenêtre ciblé, contamination par ratio | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | PR #38 |
 
 ---
@@ -140,6 +141,98 @@ balise de risque et les signaux de la section 2.
 - #35 : que produit le transfert d'un Token Ghost (Ghost d'un Ghost) ?
 - #36 : que devient le collatéral quand on brûle un Ghost adossé (collatéral orphelin) ?
 - #37 : aligner `CLAIMS.md` sur l'objectif de la décision (solvabilité ou récupération).
+
+---
+
+## §3. Réponse graduée — automatique vs validation humaine
+
+### DÉCISION (2026-10-10, Équipe 20) — _tranché en équipe_
+
+Complète la §9 (trois verbes : retarder / détruire / pause globale) en tranchant les points
+laissés ouverts : vocabulaire, durées, ce qui est permis pendant un retard, quorums multisig, et
+la **machine à états** d'un périmètre. C'est la base directe de `response/orchestrator.py` et du
+modèle `ResponseAction` (`shared/`, `docs/CONTRACTS.md`).
+
+#### Vocabulaire — « retarder » n'est pas « bloquer »
+
+L'IA / un surveillant ne **bloque** jamais et ne met jamais en **pause** : elle **retarde**
+(allonge la fenêtre Ghost d'un périmètre), de façon **locale** et **auto-expirante**. La
+formulation historique « l'IA ne décide jamais seule d'un blocage » (CLAUDE.md,
+`response/orchestrator.py`) doit se lire : **l'IA ne décide jamais seule d'une destruction ni
+d'une pause globale**. Ce glissement de vocabulaire est acté ici pour lever toute contradiction
+apparente dans le code et la doc.
+
+#### Qui décide quoi (rappel §9, pour mémoire)
+
+- **Retarder** (allonger la fenêtre d'un périmètre) : surveillant / IA, **seul** ; **expire tout
+  seul**.
+- **Détruire** le Ghost suspect d'un périmètre : humains, **multisig** ; irréversible.
+- **Pause globale** du protocole : humains, **multisig** ; réversible, coûteuse, dernier recours.
+
+#### 1. Durée et facteur d'allongement
+
+- Facteur d'allongement **fixe et modeste** (proposition de référence : fenêtre normale 10 min →
+  fenêtre allongée 1 h). Pas d'allongement adaptatif pour l'instant.
+- Expiration liée à **`block.timestamp`** (durée réelle), **pas** à un nombre de blocs : plus
+  lisible en démo sur Fuji, où le temps de bloc varie.
+- Les valeurs exactes restent **à mesurer** sur le trafic synthétique (règle `docs/CLAIMS.md` :
+  aucun chiffre inventé).
+
+#### 2. Ce qui est permis pendant un retard (point clé)
+
+Pendant une fenêtre allongée, sur le périmètre suspect :
+
+- **La circulation reste autorisée** : les Ghost suspects peuvent encore être **transférés**. Le
+  modèle de contamination par ratio (§9) garantit que disperser **ne nettoie pas** (soupçon
+  conservé) ; inutile donc de geler la circulation.
+- **La conversion Ghost → vrai token est suspendue** tant que la fenêtre est allongée. On ne gèle
+  pas les fonds, on **retarde seulement la sortie** vers le vrai token.
+
+→ friction minimale et **locale** : on ne bloque personne, on retarde une conversion sur un
+périmètre ciblé.
+
+#### 3. Audit humain : opportunité, pas obligation bloquante
+
+- L'allongement ouvre une **fenêtre d'opportunité** pour un audit humain ; il n'exige aucune
+  action pour être « défait ».
+- **Silence = retour automatique à la normale** à l'expiration. Le biais par défaut favorise donc
+  **l'utilisateur légitime**, pas l'attaquant (bon biais pour les faux positifs).
+- L'audit peut escalader vers **détruire** ou **pause globale** (voir quorums ci-dessous).
+
+#### 4. Quorums multisig
+
+- **Détruire** le Ghost suspect d'un périmètre : **2 sur 3** guardians.
+- **Pause globale** (dernier recours, fort impact) : **unanimité 3 sur 3**.
+- **Lever** une pause globale : **même multisig** que pour la décréter. Aucun acteur seul ne peut
+  accélérer, libérer ou raccourcir (veto asymétrique respecté).
+- Implémentation hackathon : multisig **simulé** on-chain (`mapping(address => bool) guardians` +
+  compteur d'approbations), présenté honnêtement comme simulé — pas de Gnosis Safe.
+
+#### 5. Machine à états d'un périmètre (base de l'orchestrateur)
+
+```
+          volume élevé ET dispersion effondrée (§9)
+NORMAL ───────────────────────────────────────────────► RETARDÉ (fenêtre allongée)
+  ▲                                                         │
+  │  expiration (silence) : retour auto                     │  audit humain
+  └─────────────────────────────────────────────────────── ┤
+                                                            ├─► DÉTRUIT        (multisig 2/3, irréversible)
+                                                            └─► PAUSE_GLOBALE  (multisig 3/3, réversible via multisig)
+```
+
+- `NORMAL → RETARDÉ` : décidé par surveillant / IA, seul (direction sûre).
+- `RETARDÉ → NORMAL` : **automatique** à l'expiration (aucune action humaine requise).
+- `RETARDÉ → DÉTRUIT` : multisig 2/3 ; détruit `ratio × solde Ghost non converti` (§9).
+- `RETARDÉ → PAUSE_GLOBALE` : escalade, multisig 3/3 ; sortie de pause par le même multisig.
+
+### Reste ouvert
+
+- Relecture par l'équipe.
+- Valeurs exactes (facteur d'allongement, durées, seuils d'escalade) **à mesurer** sur le trafic
+  synthétique.
+- Notification de l'audit humain : canal et destinataires (hors périmètre on-chain).
+- Alignement du code sur le vocabulaire acté (`response/orchestrator.py`, `CLAUDE.md`) et des
+  champs `ResponseAction` dans `docs/CONTRACTS.md` sur cette machine à états.
 
 ---
 
