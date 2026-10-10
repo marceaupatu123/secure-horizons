@@ -210,3 +210,63 @@
 ```json
 {}
 ```
+
+---
+
+## GhostTokenMintEvent
+
+- **Producteur** : _(à définir)_
+- **Consommateur** : _(à définir)_
+- **Description** : _(à définir — émission d'un Token Ghost temporaire lors d'un mint, en quarantaine liquide)_
+
+### Champs à définir
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| _(à définir)_ | _(à définir)_ | _(à définir)_ |
+
+### Exemple JSON
+
+```json
+{}
+```
+
+---
+
+## GhostTokenRedemptionEvent
+
+- **Producteur** : _(à définir)_
+- **Consommateur** : _(à définir)_
+- **Description** : _(à définir — conversion 1:1 d'un Token Ghost en vrai token après le délai sans anomalie)_
+
+### Champs à définir
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| _(à définir)_ | _(à définir)_ | _(à définir)_ |
+
+### Exemple JSON
+
+```json
+{}
+```
+
+---
+
+## GhostTokenBurnEvent
+
+- **Producteur** : _(à définir)_
+- **Consommateur** : _(à définir)_
+- **Description** : _(à définir — destruction d'un Token Ghost issu d'un lot suspect suite à un gel confirmé)_
+
+### Champs à définir
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| _(à définir)_ | _(à définir)_ | _(à définir)_ |
+
+### Exemple JSON
+
+```json
+{}
+```

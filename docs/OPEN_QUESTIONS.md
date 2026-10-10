@@ -24,6 +24,20 @@ Sous-questions liées (à ne pas trancher ici) :
   **seuils simples** ?
 - **Ordre de priorité si le temps manque** (proposition : volet 1, puis volet 2, puis volet 3).
 
+## 0bis. Pivot « quarantaine liquide / Token Ghost » — _proposé, à valider en équipe_
+
+Questions existentielles ouvertes par ce pivot (le mint émet un **Token Ghost** librement
+échangeable, converti 1:1 après délai sans anomalie, **détruit** si un gel est confirmé ; le
+risque est transféré vers un marché secondaire spéculatif) :
+
+- Le **transfert de la perte financière** vers des acteurs du marché secondaire est-il conforme à
+  l'**esprit du règlement DORA**, qui vise à protéger l'écosystème global (et pas seulement le
+  protocole émetteur) ?
+- Comment gérer **techniquement la destruction** d'un Token Ghost qui a été **fragmenté et envoyé
+  à 50 adresses différentes** (ou plus) ?
+- Quel est l'**impact sur la liquidité** (pools DeFi) si un jeton échangeable **disparaît
+  soudainement** de leurs réserves ?
+
 ## 1. Détection du mint anormal
 
 - Quels **invariants** doit respecter le système de mint (ex : tokens émis ≤ f(collatéral)) ?

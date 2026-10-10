@@ -13,6 +13,7 @@
 | La **perte maximale est bornée**. | _(à définir — tests d'invariants / fuzzing Foundry cherchant à dépasser la borne ; « vérifié par tests d'invariants », **pas** de preuve formelle)_ | _(à définir — hypothèses : plafonds appliqués on-chain, clés d'administration non compromises)_ |
 | Un **gel protège les protocoles en aval**. | _(à définir — comparaison des mauvaises créances d'un faux marché de prêt avec et sans balise de risque)_ | _(à définir — marché simulé/fictif ; dépend de l'adoption de la balise par l'aval)_ |
 | Le **taux de faux positifs est mesuré** sur du trafic normal rejoué. | _(à définir — mesure sur un jeu de trafic normal synthétique)_ | _(à définir — la garantie suppose que le trafic de test ressemble au trafic de calibration)_ |
+| Le **protocole principal reste 100% solvable** même si l'attaquant contourne le Volet 1 (quarantaine liquide / Token Ghost). | _(à définir — vérifié par la destruction des Tokens Ghost avant conversion)_ | _(à définir — la perte financière n'est pas effacée : elle est absorbée par les acheteurs du marché secondaire)_ |
 
 ## Pistes futures (mentionnées, non implémentées — trop lourdes pour 48 h)
 

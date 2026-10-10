@@ -60,9 +60,12 @@ make test      # un test de fumée par module doit passer
 
 ## Documentation d'équipe
 
+- **`docs/AI_WORKFLOW.md` — comment dialoguer avec ton assistant IA sans empiéter sur le travail
+  des autres. À lire avant de commencer.**
 - `docs/TEAM.md` — qui possède quel module, branches, contraintes AWS.
 - `docs/CONTRACTS.md` — interfaces entre modules (à définir ensemble).
 - `docs/OPEN_QUESTIONS.md` — décisions de conception à trancher en équipe.
+- `docs/CLAIMS.md` — ce qu'on affirme au jury et comment on le vérifie (aucun chiffre sans mesure).
 - `CLAUDE.md` — but du projet, conventions de code, règles de collaboration.
 
 ## Règles d'or

@@ -27,6 +27,14 @@ Un **gel est publié** sur la balise de risque, puis on **compare les mauvaises 
 **faux marché de prêt** (simulé, fictif) **avec et sans** lecture de la balise de risque. Les
 chiffres sont à **mesurer**, pas à inventer.
 
+### Scénario D — marché secondaire du Token Ghost _(si quarantaine liquide retenue)_
+
+L'attaquant **génère des Tokens Ghost** et les **revend immédiatement** à des spéculateurs sur un
+**pool de liquidité simulé** (fictif). L'alerte est **confirmée**, les Tokens Ghost du lot suspect
+**disparaissent** (destruction par le contrat). On **mesure** les pertes **côté protocole**
+(attendu : zéro, à vérifier) **vs** les pertes **côté spéculateurs**. Les chiffres sont à
+**mesurer**, pas à inventer.
+
 ## À définir plus tard (ne pas trancher ici)
 
 - Format exact des fichiers (CSV / JSON / JSONL ?) et schéma des lignes.

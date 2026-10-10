@@ -10,13 +10,19 @@ réagir **après coup** arrive trop tard. La sécurité doit vivre **dans le con
 volée ne doit presque rien valoir »). Trois volets proposés : **(1)** la signature autorise
 « traiter la demande n°X », le contrat dérive le montant du dépôt on-chain ; **(2)** perte
 maximale **bornée et testée** (invariants/fuzzing Foundry, jamais « prouvée ») ; **(3)** pare-feu
-de contagion (balise de risque + faux marché de prêt). Renforts : quarantaine à veto asymétrique,
-surveillants multiples, IA simple surveillant. Données **fictives** uniquement.
+de contagion (balise de risque + faux marché de prêt). Renforts : **quarantaine liquide
+(« Token Ghost »)** — au lieu d'un sas strict, le mint émet un **Token Ghost librement échangeable**
+converti 1:1 contre le vrai token après un délai sans anomalie, et **détruit** si un gel est
+confirmé ; surveillants multiples ; IA simple surveillant. Données **fictives** uniquement.
 
 ## Principe de conception — _proposé, à valider en équipe_
 
 > La sécurité vit dans le contrat ; la surveillance est un renfort ; l'IA ne décide jamais seule
 > d'un blocage ; on ne promet que ce qu'on mesure.
+>
+> **Quarantaine liquide (Token Ghost)** : la sécurité du protocole est garantie par le **transfert
+> du risque vers un marché secondaire spéculatif** — le vrai token n'est jamais émis
+> frauduleusement, et la perte éventuelle est assumée par les acheteurs de Tokens Ghost.
 
 ## Conventions de code
 

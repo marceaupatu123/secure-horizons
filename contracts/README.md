@@ -21,6 +21,10 @@ contrat ») :
   À formuler comme « vérifié par tests d'invariants », jamais « prouvé ».
 - **Balise de risque** + **faux marché de prêt** (simulé, fictif) qui cesse d'accepter le token
   gelé comme garantie — **volet 3, optionnel**.
+- **Contrat ERC20 « Token Ghost »** (quarantaine liquide) : token temporaire **librement
+  échangeable**, convertible 1:1 contre le vrai token après délai sans anomalie, avec une
+  **fonction de destruction réservée au guardian** pour annuler les ghosts d'un lot suspect en cas
+  de gel confirmé — _proposé, à valider_.
 
 Détails et arbitrages ouverts : voir `docs/OPEN_QUESTIONS.md` et `docs/CLAIMS.md`.
 

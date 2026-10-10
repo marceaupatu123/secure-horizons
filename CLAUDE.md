@@ -8,13 +8,19 @@ au moment où il valide l'autorisation — principe « une clé volée ne doit p
 Trois volets proposés : **(1)** la signature autorise « traiter la demande n°X », le contrat
 dérive lui-même le montant du dépôt on-chain ; **(2)** perte maximale **bornée et testée** (tests
 d'invariants/fuzzing Foundry, jamais « prouvée ») ; **(3)** pare-feu de contagion (balise de
-risque + faux marché de prêt). Renforts : quarantaine à veto asymétrique, surveillants multiples,
-IA simple surveillant. Données **fictives** uniquement.
+risque + faux marché de prêt). Renforts : **quarantaine liquide (« Token Ghost »)** — au lieu d'un
+sas strict, le mint émet un **Token Ghost librement échangeable** converti 1:1 contre le vrai
+token après un délai sans anomalie, et **détruit** si un gel est confirmé ; surveillants
+multiples ; IA simple surveillant. Données **fictives** uniquement.
 
 ## Principe de conception — _proposé, à valider en équipe_
 
 > La sécurité vit dans le contrat ; la surveillance est un renfort ; l'IA ne décide jamais seule
 > d'un blocage ; on ne promet que ce qu'on mesure.
+>
+> **Quarantaine liquide (Token Ghost)** : la sécurité du protocole est garantie par le **transfert
+> du risque vers un marché secondaire spéculatif** — le vrai token n'est jamais émis
+> frauduleusement, et la perte éventuelle est assumée par les acheteurs de Tokens Ghost.
 
 ## Conventions de code
 
