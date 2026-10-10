@@ -152,8 +152,7 @@ risque est transféré vers un marché secondaire spéculatif) :
 
 ## 7. Interfaces entre modules (voir `docs/CONTRACTS.md`)
 
-> → **Spécifié dans la PR #53 (issue #2), en relecture d'équipe** (zone sensible `shared/` +
-> `docs/CONTRACTS.md`, review à 2). Les 13 modèles sont figés en Pydantic strict (`extra="forbid"`),
+> → **Spécifié et mergé (PR #53, issue #2 fermée).** Les 13 modèles sont figés en Pydantic strict (`extra="forbid"`),
 > identités EVM (adresses/hash validés), montants en entiers base units, timestamps UTC. Le soupçon
 > est porté par `contamination_ratio` (0–1) + `suspect_amount` (int). Détail complet et exemples
 > JSON dans `docs/CONTRACTS.md`. Reste à acter : relecture et merge de la PR.

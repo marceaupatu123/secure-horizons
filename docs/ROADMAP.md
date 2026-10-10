@@ -110,7 +110,7 @@ flowchart TD
 |------|-------|-------|----------|
 | [x] | #1 | sécurité dans le contrat vs seulement autour | oriente contracts + response. **Tranché** (OPEN_ANSWERS §0), issue fermée. |
 | [ ] | #3 | plafonds / fenêtre quarantaine / mode Token Ghost | #5, #8, #18. Mécanismes tranchés ; recentrée sur les **valeurs à mesurer** (`module:data`). |
-| [ ] | #2 | champs des modèles (CONTRACTS.md + shared/models.py) | presque tout le code (monitor, detection, response, llm). _(PR #53 ouverte, en relecture — zone sensible)_ |
+| [x] | #2 | champs des modèles (CONTRACTS.md + shared/models.py) | presque tout le code (monitor, detection, response, llm). **Mergé** (PR #53), issue fermée — débloque la vague 2+. |
 
 ## Vague 2 — Fondations de code (après #2)
 
