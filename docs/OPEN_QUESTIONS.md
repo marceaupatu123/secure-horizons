@@ -107,6 +107,10 @@ risque est transféré vers un marché secondaire spéculatif) :
      proche de 1 quand tout part au même endroit) ;
    - exposée en plus : le **nombre de destinataires distincts**, plus facile à montrer au jury
      sur le dashboard ;
+     ⚠️ **limite repérée (exemple chiffré, 2026-10-10)** : dans l'exemple du mint de 50M vers
+     3 adresses puis 4 bridges, ce nombre passe de ~150 à ~157 et ne **montre presque pas**
+     l'attaque, alors que le Herfindahl est multiplié par ~20. Il ne doit pas être présenté seul
+     comme indicateur d'attaque ;
    - les signaux par transfert (gros montant vers adresse neuve, découpage, sortie rapide,
      concentration vers les sorties, éventail/*fan-out*) **alimentent uniquement** la mesure de
      dispersion ; ce ne sont **pas** des surveillants séparés, pour rester simple.
@@ -126,6 +130,22 @@ risque est transféré vers un marché secondaire spéculatif) :
 - Canal et destinataires de la notification d'audit humain.
 - Alignement de `response/orchestrator.py`, `CLAUDE.md` et des champs `ResponseAction`
   (`docs/CONTRACTS.md`) sur le vocabulaire et la machine à états actés.
+
+#### Points faibles repérés (2026-10-10, Yannis) — _sur un exemple chiffré fictif, à traiter en équipe_
+
+Exemple : mint frauduleux de 50M, réparti sur 3 adresses neuves puis envoyé vers 4 bridges en
+2 min. Les chiffres de l'exemple sont inventés ; seuls les mécanismes comptent.
+
+- **Le silence des humains profite à l'attaquant.** « Silence = retour auto à la normale » : si
+  le multisig ne signe pas avant la fin du retard, la fenêtre revient à la normale et les Ghost
+  suspects se **convertissent**. La durée du retard doit donc être **plus longue que le temps de
+  réaction réel du multisig**. Ce temps n'est pas mesuré. À décider : durée minimale du retard, et
+  faut-il une escalade (notification répétée, retard prolongé une fois) avant l'expiration ?
+- **Le budget de quarantaine (§9) peut empêcher l'IA de retarder.** Dans l'exemple, ~33 % de
+  l'offre passe en fenêtre allongée d'un coup. Si le budget est plus bas, l'IA ne peut **pas**
+  retarder seule et il faut un humain **immédiatement**, au pire moment. À décider : valeur du
+  budget, et ce qui se passe quand une seule alerte le dépasse (retard partiel sur les graines ?
+  appel humain bloquant ?).
 
 ## 4. Angle différenciant (à choisir)
 
@@ -230,6 +250,16 @@ la reproductibilité.
 > → **Tranché**, voir `docs/OPEN_ANSWERS.md` §9 (texte complet : principe, trois verbes,
 > distinction attaque/croissance, contamination par ratio, garde-fous et limites assumées). Reste
 > ouvert : valeur de tous les seuils (à mesurer), relecture d'équipe, et #35/#36.
+
+#### Point faible repéré (2026-10-10, Yannis) — _sur un exemple chiffré fictif, à traiter en équipe_
+
+- **Un utilisateur légitime peut être retardé par ricochet.** Un bridge qui reçoit des Ghost
+  suspects voit son ratio monter (ex. ~0,93). Un utilisateur normal qui envoie 5 000 M vers ce
+  bridge dans le même créneau n'est **pas détruit** (la destruction ne prend que ratio × solde,
+  donc la part suspecte), mais la conversion du bridge **attend la fin de l'audit** : l'argent
+  légitime est bloqué avec le reste. À décider : ce retard collatéral est-il acceptable, et faut-il
+  le mesurer (part du volume légitime retardée par alerte) en plus de la friction max bornée ?
+  Les autres points faibles du même exemple sont en §3.
 
 ## 10. Lignage transactionnel — reverter les deux jambes d'un échange — _proposé, à valider en équipe_
 
