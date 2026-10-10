@@ -80,3 +80,30 @@ risque est transféré vers un marché secondaire spéculatif) :
 
 - Champs de `MintEvent`, `TransferEvent`, `Alert`, `ResponseAction`, `AuditLogEntry`.
 - Où vivent les modèles (`shared/`), format d'échange (JSON ?), versionnage éventuel.
+
+## 8. `BEDROCK_MODEL_ID` — choix du modèle LLM (#28) — _proposé par défaut, à confirmer_
+
+Setup #28 : accès Bedrock vérifié sur le compte atelier (`us-east-1`). Les modèles accessibles
+sont des **inference profiles** (ids préfixés `us.` / `global.`), à passer tels quels à l'API
+Converse.
+
+**Proposition par défaut retenue dans `.env.example` :**
+
+```
+BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-5-20250929-v1:0
+```
+
+Raisons : inference profile (attendu par Converse en `us-east-1`), id **daté/versionné** donc
+stable et reproductible pour la démo, bonne qualité rédactionnelle pour le rapport d'incident DORA,
+coût négligeable vu que le LLM est appelé **uniquement sur alerte**.
+
+Alternatives valables si l'équipe préfère plus léger/rapide :
+
+- `us.anthropic.claude-haiku-4-5-20251001-v1:0` (Haiku 4.5 — plus rapide, moins cher).
+
+À **éviter** : les alias courts non datés (ex. `...claude-sonnet-5`) — plus volatils, mauvais pour
+la reproductibilité.
+
+> Rappel : le compte atelier est **temporaire** (credentials de session STS qui expirent). Le
+> `BEDROCK_MODEL_ID` ne dépend pas du compte et reste valable ; seuls les credentials sont à
+> renouveler à chaque session.
