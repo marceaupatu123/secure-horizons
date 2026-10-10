@@ -50,7 +50,10 @@ risque est transféré vers un marché secondaire spéculatif) :
 
 > → **Tranché**, voir `docs/OPEN_ANSWERS.md` §0bis (texte complet de la décision, conséquences
 > assumées et option intermédiaire écartée). Les questions existentielles ci-dessus et les
-> questions dérivées #35, #36, #37 restent ouvertes.
+> questions dérivées #35 et #36 restent ouvertes.
+>
+> **#37 (solvabilité vs récupération dans `CLAIMS.md`)** → Tranché, voir `docs/OPEN_ANSWERS.md`
+> §0bis (deux affirmations distinctes, solvabilité en tête).
 
 ## 1. Détection du mint anormal
 
@@ -104,6 +107,10 @@ risque est transféré vers un marché secondaire spéculatif) :
      proche de 1 quand tout part au même endroit) ;
    - exposée en plus : le **nombre de destinataires distincts**, plus facile à montrer au jury
      sur le dashboard ;
+     ⚠️ **limite repérée (exemple chiffré, 2026-10-10)** : dans l'exemple du mint de 50M vers
+     3 adresses puis 4 bridges, ce nombre passe de ~150 à ~157 et ne **montre presque pas**
+     l'attaque, alors que le Herfindahl est multiplié par ~20. Il ne doit pas être présenté seul
+     comme indicateur d'attaque ;
    - les signaux par transfert (gros montant vers adresse neuve, découpage, sortie rapide,
      concentration vers les sorties, éventail/*fan-out*) **alimentent uniquement** la mesure de
      dispersion ; ce ne sont **pas** des surveillants séparés, pour rester simple.
@@ -124,6 +131,22 @@ risque est transféré vers un marché secondaire spéculatif) :
 - Alignement de `response/orchestrator.py`, `CLAUDE.md` et des champs `ResponseAction`
   (`docs/CONTRACTS.md`) sur le vocabulaire et la machine à états actés.
 
+#### Points faibles repérés (2026-10-10, Yannis) — _sur un exemple chiffré fictif, à traiter en équipe_
+
+Exemple : mint frauduleux de 50M, réparti sur 3 adresses neuves puis envoyé vers 4 bridges en
+2 min. Les chiffres de l'exemple sont inventés ; seuls les mécanismes comptent.
+
+- **Le silence des humains profite à l'attaquant.** « Silence = retour auto à la normale » : si
+  le multisig ne signe pas avant la fin du retard, la fenêtre revient à la normale et les Ghost
+  suspects se **convertissent**. La durée du retard doit donc être **plus longue que le temps de
+  réaction réel du multisig**. Ce temps n'est pas mesuré. À décider : durée minimale du retard, et
+  faut-il une escalade (notification répétée, retard prolongé une fois) avant l'expiration ?
+- **Le budget de quarantaine (§9) peut empêcher l'IA de retarder.** Dans l'exemple, ~33 % de
+  l'offre passe en fenêtre allongée d'un coup. Si le budget est plus bas, l'IA ne peut **pas**
+  retarder seule et il faut un humain **immédiatement**, au pire moment. À décider : valeur du
+  budget, et ce qui se passe quand une seule alerte le dépasse (retard partiel sur les graines ?
+  appel humain bloquant ?).
+
 ## 4. Angle différenciant (à choisir)
 
 > **TRANCHÉ par la décision §4 (2026-10-10, Équipe 20)** — texte complet dans
@@ -140,15 +163,40 @@ risque est transféré vers un marché secondaire spéculatif) :
 
 ## 5. Mesure de performance
 
+> → **Tranché**, voir `docs/OPEN_ANSWERS.md` §5 (validée en session, à relire par l'équipe).
+> Résumé : tout se mesure par rapport à la fenêtre Ghost (détecter **avant conversion**) ; délai =
+> `t2 − t0` + **marge avant conversion** ; FP mesurés sur un **jeu de trafic normal sans attaque**
+> (#24), par fenêtre d'agrégation (plus courte que la fenêtre Ghost) ET en part d'offre retardée ;
+> baseline = Resolv tel quel ; critères de succès par scénario (A/B/C/D) ; chaque claim de
+> `CLAIMS.md` doit avoir sa mesure.
+
 - Comment mesurer le **délai de détection** (de l'événement on-chain à l'alerte) ?
 - Comment mesurer le **taux de faux positifs** (et sur quel jeu de données) ?
 - Quelle **baseline** et quels critères de succès pour la démo ?
 
+### Reste ouvert (voir §5 d'`OPEN_ANSWERS.md`)
+
+- Valeur de la fenêtre d'agrégation (candidate : 5 min, §2) et du seuil de déclenchement, **à
+  mesurer**.
+- Nombre de rejeux N, choix médiane / p95.
+- Dépend du générateur de données (#24) : trafic normal horodaté sans attaque.
+
 ## 6. Données synthétiques (voir `data/README.md`)
 
-- Format des fichiers (CSV / JSON / JSONL ?) et schéma des lignes.
-- Paramètres précis des scénarios **A** (mint détecté) et **B** (transferts détectés).
-- Outil de génération et commande de lancement.
+> **TRANCHÉ par la décision §6 (2026-10-10, EnzoFB06, propriétaire `data/`)** — texte complet dans
+> `docs/OPEN_ANSWERS.md`. Résumé : format **JSONL** (une ligne = un événement) ; **schéma = les
+> modèles figés de `docs/CONTRACTS.md`** (pas de schéma dupliqué) ; scénarios recadrés — **A** mint
+> gonflé (Resolv), **B** reformulé en détournement 1:1 / hypothèse du volet 1 qui tombe (ferme
+> #49), **C** contagion et **D** marché Ghost inchangés ; **flux de trafic normal** par créneaux de
+> 5 min comme base de calibration ; générateur `data/generate.py` (`make data`) à graine fixe,
+> important les modèles de `shared/`.
+
+### Reste ouvert (voir §6 d'`OPEN_ANSWERS.md`)
+
+- Valeurs exactes (volumes, saisonnalité, N adresses, ratios), **à mesurer**.
+- Liste des adresses « point de sortie » (coord. §2).
+- Committer les JSONL ou seulement le générateur + la graine ? (taille vs reproductibilité).
+- Variante retenue pour B (détournement 1:1 vs événement admin).
 
 ## 7. Interfaces entre modules (voir `docs/CONTRACTS.md`)
 
@@ -202,6 +250,16 @@ la reproductibilité.
 > → **Tranché**, voir `docs/OPEN_ANSWERS.md` §9 (texte complet : principe, trois verbes,
 > distinction attaque/croissance, contamination par ratio, garde-fous et limites assumées). Reste
 > ouvert : valeur de tous les seuils (à mesurer), relecture d'équipe, et #35/#36.
+
+#### Point faible repéré (2026-10-10, Yannis) — _sur un exemple chiffré fictif, à traiter en équipe_
+
+- **Un utilisateur légitime peut être retardé par ricochet.** Un bridge qui reçoit des Ghost
+  suspects voit son ratio monter (ex. ~0,93). Un utilisateur normal qui envoie 5 000 M vers ce
+  bridge dans le même créneau n'est **pas détruit** (la destruction ne prend que ratio × solde,
+  donc la part suspecte), mais la conversion du bridge **attend la fin de l'audit** : l'argent
+  légitime est bloqué avec le reste. À décider : ce retard collatéral est-il acceptable, et faut-il
+  le mesurer (part du volume légitime retardée par alerte) en plus de la friction max bornée ?
+  Les autres points faibles du même exemple sont en §3.
 
 ## 10. Lignage transactionnel — reverter les deux jambes d'un échange — _proposé, à valider en équipe_
 
