@@ -23,6 +23,7 @@ Règles :
 | 0bis | Le Token Ghost s'applique-t-il au seul mint ou à tous les transferts ? | 2026-10-10 | Marceau | Tranché | PR #34 |
 | 1 | Détection du mint anormal : invariants, seuils, légitime vs malveillant | 2026-10-10 | denybs | Validée en session, à relire par l'équipe | PR #51 |
 | 3 | Réponse graduée : retarder ≠ bloquer, machine à états, quorums multisig | 2026-10-10 | Équipe 20 | Tranché en équipe | — |
+| 4 | Angle différenciant : anti-contagion (principal) + supervision IA + cadre DORA | 2026-10-10 | Équipe 20 | Tranché en équipe | — |
 | 9 | Volet 2 : surveillance adaptative, allongement de fenêtre ciblé, contamination par ratio | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | PR #38 |
 
 ---
@@ -329,6 +330,61 @@ NORMAL ────────────────────────�
 - Notification de l'audit humain : canal et destinataires (hors périmètre on-chain).
 - Alignement du code sur le vocabulaire acté (`response/orchestrator.py`, `CLAUDE.md`) et des
   champs `ResponseAction` dans `docs/CONTRACTS.md` sur cette machine à états.
+
+---
+
+## §4. Angle différenciant
+
+### DÉCISION (2026-10-10, Équipe 20) — _tranché en équipe_
+
+On ne retient pas **un** angle isolé : on **hiérarchise** les pistes de la §4 selon ce que la
+démo peut *montrer*, et on les présente comme **un angle principal + deux renforts**, unifiés par
+une seule thèse. Ce choix est aligné sur §0 (cœur = pricer le risque), §3 et §9 (garde-fous sur
+l'IA) : aucune piste n'est jetée, elles sont ordonnées.
+
+#### Thèse unificatrice — **le risque comme signal continu (« pricer le risque »)**
+
+Le ratio de contamination (§9) n'est pas qu'un outil de police (geler / détruire) : c'est un
+**prix du risque** par adresse, publié sur la **balise de risque** et lisible par l'aval. On ne
+bloque pas la fraude en on/off, on la **rend visible et chiffrée** et on laisse le marché et les
+protocoles en aval réagir. Cette thèse chapeaute les trois angles ci-dessous.
+
+#### Angle principal — **Protection des protocoles en aval (anti-contagion)**
+
+- **Pourquoi principal** : c'est le seul angle **démontrable** dans la démo (scénario C :
+  mauvaises créances d'un faux marché de prêt **avec vs sans** lecture de la balise de risque).
+- **Mécanisme** : déjà bâti en §0 — la balise publie le ratio ; l'aval décote ou refuse un Ghost
+  au-dessus d'un seuil. La contagion est **endiguée au lieu d'être propagée**.
+
+#### Renfort A — **Supervision de l'agent de réponse (garde-fou sur l'IA)**
+
+- Déjà acté en §3 / §9 : l'IA ne fait que **retarder** (jamais détruire ni pauser), tout est
+  **auto-expirant**, et un **budget de quarantaine** borne la friction (« même notre surveillance
+  ne peut geler plus de X % de l'offre »), **friction max bornée testée par fuzzing**.
+- **Pourquoi fort** : répond au reproche n°1 fait aux systèmes « IA qui décide ». Maturité visible
+  sans code supplémentaire.
+
+#### Renfort B / cadre — **Conformité DORA**
+
+- Utilisé comme **cadre réglementaire qui chapeaute**, pas comme angle technique isolé (il n'y a
+  pas de « prestataire tiers » dans la maquette : l'invoquer tel quel serait plaqué).
+- Matérialisé par le **journal d'audit** et le **rapport d'incident LLM**, et par le fait qu'on
+  protège **l'écosystème** (pas seulement l'émetteur).
+
+#### Tension assumée (à dire au jury, pas à cacher)
+
+Le pivot Token Ghost **transfère** une partie de la perte vers un marché secondaire, ce qui est en
+tension avec l'esprit DORA (protéger tout l'écosystème). Réponse retenue : le modèle de
+contamination par ratio **ne punit pas l'écosystème en bloc**, il **cible proportionnellement**
+l'exposition réelle de chaque adresse — ce qui **limite** la contagion plutôt que de la propager.
+
+### Reste ouvert
+
+- Relecture par l'équipe.
+- `#?` : angle DORA « prestataire tiers critique » — à garder comme narratif seulement, sauf si
+  l'équipe décide d'introduire un prestataire fictif dans la maquette.
+- Mesure du scénario C (mauvaises créances avec vs sans balise) : chiffres **à mesurer**, pas à
+  inventer (cf. `docs/CLAIMS.md`).
 
 ---
 
