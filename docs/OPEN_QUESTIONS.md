@@ -359,3 +359,17 @@ avec « l'IA ne décide jamais seule d'une destruction » (§3, §9). Le calcul 
 liste des restitutions de la §10bis (point 4).
 
 À décider en équipe, avec tests d'invariants dans #8 / #84. Aucun chiffre inventé.
+
+## 12. Monitor — reprise sur erreur RPC et checkpoint (#74) — _choix provisoires, à valider en équipe_
+
+Choix faits par l'assistant (2026-10-11, pour Yannis) pour que la surveillance ne se coupe plus en
+silence (fail-open). Tous configurables dans `monitor/config.py`, aucun chiffre mesuré :
+
+- **Retry sans limite** des appels RPC (attente exponentielle 1 s → plafond 30 s). Alternative
+  écartée : s'arrêter après N échecs — un monitor arrêté est pire qu'un monitor qui réessaie.
+- **Escalade** : après 5 échecs consécutifs, log ERROR « SURVEILLANCE AVEUGLE ». À brancher plus
+  tard sur `response`/dashboard (aujourd'hui : log seulement). Faut-il geler par précaution quand
+  le monitor est aveugle plus d'une fenêtre Ghost ? **Ouvert.**
+- **Log mal formé** : ignoré + log ERROR (au lieu de couper tout le flux).
+- **Checkpoint fichier local**, sémantique « au moins une fois », **désactivé par défaut** (un
+  fichier par process). À revoir si le monitor tourne en plusieurs instances.

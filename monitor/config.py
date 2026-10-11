@@ -53,6 +53,20 @@ DEFAULT_START_BLOCK: int | None = None
 # le token ecoute est le vrai token.
 DEFAULT_TOKEN_IS_GHOST = False
 
+# PROVISOIRE — a valider par l'equipe (issue #74). Reprise sur erreur RPC :
+# attente exponentielle `base * 2**(n-1)`, plafonnee a `max`, retentee SANS
+# limite (le monitor ne doit pas s'arreter seul). Valeurs non mesurees.
+DEFAULT_RPC_RETRY_BASE_SECONDS = 1.0
+DEFAULT_RPC_RETRY_MAX_SECONDS = 30.0
+# PROVISOIRE — nombre d'echecs consecutifs a partir duquel le monitor logue en
+# ERROR « surveillance aveugle » (au lieu de WARNING) : signal a remonter.
+DEFAULT_RPC_FAILURE_ALERT_AFTER = 5
+
+# PROVISOIRE — a valider par l'equipe (issue #74). Fichier du dernier bloc lu.
+# None = pas de checkpoint (desactive par defaut : deux process ne doivent pas
+# partager le meme fichier, chacun choisit le sien via MONITOR_CHECKPOINT_PATH).
+DEFAULT_CHECKPOINT_PATH: str | None = None
+
 ENV_RPC_URL = "FUJI_RPC_URL"
 ENV_TOKEN_ADDRESS = "MONITOR_TOKEN_ADDRESS"
 ENV_POLL_INTERVAL_SECONDS = "MONITOR_POLL_INTERVAL_SECONDS"
@@ -60,6 +74,10 @@ ENV_BLOCK_BATCH_SIZE = "MONITOR_BLOCK_BATCH_SIZE"
 ENV_CONFIRMATIONS = "MONITOR_CONFIRMATIONS"
 ENV_START_BLOCK = "MONITOR_START_BLOCK"
 ENV_TOKEN_IS_GHOST = "MONITOR_TOKEN_IS_GHOST"
+ENV_RPC_RETRY_BASE_SECONDS = "MONITOR_RPC_RETRY_BASE_SECONDS"
+ENV_RPC_RETRY_MAX_SECONDS = "MONITOR_RPC_RETRY_MAX_SECONDS"
+ENV_RPC_FAILURE_ALERT_AFTER = "MONITOR_RPC_FAILURE_ALERT_AFTER"
+ENV_CHECKPOINT_PATH = "MONITOR_CHECKPOINT_PATH"
 
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 _FALSE_VALUES = frozenset({"0", "false", "no", "off"})
@@ -82,6 +100,13 @@ class MonitorConfig:
         start_block: premier bloc lu, None = bloc courant (PROVISOIRE).
         token_is_ghost: valeur de `TransferEvent.is_ghost` pour le token
             ecoute (PROVISOIRE).
+        rpc_retry_base_seconds: premiere attente apres une erreur RPC
+            (PROVISOIRE).
+        rpc_retry_max_seconds: plafond de l'attente exponentielle (PROVISOIRE).
+        rpc_failure_alert_after: echecs consecutifs avant log ERROR
+            « surveillance aveugle » (PROVISOIRE).
+        checkpoint_path: fichier du dernier bloc traite, None = desactive
+            (PROVISOIRE).
     """
 
     rpc_url: str | None
@@ -92,6 +117,10 @@ class MonitorConfig:
     confirmations: int = DEFAULT_CONFIRMATIONS
     start_block: int | None = DEFAULT_START_BLOCK
     token_is_ghost: bool = DEFAULT_TOKEN_IS_GHOST
+    rpc_retry_base_seconds: float = DEFAULT_RPC_RETRY_BASE_SECONDS
+    rpc_retry_max_seconds: float = DEFAULT_RPC_RETRY_MAX_SECONDS
+    rpc_failure_alert_after: int = DEFAULT_RPC_FAILURE_ALERT_AFTER
+    checkpoint_path: str | None = DEFAULT_CHECKPOINT_PATH
 
     def __post_init__(self) -> None:
         if self.token_address is not None:
@@ -108,6 +137,12 @@ class MonitorConfig:
             raise ValueError("confirmations doit etre >= 0")
         if self.start_block is not None and self.start_block < 0:
             raise ValueError("start_block doit etre >= 0")
+        if self.rpc_retry_base_seconds <= 0:
+            raise ValueError("rpc_retry_base_seconds doit etre > 0")
+        if self.rpc_retry_max_seconds < self.rpc_retry_base_seconds:
+            raise ValueError("rpc_retry_max_seconds doit etre >= rpc_retry_base_seconds")
+        if self.rpc_failure_alert_after < 1:
+            raise ValueError("rpc_failure_alert_after doit etre >= 1")
 
 
 def normalize_address(address: str) -> str:
@@ -202,4 +237,15 @@ def load_monitor_config(
         token_is_ghost=_bool_from_env(
             source, ENV_TOKEN_IS_GHOST, DEFAULT_TOKEN_IS_GHOST
         ),
+        rpc_retry_base_seconds=_float_from_env(
+            source, ENV_RPC_RETRY_BASE_SECONDS, DEFAULT_RPC_RETRY_BASE_SECONDS
+        ),
+        rpc_retry_max_seconds=_float_from_env(
+            source, ENV_RPC_RETRY_MAX_SECONDS, DEFAULT_RPC_RETRY_MAX_SECONDS
+        ),
+        rpc_failure_alert_after=_int_from_env(
+            source, ENV_RPC_FAILURE_ALERT_AFTER, DEFAULT_RPC_FAILURE_ALERT_AFTER
+        ),
+        checkpoint_path=_optional_str(source, ENV_CHECKPOINT_PATH)
+        or DEFAULT_CHECKPOINT_PATH,
     )
