@@ -87,7 +87,9 @@ class FakeChain:
             return str(len(self.pending[to]))
         if signature == "stable()(address)":
             return self.stable_of[to]
-        if signature == "totalSupply()(uint256)":
+        if signature == "ghost()(address)" and self.kind.get(to) == "ProtectedMinter":
+            return self.stable_of[to]  # le faux Ghost porte l'offre du minter protege
+        if signature in ("totalSupply()(uint256)", "supplyValue()(uint256)"):
             return f"{self.supply[to]} [1e0]"
         if signature == "balanceOf(address)(uint256)":
             return str(self.held[args[0]])

@@ -37,6 +37,10 @@ REQUIRED_LIBS = ("forge-std", "openzeppelin-contracts")
 # ProtectedMinter : collateral 6 decimales -> stable 18 decimales, taux 1e18 = 1:1.
 DECIMALS_SCALE = 10**12
 RATE_ONE = 10**18
+# GhostConfig du ProtectedMinter (#8), FIXTURES identiques a `contracts/test/utils/BaseTest.sol`
+# (pas des mesures) : (window, slot, maxExtensionFactor, quarantineBudgetBps, maxConvertRatio,
+# maxConvertSuspect, convertFeeBaseBps, convertFeeSlopeBps, entryFeeBps, restitutionClaimDelay).
+GHOST_FIXTURE_CONFIG = "(600,60,6,2000,0,0,0,0,0,86400)"
 TOOLS = ("forge", "anvil", "cast")
 COMMAND_TIMEOUT_SECONDS = 300.0
 STARTUP_TIMEOUT_SECONDS = 20.0
@@ -236,9 +240,16 @@ def _request(chain: Chain, usdc: str, minter: str, depositor: str, deposit: int)
     return request_id
 
 
-def _reading(chain: Chain, usdc: str, minter: str, signed: int, inflated_ok: bool) -> MinterReading:
-    stable = chain.call(minter, "stable()(address)").strip().split()[0]
-    supply = parse_uint(chain.call(stable, "totalSupply()(uint256)"))
+def _reading(chain: Chain, usdc: str, minter: str, signed: int, inflated_ok: bool,
+             ghosted: bool = False) -> MinterReading:
+    if ghosted:
+        # Depuis #8, le mint protege emet du M-Ghost : la valeur en circulation est
+        # `ghost.supplyValue()` = offre de M + offre de Ghost (M seul vaut 0 avant conversion).
+        ghost = chain.call(minter, "ghost()(address)").strip().split()[0]
+        supply = parse_uint(chain.call(ghost, "supplyValue()(uint256)"))
+    else:
+        stable = chain.call(minter, "stable()(address)").strip().split()[0]
+        supply = parse_uint(chain.call(stable, "totalSupply()(uint256)"))
     held = parse_uint(chain.call(usdc, "balanceOf(address)(uint256)", minter))
     return MinterReading(minted=supply, collateral=held * DECIMALS_SCALE, signed_amount=signed,
                          inflated_call_accepted=inflated_ok)
@@ -265,7 +276,8 @@ def replay_scenario_a(chain: Chain, deposit: int, multiplier: int) -> dict[str, 
     vulnerable = chain.deploy("src/VulnerableMinter.sol:VulnerableMinter", admin, usdc, admin,
                               attacker)
     protected = chain.deploy("src/ProtectedMinter.sol:ProtectedMinter", admin, usdc, admin,
-                             attacker, str(RATE_ONE), f"[{','.join(guardians)}]")
+                             attacker, str(RATE_ONE), f"[{','.join(guardians)}]",
+                             GHOST_FIXTURE_CONFIG)
     inflated = "completeSwap(uint256,address,uint256)"
 
     request_id = _request(chain, usdc, vulnerable, attacker, deposit)
@@ -277,5 +289,5 @@ def replay_scenario_a(chain: Chain, deposit: int, multiplier: int) -> dict[str, 
     # Seul appel possible : « traiter la demande n°X ».
     _expect(chain.send(attacker, protected, "completeSwap(uint256)", request_id),
             "completeSwap(uint256)")
-    readings["protected"] = _reading(chain, usdc, protected, signed, protected_ok)
+    readings["protected"] = _reading(chain, usdc, protected, signed, protected_ok, ghosted=True)
     return readings
