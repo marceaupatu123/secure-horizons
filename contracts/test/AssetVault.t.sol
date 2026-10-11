@@ -22,11 +22,14 @@ contract AssetVaultTest is Test {
     address internal seller = makeAddr("seller");
     address internal buyer2 = makeAddr("buyer2");
     address internal carol = makeAddr("carol");
+    address internal g1 = makeAddr("g1");
+    address internal g2 = makeAddr("g2");
+    address internal g3 = makeAddr("g3");
 
     function setUp() public {
         vm.warp(500_000); // avant l'échéance
         usdc = new MockUSDC();
-        vault = new AssetVault(address(usdc), router);
+        vault = new AssetVault(address(usdc), router, [g1, g2, g3]);
         ghost = AssetGhost(vault.assetGhost());
     }
 
@@ -164,6 +167,91 @@ contract AssetVaultTest is Test {
         vault.redeem(100e6);
         assertEq(ghost.maturedOf(carol), 0);
         _assertCoffreInvariant();
+    }
+
+    // ---------------------------------------------------------------- destruction confirmée (2/3)
+
+    function _leaf(address to, uint256 amount, uint256 nonce) internal pure returns (bytes32) {
+        return keccak256(bytes.concat(keccak256(abi.encode(to, amount, nonce))));
+    }
+
+    function _burnSeed(address seed, uint256 amount, uint256 nonce) internal {
+        vm.prank(g1);
+        vault.burnSeedPayment(seed, amount, nonce);
+        vm.prank(g2);
+        vault.burnSeedPayment(seed, amount, nonce);
+    }
+
+    function _confirmRoot(bytes32 root) internal {
+        vm.prank(g1);
+        vault.confirmRestitutionRoot(root);
+        vm.prank(g2);
+        vault.confirmRestitutionRoot(root);
+    }
+
+    /// @notice Cas 1 §10bis : achat protégé, fraude confirmée → le Ghost de paiement du vendeur
+    ///         (graine) est brûlé et l'acheteur protégé récupère la totalité de son paiement.
+    ///         Vérifie l'invariant « un protégé ne perd rien » (côté argent) et la conservation.
+    function test_destruction_cas1_protegeRecoversPayment() public {
+        _lock(carol, 10e6, MATURITY); // le vendeur-graine (carol) reçoit 10 Ghost de paiement
+        assertEq(ghost.balanceOf(carol), 10e6);
+
+        // (1) brûler le Ghost de paiement de la graine : libère ses 10 bloqués.
+        _burnSeed(carol, 10e6, 0);
+        assertEq(ghost.totalSupply(), 0);
+        assertGe(usdc.balanceOf(address(vault)), ghost.totalSupply());
+
+        // (2) publier la racine payant l'acheteur protégé (buyer2) ses 10.
+        bytes32 root = _leaf(buyer2, 10e6, 0);
+        _confirmRoot(root);
+        assertEq(vault.restitutionRoot(), root);
+
+        bytes32[] memory proof = new bytes32[](0);
+        vault.restitute(buyer2, 10e6, 0, proof);
+        assertEq(usdc.balanceOf(buyer2), 10e6, "protege n'a pas recupere son paiement");
+        assertEq(vault.locked(), 0);
+        // Conservation : Σ redeem + Σ restitutions == Σ entrées.
+        assertEq(vault.totalRedeemed() + vault.totalRestituted(), vault.totalLockedIn());
+        // Restitution ≤ argent bloqué derrière le Ghost de paiement de la graine.
+        assertLe(vault.totalRestituted(), 10e6);
+    }
+
+    function test_restitute_cannotExceedLocked() public {
+        _lock(carol, 10e6, MATURITY);
+        _burnSeed(carol, 10e6, 0);
+        bytes32 root = _leaf(buyer2, 20e6, 0); // feuille abusive : plus que le bloqué
+        _confirmRoot(root);
+        bytes32[] memory proof = new bytes32[](0);
+        vm.expectRevert(abi.encodeWithSelector(IAssetVault.ExceedsLocked.selector, 20e6, 10e6));
+        vault.restitute(buyer2, 20e6, 0, proof);
+    }
+
+    function test_restitute_idempotentPerNonce() public {
+        _lock(carol, 20e6, MATURITY);
+        _burnSeed(carol, 20e6, 0);
+        bytes32 root = _leaf(buyer2, 10e6, 7);
+        _confirmRoot(root);
+        bytes32[] memory proof = new bytes32[](0);
+        vault.restitute(buyer2, 10e6, 7, proof);
+        vm.expectRevert(abi.encodeWithSelector(IAssetVault.AlreadyClaimed.selector, 7));
+        vault.restitute(buyer2, 10e6, 7, proof);
+    }
+
+    function test_destruction_requiresTwoGuardians() public {
+        _lock(carol, 10e6, MATURITY);
+        vm.prank(g1);
+        vault.burnSeedPayment(carol, 10e6, 0); // 1 seule approbation : pas d'effet
+        assertEq(ghost.balanceOf(carol), 10e6, "brule avec une seule approbation");
+        vm.prank(g2);
+        vault.burnSeedPayment(carol, 10e6, 0); // quorum atteint
+        assertEq(ghost.balanceOf(carol), 0);
+    }
+
+    function test_burnSeed_onlyGuardian() public {
+        _lock(carol, 10e6, MATURITY);
+        vm.prank(seller);
+        vm.expectRevert();
+        vault.burnSeedPayment(carol, 10e6, 0);
     }
 
     // ---------------------------------------------------------------- fuzz : invariant du coffre

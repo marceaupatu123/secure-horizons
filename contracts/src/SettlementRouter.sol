@@ -8,6 +8,12 @@ import {ISettlementRouter} from "./interfaces/ISettlementRouter.sol";
 import {IGhostRisk} from "./interfaces/IGhostRisk.sol";
 import {AssetVault} from "./AssetVault.sol";
 
+/// @dev Vue minimale : les 3 guardians du M-Ghost (hérités de `GuardianPausable`), repris par
+///      chaque coffre pour sa propre destruction 2/3 (§10bis point 4).
+interface IGuardianSet {
+    function guardians() external view returns (address[3] memory);
+}
+
 /// @title SettlementRouter — routeur de règlement du M' (#84, OPEN_ANSWERS §10bis). FICTIF.
 /// @notice Voir `ISettlementRouter`. Itération 3 : `buyWithAsset` (PROTEGE), `sellPure` (PUR),
 ///         `statusOf`, un coffre par actif. Le M' est le M-Ghost (#8) ; le routeur le déplace par
@@ -85,7 +91,7 @@ contract SettlementRouter is ISettlementRouter, ReentrancyGuard {
     function _ensureVault(address asset) internal returns (address vault) {
         vault = _vaultOf[asset];
         if (vault == address(0)) {
-            vault = address(new AssetVault(asset, address(this)));
+            vault = address(new AssetVault(asset, address(this), IGuardianSet(mGhost).guardians()));
             _vaultOf[asset] = vault;
             emit VaultCreated(asset, vault);
         }

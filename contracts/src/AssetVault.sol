@@ -7,14 +7,16 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {IAssetVault} from "./interfaces/IAssetVault.sol";
 import {AssetGhost} from "./AssetGhost.sol";
+import {VaultGuardians} from "./VaultGuardians.sol";
 
 /// @title AssetVault — coffre d'UN actif réel, deux sorties codées en dur (#84 §10bis). FICTIF.
-/// @notice Voir `IAssetVault`. Itération 2 : `lockAndIssue` (routeur) + `redeem` (sortie a). La
-///         racine de restitution (sortie b) est posée par les guardians 2/3 dans une itération
-///         ultérieure (OPEN_QUESTIONS §16) ; tant qu'aucune racine n'est posée, `restitute` revert,
-///         ce qui est correct (aucune destruction confirmée = aucune restitution possible).
+/// @notice Voir `IAssetVault`. Sorties : `redeem` (a, à l'échéance) et `restitute` (b, racine de
+///         Merkle 2/3). La destruction confirmée (§10bis point 4) se fait en deux gestes 2/3 :
+///         `burnSeedPayment` brûle le Ghost de paiement des GRAINES (libère leur argent bloqué),
+///         puis `confirmRestitutionRoot` publie la racine des feuilles de restitution. Aucune
+///         sortie vers le protocole ni le multisig.
 ///         INVARIANT MAÎTRE (testé) : `asset.balanceOf(this) >= assetGhost.totalSupply()`.
-contract AssetVault is IAssetVault, ReentrancyGuard {
+contract AssetVault is IAssetVault, VaultGuardians, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     IERC20 internal immutable _asset;
@@ -25,8 +27,14 @@ contract AssetVault is IAssetVault, ReentrancyGuard {
     bytes32 public restitutionRoot;
     /// @notice Feuilles déjà payées (idempotence par nonce).
     mapping(uint256 => bool) public claimed;
+    /// @notice Total restitué (sortie b), pour l'invariant de conservation.
+    uint256 public totalRestituted;
+    /// @notice Total converti (sortie a), pour l'invariant de conservation.
+    uint256 public totalRedeemed;
+    /// @notice Total d'actif bloqué entré (par `lockAndIssue`), pour l'invariant de conservation.
+    uint256 public totalLockedIn;
 
-    constructor(address asset_, address router_) {
+    constructor(address asset_, address router_, address[3] memory guardians_) VaultGuardians(guardians_) {
         if (asset_ == address(0) || router_ == address(0)) revert ZeroAddress();
         _asset = IERC20(asset_);
         _router = router_;
@@ -62,6 +70,7 @@ contract AssetVault is IAssetVault, ReentrancyGuard {
         uint256 outstanding = _assetGhost.totalSupply();
         if (bal < outstanding + amount) revert ExceedsLocked(amount, bal - outstanding);
         _assetGhost.issueTo(seller, amount, maturity);
+        totalLockedIn += amount;
         emit AssetLocked(seller, amount, maturity);
     }
 
@@ -74,6 +83,7 @@ contract AssetVault is IAssetVault, ReentrancyGuard {
         if (matured < amount) revert NotMatured(0);
         _assetGhost.burnMatured(msg.sender, amount);
         assetOut = amount; // 1:1, sans oracle
+        totalRedeemed += amount;
         _asset.safeTransfer(msg.sender, assetOut);
         emit AssetRedeemed(msg.sender, amount, assetOut);
     }
@@ -93,7 +103,31 @@ contract AssetVault is IAssetVault, ReentrancyGuard {
         }
         if (amount > locked()) revert ExceedsLocked(amount, locked());
         claimed[nonce] = true;
+        totalRestituted += amount;
         _asset.safeTransfer(to, amount);
         emit Restituted(to, amount, nonce);
+    }
+
+    // ------------------------------------------------------------------ destruction confirmée (2/3)
+
+    /// @notice Geste 2/3 (1) de la destruction (§10bis point 4.1) : brûle `amount` de Ghost de
+    ///         paiement d'une GRAINE `seed`, ce qui libère son argent bloqué pour la restitution.
+    ///         Le `nonce` distingue deux brûlages identiques. Aucun actif ne sort ici.
+    function burnSeedPayment(address seed, uint256 amount, uint256 nonce) external onlyGuardian {
+        if (amount == 0) revert ZeroAmount();
+        bytes32 action = keccak256(abi.encode("BURN_SEED", seed, amount, nonce));
+        if (_vote(action)) {
+            _assetGhost.burnAny(seed, amount);
+        }
+    }
+
+    /// @notice Geste 2/3 (2) : publie la racine de Merkle des feuilles de restitution (§10bis
+    ///         point 4.2-4.3). Les feuilles sont calculées HORS CHAÎNE (piste b de #85) et
+    ///         contestables. Remplace la racine courante au quorum.
+    function confirmRestitutionRoot(bytes32 root) external onlyGuardian {
+        bytes32 action = keccak256(abi.encode("RESTITUTION_ROOT", root));
+        if (_vote(action)) {
+            restitutionRoot = root;
+        }
     }
 }
