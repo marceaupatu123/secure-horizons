@@ -182,7 +182,7 @@ class RuleBasedMonitor:
     def check_mint(
         self, event: MintEvent, context: MintContext | None = None
     ) -> Alert | None:
-        """Verifie I1, I5, I6, les evenements admin et l'ecart d'oracle.
+        """Verifie I1, I3, I5, I6, les evenements admin et l'ecart d'oracle.
 
         Aucune regle ne porte sur la taille du mint. Une verification dont les
         entrees manquent dans `context` est sautee. Plusieurs regles
@@ -203,6 +203,7 @@ class RuleBasedMonitor:
             finding
             for finding in (
                 self._check_i1(event, context),
+                self._check_i3(event, context),
                 self._check_oracle(event, context),
                 self._check_i5(event, context),
                 self._check_i6(context),
@@ -423,6 +424,26 @@ class RuleBasedMonitor:
                 f"{math.floor(expected)} attendu (epsilon {self.params.i1_epsilon})"
             ),
             recipient_suspect_amount=_excess(event.amount, expected),
+        )
+
+    def _check_i3(self, event: MintEvent, context: MintContext) -> _Finding | None:
+        """I3 : le destinataire du mint est le deposant de la demande (#91).
+
+        Detecte le detournement a 1:1 (scenario B) : bilan global juste, mais
+        la demande d'une victime est mintee vers une autre adresse. Tout le
+        mint est attribue au destinataire comme montant suspect.
+        """
+        if context.requester is None:
+            return None
+        if event.recipient.lower() == context.requester.lower():
+            return None
+        return _Finding(
+            severity=self.params.invariant_severity,
+            reason=(
+                f"I3 viole : mint de {event.amount} vers {event.recipient}, "
+                f"deposant de la demande {context.requester} (detournement ?)"
+            ),
+            recipient_suspect_amount=event.amount,
         )
 
     def _check_oracle(
