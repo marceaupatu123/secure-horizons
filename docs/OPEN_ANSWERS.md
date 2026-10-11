@@ -34,6 +34,7 @@ Règles :
 | 10bis | Qui porte le risque : M' protégé / pur / chèque, routeur + Ghost de paiement, restitution sans fonds ni frais (#84) | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | Issue #84 |
 | 11 | Contamination posée après coup : recalcul hors chaîne + racine de Merkle contestable (#85) | 2026-10-11 | denybs | Validée en session, à relire par l'équipe | PR #95 |
 | 79 | Champs manquants monitor/detection : `request_id` optionnel (fix collision), `is_ghost` et données I1/I5/I6 gardés en contexte jusqu'aux événements du contrat (#79) | 2026-10-11 | denybs | Validée en session, à relire par l'équipe | Issue #79 |
+| 14 | Lignage et conversions Ghost : plafonnement du soupçon par `balanceOf` du Ghost lu au semis (option (c)) (#104/#106) | 2026-10-11 | marceaupatu123 | Tranché | PR #PRNUM |
 
 ---
 
@@ -1183,4 +1184,56 @@ paiement. (b) est le **sur-ensemble** activé par le multisig quand une chaîne 
   dans les tests d'invariants de #84.
 - La récupération **au-delà de W** est hors de portée par construction : à **énoncer** comme limite
   dans `docs/CLAIMS.md`, pas à combler.
+
+---
+
+## §14. Lignage et conversions Ghost — plafonnement par `balanceOf` au semis (#104/#106)
+
+### DÉCISION (2026-10-11, marceaupatu123) — option **(c)** : au moment du semis, plafonner le soupçon de chaque détenteur par `balanceOf(Ghost, addr)` lu on-chain
+
+Le monitor émet les transferts Ghost ordinaires en `TransferEvent(is_ghost=True)` mais, comme
+pour tous les tokens depuis #10, **n'émet pas les burns**, donc **pas les conversions**
+(`Ghost → 0x0`). Or `detection.lineage.retroactive_seeds` reconstruit le solde Ghost non converti
+en **rejouant** les transferts publics : sans la conversion dans le flux, un porteur qui a déjà
+converti garde dans le rejeu un **solde fictif** et peut recevoir une graine pour du Ghost qu'il ne
+détient plus. La destruction on-chain est plafonnée par le vrai solde (aucune perte de fonds), mais
+la **restitution** et le **total « récupéré »** sont **surestimés**. C'est le trou décrit en §14 des
+questions ouvertes.
+
+**Option (c) retenue.** Au moment du semis, `retroactive_seeds` **plafonne le soupçon de chaque
+détenteur par `balanceOf(Ghost, addr)` lu on-chain** : le solde servant à émettre chaque `AlertSeed`
+(et donc le plafond et le ratio) devient `min(solde_reconstruit, balanceOf(addr))`. C'est **la vérité
+de la chaîne** — le solde réel au moment du semis — et c'est **le plus simple** : aucun nouveau flux,
+aucune reconstruction supplémentaire des conversions, un seul point de branchement.
+
+**Pourquoi pas (a) ni (b) maintenant :**
+
+- **(a)** — émettre aussi les burns/conversions comme `TransferEvent(recipient=0x0, is_ghost=True)` —
+  est **écartée** : elle oblige à **filtrer de faux transferts** dans les règles de détection de
+  transfert (volume, HHI), qui compteraient alors des conversions comme du trafic. Coût de conception
+  et risque de faux positifs non voulus hors du périmètre de ce correctif.
+- **(b)** — un flux dédié aux conversions (`GhostConverted` est déjà décodé par le monitor), passé à
+  `retroactive_seeds` comme soldes initiaux ou comme sorties — **reste l'évolution propre** si le coût
+  RPC d'une lecture par graine devient gênant. On ne l'implémente pas tant que la mesure ne le justifie
+  pas.
+
+**Mise en œuvre (option c).** `retroactive_seeds` reçoit un paramètre **optionnel**
+`ghost_balance_of: Callable[[str], int] | None = None` — une fonction injectable `addr -> solde`,
+pour rester **testable et déterministe hors ligne** (pas d'appel RPC en dur dans le module). Quand il
+est fourni, le solde final de chaque détenteur est plafonné par `ghost_balance_of(addr)` ; quand il
+est `None`, le comportement actuel est **inchangé** (rétrocompatibilité). L'appelant branche
+`ghost_balance_of` sur un vrai `balanceOf` du contrat Ghost (**une lecture RPC par graine**).
+
+**Limite mesurée — à documenter dans `docs/CLAIMS.md`, jamais estimée.** Le coût est **une lecture
+RPC par graine** au semis. Le rejeu seul (`ghost_balance_of=None`) **peut surestimer** si une
+conversion n'a pas été vue : c'est exactement le trou §14, et (c) le ferme en lisant la vérité
+on-chain au moment du semis. Si ce coût RPC gêne à l'échelle, basculer vers (b).
+
+### Reste ouvert
+
+- Branchement de `ghost_balance_of` sur une vraie lecture `balanceOf` côté appelant (hors
+  périmètre de ce correctif, qui garde le module déterministe et hors ligne).
+- Mesure du coût RPC réel (une lecture par graine) à **chiffrer** dans `docs/CLAIMS.md` avant toute
+  affirmation ; bascule vers (b) si la mesure le justifie.
+
 
