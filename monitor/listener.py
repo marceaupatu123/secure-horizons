@@ -817,11 +817,49 @@ class ChainListener:
                 )
                 events.extend(ghost_transfers)
             for mint in mints:
+                tracked = correlator.is_tracked(mint.tx_hash, mint.log_index)
                 found = correlator.peek(mint.tx_hash, mint.log_index)
-                request_id = found.request_id if found is not None else None
-                events.append(mint.model_copy(update={"request_id": request_id}))
+                events.append(self._apply_provenance(mint, tracked, found))
         events.sort(key=lambda e: (e.block_number, e.log_index))
         return events
+
+    @staticmethod
+    def _apply_provenance(
+        mint: MintEvent, tracked: bool, provenance: "MintProvenance | None"
+    ) -> MintEvent:
+        """Renseigne les champs de provenance partages du `MintEvent` (#104, #135).
+
+        Depuis la revision groupee de `shared/` (#135), `MintEvent` porte la
+        provenance : la detection la lit sur l'evenement (`event_context_provider`)
+        sans tenir de reference au correlateur. On la remplit ici, a partir de ce
+        que le correlateur a rattache :
+
+        - mint hors mode contrat protege (`tracked=False`) : rien, tout reste
+          `None` (`via_protected_path=None` = non verifie) ;
+        - mint vu mais SANS `SwapCompleted` dans sa transaction
+          (`tracked=True`, `provenance is None`) : chemin non prevu,
+          `via_protected_path=False` (I4), aucun champ de demande, `request_id`
+          force a None (le modele l'exige) ;
+        - mint rattache a sa demande : `via_protected_path=True`, demande,
+          taux et deposant repris de la provenance.
+        """
+        if not tracked:
+            return mint
+        if provenance is None:
+            return mint.model_copy(
+                update={"request_id": None, "via_protected_path": False}
+            )
+        return mint.model_copy(
+            update={
+                "request_id": provenance.request_id,
+                "depositor": provenance.depositor,
+                "deposit_amount": provenance.deposit_amount or None,
+                "rate_wad": provenance.rate_wad or None,
+                "provenance_source": provenance.source,
+                "claimed_minted": provenance.claimed_minted,
+                "via_protected_path": True,
+            }
+        )
 
     def _ghost_mints(
         self,
