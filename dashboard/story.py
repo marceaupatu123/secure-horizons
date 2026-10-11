@@ -81,6 +81,38 @@ class FujiTx(BaseModel):
     url: str
 
 
+class FujiActor(BaseModel):
+    """Un acteur (nœud) d'une scène de flux."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    label: str
+    emoji: str
+
+
+class FujiFlow(BaseModel):
+    """Un flux animé entre deux acteurs (une flèche + un jeton qui voyage)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    src: str
+    dst: str
+    token: str  # ce qui circule (ex. '1 000 USDC', '👻 Ghost')
+    tone: str  # ok | danger | info | warn
+    kind: str  # send | block | burn | freeze
+
+
+class FujiScene(BaseModel):
+    """Scène animée « qui fait quoi à qui » jouée au-dessus du terminal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    caption: str
+    actors: list[FujiActor]
+    flows: list[FujiFlow]
+
+
 class FujiStep(BaseModel):
     """Etape intéressante d'un cas : commande de terminal + effet."""
 
@@ -94,6 +126,7 @@ class FujiStep(BaseModel):
     effect: str
     outcome: str  # accepted | rejected | defended
     countdown: bool  # affiche une animation d'attente (échéance 10 min) avant l'effet
+    scene: FujiScene | None  # scène animée illustrant l'étape
     tx_urls: list[str]
 
 
@@ -179,15 +212,79 @@ def _tokens(amount: int) -> float:
     return amount / TOKEN_UNIT
 
 
+# Acteurs par cas (nœuds de la scène).
+_ACTORS: dict[str, dict[str, tuple[str, str]]] = {
+    "mint-passe": {"key": ("Clé volée", "🔑"), "contrat": ("Contrat classique", "🏦"),
+                   "jetons": ("Jetons créés", "💸")},
+    "mint-bloque": {"key": ("Clé volée", "🔑"), "sh": ("Secure Horizons", "🛡️")},
+    "fenetre-reprise": {"user": ("Utilisateur honnête", "🙂"), "contrat": ("Contrat", "🏦")},
+    "ghost-vendeur": {"seller": ("Vendeur", "🕵️"), "buyer": ("Acheteur honnête", "🙂"),
+                      "vault": ("Coffre", "🔒"), "watcher": ("Surveillant", "📡"),
+                      "guardians": ("Gardiens 2/3", "👥")},
+    "contagion": {"pirate": ("Pirate", "🕵️"), "blind": ("Marché aveugle", "🏦"),
+                  "firewall": ("Marché pare-feu", "🧱"), "guardians": ("Gardiens 2/3", "👥")},
+}
+# Flux par (cas, index d'étape) : (src, dst, token, tone, kind).
+_FLOWS: dict[tuple[str, int], tuple[str, list[tuple[str, str, str, str, str]]]] = {
+    ("mint-passe", 0): ("Le contrat croit la signature volée", [
+        ("key", "contrat", "mint ×1000 signé", "danger", "send"),
+        ("contrat", "jetons", "1 000 000 jetons sans réserve", "danger", "send")]),
+    ("mint-bloque", 0): ("Le même mint gonflé est rejeté", [
+        ("key", "sh", "mint ×1000 signé", "danger", "block")]),
+    ("mint-bloque", 1): ("Seul le dépôt réel est servi, 1:1", [
+        ("key", "sh", "traiter la demande", "info", "send"),
+        ("sh", "key", "1 000 M-Ghost (1:1)", "ok", "send")]),
+    ("fenetre-reprise", 0): ("L'échange ne donne pas du M-Coin, mais du M-Ghost", [
+        ("user", "contrat", "1 000 USDC", "info", "send"),
+        ("contrat", "user", "👻 1 000 M-Ghost", "warn", "send")]),
+    ("fenetre-reprise", 1): ("Échéance atteinte sans anomalie", [
+        ("contrat", "user", "🪙 1 000 M-Coin (1:1)", "ok", "send")]),
+    ("ghost-vendeur", 0): ("L'acheteur paie, le vendeur est payé en Ghost", [
+        ("buyer", "vault", "1 000 USDC (bloqués)", "info", "freeze"),
+        ("vault", "seller", "👻 Ghost de paiement", "warn", "send")]),
+    ("ghost-vendeur", 1): ("Le surveillant gèle le Ghost suspect", [
+        ("watcher", "seller", "⚠ gel (pas de destruction)", "warn", "freeze")]),
+    ("ghost-vendeur", 2): ("Les gardiens détruisent tout le Ghost suspect", [
+        ("guardians", "buyer", "🔥 Ghost détruit", "danger", "burn")]),
+    ("ghost-vendeur", 3): ("Le Ghost de paiement du vendeur est annulé", [
+        ("guardians", "seller", "🔥 paiement annulé", "danger", "burn")]),
+    ("ghost-vendeur", 4): ("L'argent gelé revient à l'acheteur honnête", [
+        ("vault", "buyer", "1 000 USDC rendus", "ok", "send")]),
+    ("contagion", 0): ("Un marché aveugle prête contre un collatéral empoisonné", [
+        ("pirate", "blind", "collatéral empoisonné", "danger", "send"),
+        ("blind", "pirate", "760 USDC prêtés", "danger", "send")]),
+    ("contagion", 1): ("La destruction évapore le collatéral → créance douteuse", [
+        ("guardians", "blind", "🔥 collatéral détruit", "danger", "burn")]),
+    ("contagion", 2): ("Le marché qui lit la balise refuse tout", [
+        ("pirate", "firewall", "même collatéral", "ok", "block")]),
+}
+
+
+def _scene(case_id: str, index: int) -> "FujiScene | None":
+    found = _FLOWS.get((case_id, index))
+    if found is None:
+        return None
+    caption, flows = found
+    used = []
+    for src, dst, _tok, _tone, _kind in flows:
+        used += [src, dst]
+    actors = [FujiActor(key=k, label=lbl, emoji=emo)
+              for k, (lbl, emo) in _ACTORS.get(case_id, {}).items() if k in used]
+    return FujiScene(caption=caption, actors=actors,
+                     flows=[FujiFlow(src=s, dst=d, token=t, tone=tn, kind=k)
+                            for s, d, t, tn, k in flows])
+
+
 def build_fuji_story(run: FujiRun, live: LiveState | None = None) -> FujiStory:
     """Traduit un rejeu Fuji (et, si fourni, l'etat relu a l'instant) pour la page."""
     cases: list[FujiCase] = []
     for case_id in FUJI_CASE_ORDER:
+        src = [s for s in run.steps if s.case == case_id]
         steps = [FujiStep(command=s.command, actor=s.actor_label, contract=s.contract,
                           contract_url=s.contract_url, narration=s.narration, effect=s.effect,
                           outcome=s.outcome, countdown=s.command.startswith("⏱"),
-                          tx_urls=list(s.tx_urls))
-                 for s in run.steps if s.case == case_id]
+                          scene=_scene(case_id, i), tx_urls=list(s.tx_urls))
+                 for i, s in enumerate(src)]
         if not steps:
             continue
         title, subtitle, outcome = FUJI_CASE_META[case_id]
@@ -393,6 +490,24 @@ background:var(--accent);color:#06102a;cursor:pointer;font-weight:700;font-size:
 .cdbar{height:12px;border-radius:7px;background:var(--panel2);overflow:hidden;margin:9px 0 5px}
 .cdbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--ok))}
 .cdnote{font-size:11px;color:var(--muted)}
+.scene{display:none;margin:0 0 12px;padding:16px 14px;border:1px solid var(--border);border-radius:12px;background:#0d1430}
+.scene.on{display:block;animation:fade .4s ease}
+.sccap{font-size:14px;color:var(--text);font-weight:600;text-align:center;margin-bottom:14px}
+.scstage{position:relative}
+.scrow{display:flex;justify-content:space-around;gap:8px}
+.scnode{flex:1;max-width:150px;text-align:center;padding:8px 6px;border-radius:10px;background:var(--panel);
+border:1px solid var(--border);transition:border-color .3s,box-shadow .3s,transform .3s}
+.scnode .e{font-size:30px;line-height:1.1}
+.scnode .n{font-size:11px;color:var(--muted);margin-top:3px}
+.scnode.hot{border-color:var(--accent);box-shadow:0 0 0 2px #6ea8ff44;transform:translateY(-2px)}
+.scwire{position:relative;height:30px;margin-top:4px}
+.sctok{position:absolute;top:2px;font-size:11px;white-space:nowrap;padding:2px 8px;border-radius:20px;
+transform:translateX(-50%);opacity:0;border:1px solid var(--border)}
+.sctok .arr{opacity:.7}
+.sctok.ok{background:var(--ok-subtle,#3ddc9722);color:var(--ok)}
+.sctok.danger{background:var(--danger-subtle,#ff5c7a22);color:var(--danger)}
+.sctok.info{background:var(--accent-subtle,#6ea8ff22);color:var(--accent)}
+.sctok.warn{background:var(--warn-subtle,#ffc35c22);color:var(--warn)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body><div class="wrap">
 
@@ -413,6 +528,7 @@ background:var(--accent);color:#06102a;cursor:pointer;font-weight:700;font-size:
  <div id="f-body">
   <span class="badge" id="f-live"></span>
   <div class="cases" id="f-cases" role="group" aria-label="Choix du cas"></div>
+  <div class="scene" id="f-scene"></div>
   <div class="termwrap">
    <div class="term">
     <div class="termbar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>
@@ -566,11 +682,30 @@ else{
   (function tick(ts){if(!t0)t0=ts;var p=Math.min((ts-t0)/dur,1);bar.style.width=(p*100)+'%';
    var rem=Math.round(600*(1-p));clk.textContent=Math.floor(rem/60)+':'+String(rem%60).padStart(2,'0');
    if(p<1){requestAnimationFrame(tick)}else{clk.textContent='0:00';cd.className='cd done';typing=false;done()}})(performance.now())}
+ function renderScene(s){var sc=$('f-scene');if(!s.scene){sc.className='scene';sc.innerHTML='';return}
+  var v=s.scene,idx={};
+  var row=v.actors.map(function(a,i){idx[a.key]=i;return '<div class="scnode" data-k="'+a.key+'"><div class="e">'+a.emoji+'</div><div class="n">'+a.label+'</div></div>'}).join('');
+  sc.innerHTML='<div class="sccap">'+v.caption+'</div><div class="scstage"><div class="scrow">'+row+'</div><div class="scwire" id="scwire"></div></div>';
+  sc.className='scene on';
+  var n=v.actors.length,wire=sc.querySelector('#scwire'),nodes=sc.querySelectorAll('.scnode');
+  function cx(k){return (idx[k]+0.5)/n*100}
+  function play(i){if(i>=v.flows.length)return;var f=v.flows[i];var sx=cx(f.src),dx=cx(f.dst);
+   nodes[idx[f.src]].classList.add('hot');
+   var t=document.createElement('div');t.className='sctok '+f.tone;t.innerHTML=f.token+' <span class="arr">▶</span>';
+   wire.appendChild(t);t.style.left=sx+'%';
+   if(RM){t.style.opacity='1';if(f.kind==='block'){t.innerHTML='⛔ refusé';}else{t.style.left=dx+'%';nodes[idx[f.dst]].classList.add('hot');if(f.kind==='burn')t.innerHTML='🔥 '+f.token;if(f.kind==='freeze')t.innerHTML='🔒 '+f.token;}play(i+1);return}
+   requestAnimationFrame(function(){t.style.transition='left .9s cubic-bezier(.3,.7,.3,1),opacity .3s';t.style.opacity='1';
+    t.style.left=(f.kind==='block'?(sx+(dx-sx)*0.4):dx)+'%'});
+   setTimeout(function(){if(f.kind==='block'){t.innerHTML='⛔ refusé';t.style.left=sx+'%'}
+    else{nodes[idx[f.dst]].classList.add('hot');if(f.kind==='burn')t.innerHTML='🔥 '+f.token;if(f.kind==='freeze')t.innerHTML='🔒 '+f.token}},950);
+   setTimeout(function(){play(i+1)},1300)}
+  play(0)}
  function runStep(){if(typing||!curCase||stepIdx>=curCase.steps.length)return;var s=curCase.steps[stepIdx];
   renderRail(s.contract);$('f-next').innerHTML='';
-  typeCmd(s.command,function(){function fin(){printEffect(s);stepIdx++;renderNext()}
+  typeCmd(s.command,function(){function fin(){renderScene(s);printEffect(s);stepIdx++;renderNext()}
    if(s.countdown){playCountdown(fin)}else{fin()}})}
  function selectCase(c){curCase=c;stepIdx=0;typing=false;out.innerHTML='';$('f-verdict').className='verdict';
+  $('f-scene').className='scene';$('f-scene').innerHTML='';
   [].forEach.call($('f-cases').children,function(b,i){b.setAttribute('aria-pressed',F.cases[i]===c)});
   var intro=document.createElement('div');intro.className='termline';intro.style.color='var(--muted)';
   intro.textContent='# '+c.title+' — '+c.subtitle+'. Clique le bouton pour exécuter chaque étape.';
