@@ -212,3 +212,5 @@ vague, répartition par module, tâches en cours. **Lecture seule** (ne modifie 
   le LLM n'est appelé **que sur alerte**.
 - À vérifier tôt par chacun : accès RPC public Fuji, AVAX de test (faucet), `BEDROCK_MODEL_ID`
   exact (dans la console Bedrock, ne pas deviner).
+
+  La démo: https://secure-horizon-crypto-secure.streamlit.app/Demo_interactive
