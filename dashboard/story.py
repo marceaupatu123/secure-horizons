@@ -154,6 +154,8 @@ FUJI_CASE_META: dict[str, tuple[str, str, str]] = {
                         "window"),
     "ghost-vendeur": ("Un vendeur de Ghost pose problème",
                       "On gèle, on détruit, on rembourse l'honnête", "resolved"),
+    "contagion": ("Le pare-feu de contagion",
+                  "La fraude ne se propage pas au reste de la DeFi", "resolved"),
 }
 FUJI_CASE_VERDICT: dict[str, str] = {
     "mint-passe": "✗ Sur un contrat classique, la clé volée a réussi : des jetons sans réserve ont "
@@ -166,8 +168,11 @@ FUJI_CASE_VERDICT: dict[str, str] = {
                        "vaut du M-Coin 1:1, automatiquement : personne n'a à le décider.",
     "ghost-vendeur": "🛡️ Problème résolu on-chain : pendant la fenêtre, tout le Ghost suspect est "
                      "détruit et l'argent gelé rendu à l'acheteur honnête ; le vendeur finit à zéro.",
+    "contagion": "🧱 Pare-feu : un marché aveugle se fait contaminer (créance douteuse), mais le "
+                 "marché qui lit la balise de risque refuse le collatéral empoisonné — zéro perte. "
+                 "La fraude est stoppée avant de se propager au reste de la DeFi.",
 }
-FUJI_CASE_ORDER = ("mint-passe", "mint-bloque", "fenetre-reprise", "ghost-vendeur")
+FUJI_CASE_ORDER = ("mint-passe", "mint-bloque", "fenetre-reprise", "ghost-vendeur", "contagion")
 
 
 def _tokens(amount: int) -> float:
@@ -190,8 +195,7 @@ def build_fuji_story(run: FujiRun, live: LiveState | None = None) -> FujiStory:
                               verdict=FUJI_CASE_VERDICT[case_id], steps=steps))
     matches = None
     if live is not None:
-        matches = (live.vulnerable_minted, live.seller_usdc_final) == (
-            run.vulnerable_minted, run.seller_usdc_final)
+        matches = live.vulnerable_minted == run.vulnerable_minted
     return FujiStory(
         recorded_at=run.finished_at.strftime("%d/%m/%Y %H:%M UTC"),
         tx_count=len(run.transactions),
