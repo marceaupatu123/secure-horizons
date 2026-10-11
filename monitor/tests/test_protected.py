@@ -471,3 +471,40 @@ def test_config_lit_monitor_ghost_address() -> None:
     )
     assert config.ghost_address is not None
     assert config.ghost_address.lower() == GHOST
+
+
+def ghost_transfer(sender: str, recipient: str, amount: int, *, block: int, index: int, tx: int) -> dict[str, Any]:
+    return _log(
+        GHOST,
+        [ERC20_TRANSFER_TOPIC, _addr_topic(sender), _addr_topic(recipient)],
+        _data(amount),
+        block,
+        index,
+        tx,
+    )
+
+
+def test_ghost_transfert_de_ghost_emis_avec_is_ghost_true() -> None:
+    """Un Transfer ordinaire sur le Ghost est un transfert de Ghost (lignage #106)."""
+    logs = [
+        # Emission : Transfer(0x0) sur le Ghost + GhostIssued(MINT) -> un seul mint.
+        swap_requested(0, ALICE, 1_000_000, WAD, block=10, index=0, tx=1),
+        ghost_transfer(ZERO, ALICE, 10**18, block=11, index=0, tx=2),
+        ghost_issued(ALICE, MINTER, 0, 10**18, ISSUE_KIND_MINT, block=11, index=1, tx=2),
+        swap_completed(0, ALICE, ALICE, 1_000_000, 10**18, WAD, block=11, index=2, tx=2),
+        ghost_transfer(ALICE, BOB, 4 * 10**17, block=12, index=0, tx=3),
+        # Transfert du vrai token (cas generique, hors Ghost) : is_ghost=False.
+        transfer(ALICE, BOB, 5, block=13, index=0, tx=4),
+    ]
+    listener, eth = _ghost_listener(logs)
+    events = listener.fetch_events(0, 100)
+    assert len(eth.calls) == 3  # toujours 3 appels : Transfer lu avec les topics du Ghost
+    mints = [e for e in events if isinstance(e, MintEvent)]
+    transfers = [e for e in events if isinstance(e, TransferEvent)]
+    assert len(mints) == 1
+    assert [(t.recipient.lower(), t.amount, t.is_ghost) for t in transfers] == [
+        (BOB, 4 * 10**17, True),
+        (BOB, 5, False),
+    ]
+    # Ordre de la chaine conserve entre les deux contrats.
+    assert [e.block_number for e in events] == sorted(e.block_number for e in events)

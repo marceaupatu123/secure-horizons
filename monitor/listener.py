@@ -618,7 +618,17 @@ class ChainListener:
         """
         return self._poll(self.fetch_mint_events, max_polls)
 
-    def _to_transfer_event(self, log: RawLog) -> TransferEvent | None:
+    def _to_transfer_event(
+        self, log: RawLog, *, is_ghost: bool | None = None
+    ) -> TransferEvent | None:
+        """`TransferEvent` d'un `Transfer` ERC-20 ordinaire.
+
+        Args:
+            log: log brut.
+            is_ghost: force `TransferEvent.is_ghost` (mode Ghost, #8 : un
+                `Transfer` lu sur l'adresse du Ghost EST un transfert de Ghost) ;
+                None = `config.token_is_ghost`.
+        """
         decoded = decode_erc20_transfer(log)
         if decoded is None:
             return None
@@ -631,7 +641,7 @@ class ChainListener:
             sender=decoded.sender,
             recipient=decoded.recipient,
             amount=decoded.amount,
-            is_ghost=self._config.token_is_ghost,
+            is_ghost=self._config.token_is_ghost if is_ghost is None else is_ghost,
         )
 
     def fetch_transfer_events(
@@ -801,7 +811,11 @@ class ChainListener:
                     completions,
                 )
             else:
-                mints = self._ghost_mints(start, end, ghost, mints, completions)
+                ghost_transfers: list[TransferEvent] = []
+                mints = self._ghost_mints(
+                    start, end, ghost, mints, completions, ghost_transfers
+                )
+                events.extend(ghost_transfers)
             for mint in mints:
                 found = correlator.peek(mint.tx_hash, mint.log_index)
                 request_id = found.request_id if found is not None else None
@@ -816,6 +830,7 @@ class ChainListener:
         ghost: str,
         underlying_mints: list[MintEvent],
         completions: list[SwapCompletedLog],
+        ghost_transfers: list[TransferEvent],
     ) -> list[MintEvent]:
         """Mode Ghost (#8) : les mints a verifier sur une plage deja lue.
 
@@ -827,6 +842,9 @@ class ChainListener:
           flux de mints.
         - Un `Transfer(0x0)` sur M SANS `GhostConverted` contourne le Ghost :
           garde comme mint SANS provenance -> alerte I4 critique en detection.
+        - Un `Transfer` ERC-20 ordinaire sur le Ghost (ni emission ni burn) est
+          un transfert de Ghost : ajoute a `ghost_transfers` avec
+          `is_ghost=True` (entree du lignage, #106). Meme appel `eth_getLogs`.
         """
         correlator = self.correlator
         assert correlator is not None  # garanti par fetch_protected_events
@@ -835,7 +853,7 @@ class ChainListener:
                 "fromBlock": start,
                 "toBlock": end,
                 "address": ghost,
-                "topics": [list(GHOST_TOPICS)],
+                "topics": [[*GHOST_TOPICS, ERC20_TRANSFER_TOPIC]],
             }
         )
         issued: list[MintEvent] = []
@@ -844,7 +862,12 @@ class ChainListener:
             if log.get("removed"):
                 continue
             try:
-                if to_hex(log["topics"][0]) == GHOST_ISSUED_TOPIC:
+                topic0 = to_hex(log["topics"][0])
+                if topic0 == ERC20_TRANSFER_TOPIC:
+                    moved = self._to_transfer_event(log, is_ghost=True)
+                    if moved is not None:
+                        ghost_transfers.append(moved)
+                elif topic0 == GHOST_ISSUED_TOPIC:
                     decoded = decode_ghost_issued(log)
                     if decoded.kind != ISSUE_KIND_MINT or decoded.amount <= 0:
                         # TRANSFER_M / RESTITUTION : pas de valeur nouvelle.
