@@ -53,6 +53,11 @@ from dashboard.scenarios.real_pipeline import (
     respond,
     run_detectors,
 )
+from dashboard.scenarios.real_report import (
+    incident_report_markdown,
+    related_actions,
+    related_audit,
+)
 from dashboard.scenarios.registry import register
 from dashboard.scenarios.sim_contracts import (
     ConstantProductPool,
@@ -473,6 +478,18 @@ def run_b(seed: int, params: SimulationParams) -> ScenarioResult:
             and d.expires_at - d.created_at == DEMO_EXTENDED_WINDOW for d in actions)
         for a in attack_alerts
     )
+    # Rapport DORA (#15) sur la premiere alerte d'attaque confirmee par le multisig (#113).
+    destroyed_addresses = {address.lower() for address in response.destroyed_at}
+    confirmed_alert = next((a for a in attack_alerts
+                            if alert_addresses(a) & destroyed_addresses), None)
+    report = None
+    if confirmed_alert is not None:
+        scope = alert_addresses(confirmed_alert)
+        linked = related_actions(scope, actions)
+        report = incident_report_markdown(
+            confirmed_alert, linked,
+            related_audit(scope, linked, response.orchestrator.audit_log),
+            generated_at=response.end_time or gen.end)
     variant = ScenarioVariant(
         name=_MAIN, label="Détournement 1:1 puis sortie concentrée (trafic #24)",
         metrics=[
@@ -497,8 +514,12 @@ def run_b(seed: int, params: SimulationParams) -> ScenarioResult:
             ScenarioCheck(label="fenêtre allongée",
                           expected="retard appliqué sur chaque adresse de l'attaque alertée",
                           passed=extended),
+            ScenarioCheck(label="rapport d'incident DORA",
+                          expected="rapport #15 produit pour l'alerte confirmée par le multisig",
+                          passed=report is not None),
         ],
         dataset=build_dataset(builder, seed), end_time=response.end_time or gen.end,
+        incident_report=report,
     )
     return _result("B", seed, [variant], message=_real_message(seed, "Ghost (#8)"))
 

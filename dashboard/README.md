@@ -65,6 +65,13 @@ rejoue ce chemin sur chaque PR.
 
 À garder en tête :
 
+- **Rapport d'incident DORA (#15, #113)** : sur l'alerte d'attaque confirmée par le multisig, le
+  scénario B appelle `llm.report.build_incident_report` avec les vraies actions et le vrai journal
+  de l'orchestrateur (`scenarios/real_report.py`). Hors ligne par défaut (faux client, aucun
+  appel AWS, déterministe) ; Bedrock réel avec `LLM_LIVE=1` (un seul appel, via le limiteur).
+  Affichage : `python -m dashboard.demo run B --report`, ou l'encadré « Rapport d'incident DORA »
+  de la page.
+
 - B, N1, N2, N3 appellent le **vrai** code (`scenarios/real_pipeline.py`) : `data.generate`
   (#24), `detection.detector.RuleBasedMonitor` (#11, #12) aux seuils par défaut de
   `detection/params.py`, `response.orchestrator.ResponseOrchestrator` (#17). Le Ghost (#8, non
