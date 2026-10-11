@@ -122,4 +122,13 @@ abstract contract BaseTest is Test {
         vm.prank(who);
         id = pm.requestSwap(amount);
     }
+
+    /// @dev Pilote le taux via le timelock borné de #131 : `admin` propose (variation <= 5 %),
+    ///      on attend `RATE_DELAY`, puis on exécute. `newRate` doit être dans la borne de pas.
+    function _proposeExecuteRate(ProtectedMinter pm, uint256 newRate) internal {
+        vm.prank(admin);
+        pm.proposeRate(newRate);
+        vm.warp(block.timestamp + pm.RATE_DELAY());
+        pm.executeRate();
+    }
 }

@@ -6,6 +6,25 @@
   `python -m detection --replay FICHIER.jsonl --profile demo` (voir ci-dessous) ;
   tests : `python -m pytest detection/`.
 
+## Provenance du mint (#104, lecture sur l'événement partagé #135)
+
+Les invariants de mint (I1 minté = dépôt × taux, I3 destinataire = déposant, I4 chemin prévu) ont
+besoin de la **demande** rattachée au mint. Depuis la révision groupée de `shared/` (#135), le
+`MintEvent` **porte lui-même** cette provenance (`depositor`, `deposit_amount`, `rate_wad`,
+`provenance_source`, `via_protected_path`), renseignée par le monitor en mode contrat protégé.
+
+- `detection/provenance.py` → `event_context_provider()` : lit la provenance **directement sur le
+  `MintEvent`** et la traduit en `MintContext`. Provider par défaut de `run_live` depuis #135.
+  `via_protected_path=None` ⇒ `None` (hors mode protégé, aucune règle de mint évaluée) ; `False` ⇒
+  `path_unexpected=True` (I4) ; `True` ⇒ dépôt + taux (I1) et déposant (I3).
+- Décision d'architecture (ici, à relire par l'équipe) : la détection **ne tient plus de référence
+  au corrélateur du monitor**. La provenance vivant sur l'événement, le pipeline fonctionne à
+  l'identique en LIVE, en rejeu ou en test. `correlator_context_provider` reste exporté pour
+  compatibilité et n'est plus le défaut.
+- La vérité du montant et du destinataire reste `event.amount` / `event.recipient` (le log du
+  token), jamais les champs écrits par le contrat surveillé.
+
+
 ## Branchement monitor → detection (#86)
 
 `detection/pipeline.py` alimente `RuleBasedMonitor` et écrit chaque `Alert` en **JSON lines**

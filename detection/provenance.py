@@ -76,14 +76,70 @@ def admin_event_from_observation(observation: AdminObservation) -> AdminEvent:
     )
 
 
+def mint_context_from_event(event: MintEvent) -> MintContext | None:
+    """`MintContext` lu directement sur un `MintEvent` (champs partages #104, #135).
+
+    Depuis la revision groupee de `shared/` (#135), `MintEvent` porte lui-meme
+    la provenance de la demande (`depositor`, `deposit_amount`, `rate_wad`,
+    `via_protected_path`), remplie par le monitor en mode contrat protege. La
+    detection la lit donc SUR L'EVENEMENT, sans dependre du correlateur du
+    monitor : c'est l'item « lire ces champs partages au lieu de MintContext »
+    de #104.
+
+    La verite du mint reste `event.amount` / `event.recipient` (le log du
+    token) ; `depositor`, `deposit_amount` et `rate_wad` viennent de
+    `SwapRequested` (independants de la cle de service) et servent a recalculer
+    I1 (minted = depot x taux) et I3 (destinataire = deposant).
+
+    Args:
+        event: le mint observe, tel que renseigne par le monitor.
+
+    Returns:
+        - `None` si le mint n'a pas ete verifie en mode contrat protege
+          (`via_protected_path is None`) : aucune regle de mint evaluee, comme
+          avant #104 ;
+        - `MintContext(path_unexpected=True)` si le mint est sans provenance
+          (`via_protected_path is False`, I4) ;
+        - sinon le contexte depot + taux (I1) et deposant (I3).
+    """
+    if event.via_protected_path is None:
+        return None
+    if event.via_protected_path is False:
+        return MintContext(path_unexpected=True)
+    deposit = event.deposit_amount if event.deposit_amount else None
+    rate = rate_from_wad(event.rate_wad) if event.rate_wad else None
+    return MintContext(
+        deposit_amount=deposit,
+        rate=rate,
+        requester=event.depositor,
+    )
+
+
+def event_context_provider() -> Callable[[MintEvent], MintContext | None]:
+    """`MintContextProvider` lisant la provenance SUR le `MintEvent` (#104, #135).
+
+    A preferer a `correlator_context_provider` depuis #135 : la provenance vit
+    desormais sur l'evenement partage, donc la detection n'a plus besoin de
+    tenir une reference au correlateur du monitor. Un pipeline branche sur ce
+    provider fonctionne quelle que soit la facon dont le `MintEvent` a ete
+    produit (monitor en direct, rejeu, test), tant que les champs de provenance
+    sont renseignes.
+    """
+    return mint_context_from_event
+
+
 def correlator_context_provider(
     correlator: MintCorrelator,
 ) -> Callable[[MintEvent], MintContext | None]:
     """`MintContextProvider` du pipeline, adosse au correlateur du monitor.
 
-    Un mint inconnu du correlateur (ex. lu hors du mode protege) donne `None`
-    (aucune regle de mint verifiee, comme avant #104) ; un mint connu SANS
-    provenance donne `path_unexpected=True`.
+    DEPUIS #135, preferer `event_context_provider` : la provenance vit sur le
+    `MintEvent` partage, ce provider-ci n'est utile que pour un flux ou les
+    champs de provenance de l'evenement ne sont PAS renseignes mais ou l'on
+    tient encore le correlateur (compatibilite). Un mint inconnu du correlateur
+    (ex. lu hors du mode protege) donne `None` (aucune regle de mint verifiee,
+    comme avant #104) ; un mint connu SANS provenance donne
+    `path_unexpected=True`.
     """
 
     def provide(event: MintEvent) -> MintContext | None:

@@ -194,7 +194,12 @@ déposer) et 4 déposants aléatoires. Les valeurs attendues sont **recalculées
 
 ### Hypothèses
 
-- **H1** clés admin / `RATE_ADMIN_ROLE` **non compromises** (le taux est honnête) ;
+- **H1** clé admin **non compromise**. La clé `RATE_ADMIN_ROLE`, elle, est désormais **durcie**
+  (#131) : `proposeRate` est borné à `MAX_RATE_STEP_BPS` (5 %, provisoire) de variation et
+  temporisé par `RATE_DELAY` (1 h, provisoire) avant `executeRate`, et un guardian peut annuler
+  (`cancelRate`). Une clé de taux volée ne peut donc plus mint sans limite — au pire elle décale
+  le taux de quelques % par période, après un délai pendant lequel la surveillance alerte et un
+  guardian annule. Voir `test/RateGuard.t.sol` et `OPEN_QUESTIONS` §18 pour les seuils provisoires ;
 - **H2** clés des guardians **non compromises** ;
 - **H3** collatéral ERC20 standard (`MockUSDC`, pas de frais de transfert) ;
 - **H4** contrat non upgradable, code tel que testé ;

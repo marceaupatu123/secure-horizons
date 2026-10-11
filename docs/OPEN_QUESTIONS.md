@@ -139,6 +139,41 @@ risque est transféré vers un marché secondaire spéculatif) :
      de seuils. Les autres profils et tables ne bougent pas. Mesure sur données fictives
      (`docs/CLAIMS.md`), pas une garantie.
 
+### Points ouverts issus de la revue monitor/detection (2026-10-11, Yannis) — **OUVERT, non tranché**
+
+> Ce sont des **questions ouvertes**, pas des décisions. Rien n'ira dans `docs/OPEN_ANSWERS.md`
+> tant que l'équipe ne les a pas tranchées. Seuls les points encore ouverts sur `main` après
+> #96, #97, #99 et #105 sont listés ici (les autres sont déjà résolus par le code ou déjà notés).
+
+1. **Une annonce admin n'est jamais « consommée ».** `RuleBasedMonitor` garde les annonces dans
+   un ensemble fixe de couples (type, adresse) : une seule annonce met en liste blanche **tous**
+   les événements identiques suivants, y compris un rejeu par une clé volée. Options : annonce à
+   usage unique, annonce avec date d'expiration, ou annonce liée à une transaction précise.
+   Source : PR #76 (`detection/detector.py`). À trancher en équipe.
+2. **Un nouvel utilisateur légitime peut devenir une graine.** Dans une tranche qui déclenche,
+   tout transfert envoyé par une adresse neuve est compté suspect : son destinataire reçoit une
+   graine, jusqu'au ratio 1,0 s'il n'a reçu que d'adresses neuves (`SlotAggregate.seeds`,
+   marqué PROVISOIRE). Un nouvel utilisateur honnête qui paie quelqu'un pendant l'attaque fait
+   donc retarder son destinataire. Options : ne semer que les flux liés au mint ou à l'adresse
+   sujet de l'alerte, exiger un montant minimal, ou accepter ce retard et le mesurer.
+   Source : PR #81. À trancher en équipe.
+3. **La baseline se fige après un changement de régime.** Une tranche qui déclenche n'entre pas
+   dans la baseline (règle PROVISOIRE, pour qu'une attaque n'élargisse pas sa propre référence).
+   Conséquence : si un changement légitime dure, chaque tranche continue d'alerter et la baseline
+   ne rattrape jamais. La soupape « reconnaissance de croissance signée en multisig » de la §9
+   d'`OPEN_ANSWERS.md` répond en principe, mais elle n'est pas implémentée. Restent à trancher :
+   garder l'exclusion telle quelle, la plafonner (ex. N tranches exclues de suite au plus),
+   ajouter une décroissance, ou ne compter que sur la soupape multisig. Source : PR #81.
+   À trancher en équipe.
+4. **Tranches calées sur l'heure de lecture, pas sur l'heure du bloc.** En direct, le monitor
+   remplit `observed_at` avec l'horloge au moment où il lit le log. Si le monitor démarre sur un
+   `MONITOR_START_BLOCK` passé, ou reprend un checkpoint (#96) après une longue coupure, tout le
+   retard lu d'un coup tombe dans **une seule** tranche de 5 min : faux volume élevé, ou attaque
+   noyée. Options : horodater par `block.timestamp` (cohérent avec la §5 d'`OPEN_ANSWERS.md` pour
+   la mesure des délais, mais demande un champ ou une lecture de plus côté `shared/`/monitor), ou
+   ne pas évaluer les tranches de rattrapage. Source : revue de la PR #94 (#86), non changé par
+   #96. À trancher en équipe.
+
 ## 3. Réponse graduée — automatique vs validation humaine
 
 > **TRANCHÉ par la décision §3 (2026-10-10, Équipe 20)** — texte complet dans
@@ -496,3 +531,22 @@ sans trancher aucune règle de cette décision. Design détaillé : `contracts/.
   Son échéance est celle du M' vendu.
 - Enforcement, modif de `GhostToken`, et événements de `docs/CONTRACTS.md` : différés / à proposer
   aux propriétaires, non faits ici.
+
+## 18. Garde-fou du taux (#131) — seuils — _choix de l'agent (2026-10-11, provisoire, à valider en équipe)_
+
+Correctif de la faille #131 (une clé `RATE_ADMIN_ROLE` volée mintait sans limite via `setRate`).
+`setRate` immédiat est remplacé par un **timelock borné** dans `ProtectedMinter` : `proposeRate`
+(variation ≤ `MAX_RATE_STEP_BPS`) → `executeRate` après `RATE_DELAY`, annulable par un guardian
+(`cancelRate`). Aucune règle de conception tranchée ici ; seuils à mesurer/valider :
+
+- **`MAX_RATE_STEP_BPS = 500` (5 %)** par changement. Pour un stable visé à 1:1, quelques % par
+  pas suffisent ; valeur **provisoire**, à régler en équipe (lié à #3).
+- **`RATE_DELAY = 1 hour`** avant effet : la fenêtre de réaction de la surveillance. **Provisoire** ;
+  à relier à la fenêtre W du Ghost et au délai de détection mesuré (§5).
+- **Signature du constructeur inchangée** (le taux initial n'est pas borné, et le déploiement/CI
+  anvil ne cassent pas). Séparer `RATE_ADMIN_ROLE` de `DEFAULT_ADMIN_ROLE` au déploiement reste une
+  option **ouverte** (aujourd'hui les deux sont sur `admin`).
+- **Limite assumée** : la borne est *par pas* ; une clé de taux volée non détectée peut dériver le
+  taux de 5 % par `RATE_DELAY` indéfiniment. Le Ghost (#8) rend ce mint récupérable dans la fenêtre,
+  et la surveillance alerte sur `RateProposed`/`RateChanged` — mais un gel doit être confirmé à
+  temps. À dire au jury (`docs/CLAIMS.md`), jamais « borne absolue ».
