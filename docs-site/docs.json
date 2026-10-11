@@ -17,6 +17,7 @@
             "group": "Démarrer ici",
             "pages": [
               "index",
+              "bases-blockchain",
               "le-probleme",
               "lidee-cle"
             ]
@@ -26,15 +27,77 @@
             "pages": [
               "les-trois-volets",
               "token-ghost",
+              "contamination-par-ratio",
               "les-garde-fous",
               "le-parcours-dune-attaque"
             ]
           },
           {
-            "group": "Pour l'équipe",
+            "group": "Décisions et promesses",
+            "pages": [
+              "decisions",
+              "promesses-jury"
+            ]
+          },
+          {
+            "group": "Référence",
+            "pages": [
+              "glossaire"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Sous le capot",
+        "groups": [
+          {
+            "group": "Vue d'ensemble",
             "pages": [
               "qui-fait-quoi",
-              "glossaire"
+              "modules/architecture",
+              "modules/shared"
+            ]
+          },
+          {
+            "group": "Sur la blockchain",
+            "pages": [
+              "modules/contracts"
+            ]
+          },
+          {
+            "group": "La chaîne de défense",
+            "pages": [
+              "modules/monitor",
+              "modules/detection",
+              "modules/response",
+              "modules/llm"
+            ]
+          },
+          {
+            "group": "Données et démo",
+            "pages": [
+              "modules/data",
+              "modules/dashboard"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Mettre les mains dedans",
+        "groups": [
+          {
+            "group": "Tutoriels",
+            "pages": [
+              "pratique/installer",
+              "pratique/premiere-demo",
+              "pratique/tests-expliques",
+              "pratique/workflow-equipe"
+            ]
+          },
+          {
+            "group": "Aide",
+            "pages": [
+              "pratique/depannage"
             ]
           }
         ]

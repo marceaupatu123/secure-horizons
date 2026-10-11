@@ -1,0 +1,285 @@
+---
+title: "Dépannage"
+description: "Les erreurs fréquentes du projet et leur solution, en questions-réponses."
+icon: "wrench"
+---
+
+<Info>
+**Ce que tu vas comprendre ici**
+- Les **erreurs les plus fréquentes** quand on débute sur le projet, et **comment les régler**.
+- Les pièges **Windows** en premier (make, python, venv).
+- Les blocages liés au **hook anti-secrets**, à **`gh`**, à **`main`**, à la **CI**.
+- Les soucis **Bedrock**, **Foundry** et **Fuji**, et la doc **Mintlify** qui ne démarre pas.
+
+Temps de lecture : parcours ciblé — cherche ton erreur dans la liste.
+</Info>
+
+<Tip>
+**Analogie** : cette page est une **trousse de secours**. Tu ne la lis pas en entier : tu ouvres
+le tiroir qui correspond à ton bobo. Chaque entrée dit **le symptôme**, **pourquoi** ça arrive, et
+**le geste** qui répare.
+</Tip>
+
+## Erreurs d'installation et d'environnement (Windows d'abord)
+
+<AccordionGroup>
+  <Accordion title="`make` n'est pas reconnu (Windows)">
+    **Symptôme** : `make : le terme 'make' n'est pas reconnu...`.
+
+    **Pourquoi** : `make` n'est pas livré avec Windows. Le `Makefile` suppose un `make` disponible
+    (Git Bash / WSL / installé).
+
+    **Solution** — au choix :
+    - installer `make` : `winget install GnuWin32.Make`, ou passer par **Git Bash** / **WSL** ;
+    - **ou** lancer les commandes à la main. L'équivalent de `make install` :
+      ```powershell
+      python -m pip install --upgrade pip
+      python -m pip install -r requirements.txt
+      git config core.hooksPath .githooks
+      ```
+    Source : `README.md` §2, `Makefile`.
+  </Accordion>
+
+  <Accordion title="`python` introuvable ou mauvaise version">
+    **Symptôme** : `python n'est pas reconnu`, ou `python --version` affiche moins que 3.11.
+
+    **Pourquoi** : Python pas installé, pas dans le `PATH`, ou trop ancien (le projet exige
+    **3.11+**, garanti par la CI).
+
+    **Solution** :
+    - installer : `winget install Python.Python.3.12` (Windows), `brew install python@3.12`
+      (macOS), `apt-get install python3.12 python3.12-venv` (Debian/Ubuntu) ;
+    - **rouvrir le terminal** après l'installation (le `PATH` n'est à jour qu'ensuite) ;
+    - sous Windows, essaie `py --version` si `python` ne répond pas.
+    Source : `.github/workflows/ci.yml` (Python 3.11), [Installer](/pratique/installer).
+  </Accordion>
+
+  <Accordion title="Le venv n'est pas activé (ou `Activate.ps1` refusé)">
+    **Symptôme** : tu ne vois pas `(.venv)` au début de ta ligne ; ou PowerShell refuse
+    `Activate.ps1` avec « l'exécution de scripts est désactivée ».
+
+    **Pourquoi** : l'environnement virtuel n'est pas activé, donc `pip` et `python` ne pointent pas
+    sur le bon endroit. PowerShell bloque par défaut les scripts non signés.
+
+    **Solution** :
+    ```powershell
+    Set-ExecutionPolicy -Scope CurrentUser RemoteSigned   # une seule fois
+    .venv\Scripts\Activate.ps1
+    ```
+    macOS/Linux : `source .venv/bin/activate`. Vérifie que ta ligne commence bien par `(.venv)`.
+  </Accordion>
+
+  <Accordion title="ModuleNotFoundError (import d'un module du projet)">
+    **Symptôme** : `ModuleNotFoundError: No module named 'response'` (ou `shared`, `detection`…)
+    quand tu lances un module ou un test.
+
+    **Pourquoi** — deux causes classiques :
+    1. le **venv n'est pas activé** ou les dépendances ne sont pas installées (`make install`) ;
+    2. tu lances depuis le **mauvais dossier** : les tests comptent sur le `conftest.py` **racine**
+       qui met la racine du dépôt sur `sys.path`.
+
+    **Solution** :
+    - active le venv et `python -m pip install -r requirements.txt` ;
+    - lance les tests **depuis la racine** du dépôt (`python -m pytest -q`), pas depuis un
+      sous-dossier.
+    Source : `conftest.py`.
+  </Accordion>
+</AccordionGroup>
+
+## Git, hook et GitHub
+
+<AccordionGroup>
+  <Accordion title="Le hook pre-commit refuse mon commit">
+    **Symptôme** :
+    ```
+    ERREUR pre-commit : fichier de secrets interdit au commit -> .env
+    Commit refuse. Retire les secrets/cles avant de recommencer.
+    ```
+    ou `chaine hex de 64 caracteres detectee (cle privee ?)`.
+
+    **Pourquoi** : le hook `.githooks/pre-commit` bloque **(1)** tout fichier `.env` (sauf
+    `.env.example`) et **(2)** toute chaîne hexadécimale de 64 caractères (ça ressemble à une clé
+    privée).
+
+    **Solution** :
+    - retire le `.env` de ton commit : `git restore --staged .env` ;
+    - remplace toute clé par un **placeholder** fictif (`0xAAAA…`) ;
+    - si c'est un **vrai faux positif** (une chaîne hex légitime), discute-en avec l'équipe — on ne
+      contourne pas le hook sans raison.
+    Source : `.githooks/pre-commit`.
+  </Accordion>
+
+  <Accordion title="`gh` n'est pas authentifié">
+    **Symptôme** : une commande `gh` répond une erreur d'authentification, ou le suivi du board ne
+    se met pas à jour.
+
+    **Pourquoi** : `gh` n'est pas connecté à ton compte GitHub.
+
+    **Solution** :
+    ```bash
+    gh auth status      # verifier
+    gh auth login       # se connecter si besoin
+    ```
+    Sans `gh` authentifié, le tableau de bord d'avancement et le suivi automatique Kiro ne marchent
+    pas. Source : `docs/TEAM.md`, `.kiro/steering/github-tracking.md`.
+  </Accordion>
+
+  <Accordion title="Push refusé sur main">
+    **Symptôme** : ton `git push` vers `main` est **rejeté** (protected branch).
+
+    **Pourquoi** : `main` est protégée — pas de push direct, PR obligatoire, CI verte requise.
+
+    **Solution** : travaille sur une branche et passe par une PR :
+    ```bash
+    git checkout -b feat/<N>-<description>
+    git push -u origin feat/<N>-<description>
+    gh pr create --fill        # puis "Closes #N" dans la description
+    ```
+    Source : `README.md` §6, [Workflow d'équipe](/pratique/workflow-equipe).
+  </Accordion>
+
+  <Accordion title="La CI est rouge sur ma PR">
+    **Symptôme** : le workflow GitHub Actions échoue, la PR ne peut pas être fusionnée.
+
+    **Pourquoi** : lint (`compileall`), `pytest` ou les tests Foundry échouent. **Rouge = pas de
+    merge.**
+
+    **Solution** :
+    - reproduis en local : `python -m pytest -q` (et `python -m compileall monitor detection llm
+      response dashboard shared data` pour le lint) ;
+    - pour les contrats : `forge build` puis `forge test` depuis `contracts/` ;
+    - corrige, recommite, repousse — la CI relance toute seule.
+    Source : `.github/workflows/ci.yml`.
+  </Accordion>
+</AccordionGroup>
+
+## LLM / Bedrock
+
+<AccordionGroup>
+  <Accordion title="Bedrock throttling / limiteur">
+    **Symptôme** : en mode **live**, des erreurs de type « throttling » / « too many requests ».
+
+    **Pourquoi** : la limite est d'environ **1 requête/seconde/personne**. Un limiteur est fourni
+    (`shared/rate_limiter.py`) et le LLM n'est appelé **que sur alerte**, mais un usage trop
+    rapproché dépasse quand même le quota.
+
+    **Solution** :
+    - pour apprendre/tester, reste en **mode hors ligne** (`python -m llm` sans `--live`) : c'est
+      gratuit, déterministe, sans réseau ;
+    - en live, espace les appels et laisse le limiteur faire son travail ; ne lance pas le LLM en
+      boucle serrée.
+    Source : `README.md` §8, `llm/__main__.py`, `shared/rate_limiter.py`.
+  </Accordion>
+
+  <Accordion title="BEDROCK_MODEL_ID : quelle valeur mettre ?">
+    **Symptôme** : erreur de modèle inconnu en mode live, ou doute sur la valeur.
+
+    **Pourquoi** : l'identifiant de modèle doit correspondre à un **inference profile** réellement
+    accessible sur le compte atelier (région `us-east-1`, API Converse).
+
+    **Solution** : ne devine pas. **Vérifie dans la console Bedrock** la valeur exacte. Le modèle
+    par défaut du `.env.example` est un **choix d'équipe à confirmer** (`docs/OPEN_QUESTIONS.md`).
+    Source : `.env.example`, `docs/TEAM.md`.
+  </Accordion>
+</AccordionGroup>
+
+## Contrats / Foundry / Fuji
+
+<AccordionGroup>
+  <Accordion title="Foundry (`forge`) absent ou pas dans le PATH">
+    **Symptôme** : `forge : le terme 'forge' n'est pas reconnu`.
+
+    **Pourquoi** : Foundry n'est pas installé, ou son binaire n'est pas dans le `PATH` (fréquent
+    sous Windows où `foundryup` n'est pas natif).
+
+    **Solution** :
+    - installer via **WSL / Git Bash** : `curl -L https://foundry.paradigm.xyz | bash` puis
+      `foundryup` ; ou récupérer `forge.exe` depuis les
+      [releases](https://github.com/foundry-rs/foundry/releases) ;
+    - si hors `PATH` sous PowerShell, appelle le binaire directement :
+      ```powershell
+      & "$env:USERPROFILE\.foundry\bin\forge.exe" --version
+      ```
+    Source : `contracts/README.md`.
+  </Accordion>
+
+  <Accordion title="`forge install` échoue (réseau / proxy)">
+    **Symptôme** : l'installation des dépendances de contrats échoue.
+
+    **Pourquoi** : coupure réseau ou proxy pendant le téléchargement de `forge-std` /
+    `openzeppelin-contracts`.
+
+    **Solution** : repli manuel décrit dans `contracts/README.md` — télécharger les zips des tags
+    figés (`forge-std` v1.17.0, `openzeppelin-contracts` v5.4.0) et les extraire dans
+    `contracts/lib/forge-std/` et `contracts/lib/openzeppelin-contracts/`. Toujours utiliser
+    `--no-git` pour éviter d'ajouter des sous-modules. Source : `contracts/README.md`.
+  </Accordion>
+
+  <Accordion title="RPC Fuji injoignable / pas d'AVAX de test (faucet)">
+    **Symptôme** : impossible de parler au réseau de test, ou transactions refusées faute de gaz.
+
+    **Pourquoi** : l'URL RPC Fuji n'est pas joignable, ou ton compte de test n'a pas d'AVAX de
+    test.
+
+    **Solution** :
+    - vérifie `FUJI_RPC_URL` dans ton `.env` (une URL publique Fuji est fournie par défaut) ;
+    - récupère de l'**AVAX de test** via un **faucet** pour ton compte de test (chaque membre doit
+      le faire tôt).
+    Source : `.env.example`, `docs/TEAM.md` (contraintes AWS / Fuji).
+  </Accordion>
+</AccordionGroup>
+
+## Documentation (Mintlify)
+
+<AccordionGroup>
+  <Accordion title="Mintlify ne démarre pas">
+    **Symptôme** : `mintlify : commande introuvable`, ou `mintlify dev` ne lance rien.
+
+    **Pourquoi** : Mintlify tourne avec **Node.js** (pas Python) et doit être installé en global ;
+    la commande se lance **depuis le dossier `docs-site/`**.
+
+    **Solution** :
+    ```bash
+    node --version            # verifier Node present
+    npm i -g mintlify         # installer une fois
+    cd docs-site
+    mintlify dev              # ouvre http://localhost:3000
+    ```
+    La config est dans `docs.json` ; chaque page est un `.mdx`. Source : `docs-site/README.md`.
+  </Accordion>
+
+  <Accordion title="Une page .mdx ne compile pas">
+    **Symptôme** : erreur de rendu Mintlify sur une page.
+
+    **Pourquoi** : MDX lit `<` suivi d'une lettre et les accolades `{` `}` comme du JSX. Un `<`
+    nu, un `<br>` sans slash, ou un libellé Mermaid mal protégé cassent la compilation.
+
+    **Solution** : hors blocs de code, écris « inférieur à » ou `&lt;`, utilise `<br />`, et dans
+    les diagrammes Mermaid mets tout libellé avec espaces/accents/parenthèses entre guillemets
+    (`A["Mint (montant dérivé)"]`). Source : guide de rédaction `docs-site`.
+  </Accordion>
+</AccordionGroup>
+
+<Check>
+**À retenir**
+- `make` absent → installe-le ou utilise l'équivalent manuel ; `python` → 3.11+ et PATH à jour.
+- Pas de `(.venv)` → réactive le venv avant tout `pip`/`pytest`.
+- `ModuleNotFoundError` → venv + deps, et lance depuis la **racine** (conftest).
+- Hook qui refuse → retire le `.env` / remplace la clé par `0xAAAA…`.
+- Push `main` refusé → passe par une **branche + PR** ; CI rouge → reproduis en local, corrige.
+</Check>
+
+<CardGroup cols={2}>
+  <Card title="Installer le projet" icon="download" href="/pratique/installer">
+    Reprendre l'installation proprement, étape par étape.
+  </Card>
+  <Card title="Lancer les démos" icon="play" href="/pratique/premiere-demo">
+    Vérifier que tout tourne une fois le dépannage fait.
+  </Card>
+  <Card title="Les tests expliqués" icon="vial" href="/pratique/tests-expliques">
+    Comprendre la CI et les tests avant de corriger une PR rouge.
+  </Card>
+  <Card title="Le workflow d'équipe" icon="code-branch" href="/pratique/workflow-equipe">
+    Pourquoi `main` est protégée et comment ouvrir une PR.
+  </Card>
+</CardGroup>
