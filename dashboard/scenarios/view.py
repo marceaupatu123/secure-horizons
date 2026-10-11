@@ -17,6 +17,7 @@ from dashboard.scenarios.models import (
     ScenarioVariant,
 )
 from dashboard.scenarios.models import simulation_banner as _replace_banner
+from dashboard.scenarios.registry import get_spec
 from dashboard.view_model import MISSING_LABEL, format_base_units
 
 NOT_MEASURED_LABEL = "non mesuré"
@@ -55,7 +56,7 @@ def scenarios_to_frame(specs: list[ScenarioSpec], disabled: frozenset[str]) -> p
             "oui" if spec.optional else "non",
             "désactivé" if spec.id in disabled else "activé",
             _refs(spec.depends_on),
-            _replace_banner(spec.replace_by),
+            spec.implementation_label(),
         ]
         for spec in specs
     ]
@@ -78,8 +79,16 @@ def checks_to_frame(variant: ScenarioVariant) -> pd.DataFrame:
 
 
 def simulation_banner(result: ScenarioResult) -> str:
-    """`simulation hors chaîne, à remplacer par #4, #5, #24 (seed 20)`."""
-    return f"{_replace_banner(result.replace_by)} (seed {result.seed})"
+    """`simulation hors chaîne, à remplacer par #4, #5 (seed 20)`, ou pour un scenario
+    branche : `implémentation réelle : #11, #12, #17, #24 (seed 20)`.
+
+    Le texte « simulation hors chaîne » n'apparait que s'il reste une brique simulee.
+    """
+    try:
+        banner = get_spec(result.scenario_id).result_banner(result)
+    except KeyError:  # resultat hors registre : on ne connait que `replace_by`
+        banner = _replace_banner(result.replace_by)
+    return f"{banner} (seed {result.seed})"
 
 
 def common_metric_keys(result: ScenarioResult) -> list[str]:

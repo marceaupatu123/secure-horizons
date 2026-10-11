@@ -99,17 +99,24 @@ def consolidation_burst(
     sink: str,
     start: datetime,
     params: SimulationParams,
+    amounts: list[int] | None = None,
 ) -> list[TransferEvent]:
     """Burst LEGITIME concentre vers une adresse ancienne (ex. consolidation de tresorerie, N3).
 
-    Tout tombe dans la tranche qui commence a `start`.
+    Tout tombe dans la tranche qui commence a `start`. Montants tires dans `amounts`
+    (ex. montants du trafic legitime du generateur `data/`) s'il est fourni, sinon
+    uniformement dans [legit_amount_min, legit_amount_max].
     """
     senders = [address for address in sender_pool if address != sink]
+
+    def amount() -> int:
+        if amounts:
+            return rng.choice(amounts)
+        return rng.randint(params.legit_amount_min, params.legit_amount_max)
+
     transfers = [
-        _transfer(
-            rng, start, _bucket_time(rng, start, 0, params), rng.choice(senders), sink,
-            rng.randint(params.legit_amount_min, params.legit_amount_max),
-        )
+        _transfer(rng, start, _bucket_time(rng, start, 0, params), rng.choice(senders), sink,
+                  amount())
         for _ in range(params.consolidation_transfers)
     ]
     return sorted(transfers, key=lambda t: t.observed_at)
