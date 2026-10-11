@@ -92,3 +92,23 @@ cohérence avec #85 piste b).
 - Multi-chaînes, oracle, prix plancher : écartés (§10bis « Options écartées »).
 - `docs/CONTRACTS.md` (événements Ghost portant statut + actif) : zone sensible, à proposer au
   propriétaire de `shared/`, non modifiée ici.
+
+## 8. Limites connues (audit, à dire au jury — jamais cachées)
+
+Relevées en relisant la couche de règlement ; honnêtes, pas des bugs (`docs/CLAIMS.md`) :
+
+- **Restitution bornée au libéré** (corrigé) : `restitute` ne peut puiser que dans
+  `locked() − assetGhost.totalSupply()`, l'argent effectivement libéré par les burns de graines.
+  Ainsi `locked >= totalSupply` tient même si le multisig publie une racine trop large — aucun
+  porteur honnête ne se retrouve non adossé. Test `test_restitute_keepsOtherHolderBacked`.
+- **Croissance du tableau de tranches** du Ghost de paiement : coût d'un transfert/burn linéaire
+  en nombre d'échéances distinctes détenues. Borné en pratique (échéances alignées au créneau,
+  issues de ventes de M'), mais à surveiller ; si gênant, agréger par créneau comme `MaturityBuckets`.
+- **Statut par tranche approximé** : le routeur étiquette la tranche à l'échéance *la plus tardive*
+  vendue ; un achat couvrant plusieurs échéances n'étiquette que celle-là. Suffisant pour la démo,
+  à affiner si le statut par wei devient nécessaire.
+- **Jetons à frais de transfert** : `lockAndIssue` revert (sous-collatéralisation refusée) plutôt
+  que de mal émettre — ils ne sont donc pas utilisables comme actif de coffre. MockUSDC n'en a pas.
+- **Unicité des nonces de restitution** : à garantir hors chaîne entre deux destructions (un nonce
+  déjà réclamé sous une ancienne racine resterait bloqué). Au pire une restitution légitime est
+  retardée, jamais de fonds perdus.
