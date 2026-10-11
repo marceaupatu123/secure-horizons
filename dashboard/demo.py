@@ -9,6 +9,7 @@ grandeurs mesurees (comptages, pas des mesures de performance) sont affichees.
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
@@ -91,6 +92,8 @@ def _parser() -> argparse.ArgumentParser:
     run_cmd.add_argument("scenario_id", metavar="id")
     run_cmd.add_argument("--seed", type=int, default=DEMO_SEED)
     run_cmd.add_argument("--json", action="store_true", help="Sortie JSON du résultat.")
+    run_cmd.add_argument("--report", action="store_true",
+                         help="Affiche aussi le rapport d'incident DORA (#15) s'il existe.")
     run_cmd.add_argument("--disable", nargs="+", action="extend", default=[], metavar="ID",
                          help="Scénarios désactivés (ex. C D).")
     return parser
@@ -101,6 +104,9 @@ def main(argv: list[str] | None = None) -> int:
     reconfigure = getattr(sys.stdout, "reconfigure", None)
     if reconfigure is not None:
         reconfigure(errors="replace")
+    # Le rejeu de plusieurs jours de trafic fait loguer au surveillant #12 un WARNING par tranche
+    # de chauffe (« historique insuffisant ») : utile en production, du bruit pour la demo.
+    logging.getLogger("detection").setLevel(logging.ERROR)
     args = _parser().parse_args(argv)
     known = {spec.id for spec in list_specs()}
     unknown = sorted((set(args.disable) | {getattr(args, "scenario_id", None)}) - known - {None})
@@ -114,6 +120,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     result = run_scenario(args.scenario_id, seed=args.seed, disabled=disabled)
     print(result.model_dump_json(indent=2) if args.json else format_result(result))
+    if args.report and not args.json:
+        reports = [v.incident_report for v in result.variants if v.incident_report]
+        print("\n".join(["", *reports]) if reports
+              else "\nAucun rapport d'incident : aucune alerte confirmée dans ce scénario.")
     return 0
 
 

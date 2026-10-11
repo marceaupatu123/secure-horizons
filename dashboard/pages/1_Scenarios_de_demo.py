@@ -9,6 +9,7 @@ Lancer : make run-dashboard, puis « Scénarios de démo » dans la barre latera
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 
@@ -85,6 +86,9 @@ def _render_variant_details(variant: ScenarioVariant) -> None:
                                      data.ghost_burns, at))
         st.markdown("**Journal d'audit**")
         _table(audit_log_to_frame(data.audit_log))
+    if variant.incident_report:
+        with st.expander(f"Rapport d'incident DORA (#15) — {variant.label}"):
+            st.markdown(variant.incident_report)
 
 
 def _render_result(result: ScenarioResult) -> None:
@@ -115,11 +119,14 @@ def _render_result(result: ScenarioResult) -> None:
 
 def main() -> None:
     """Rend la page des scenarios de demo."""
+    # Bruit de chauffe du surveillant #12 (un WARNING par tranche rejouee) : masque en demo.
+    logging.getLogger("detection").setLevel(logging.ERROR)
     st.set_page_config(page_title="Scénarios de démo — Secure Horizons", layout="wide")
     st.title("Scénarios de démo")
     st.info(
-        "Données synthétiques et fictives : aucune vraie adresse ni clé. "
-        "Les chiffres sont mesurés sur une simulation hors chaîne, pas sur le contrat déployé."
+        "Données synthétiques et fictives : aucune vraie adresse ni clé. Le bandeau de chaque "
+        "scénario dit quelles briques tournent sur le vrai code et lesquelles restent simulées ; "
+        "les chiffres sont des comptages, pas des mesures du contrat déployé."
     )
 
     specs = list_specs()
