@@ -151,8 +151,8 @@ contract GuardianPausableTest is BaseTest {
 
     function test_setRate_allowedWhilePaused() public {
         _pauseAll(minter);
-        vm.prank(admin);
-        minter.setRate(2e18);
-        assertEq(minter.rate(), 2e18);
+        // La gouvernance du taux est indépendante de la pause : proposer + exécuter reste possible.
+        _proposeExecuteRate(minter, 1.05e18);
+        assertEq(minter.rate(), 1.05e18);
     }
 }

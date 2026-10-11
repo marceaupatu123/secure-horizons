@@ -32,6 +32,13 @@ contract ProtectedMinter is AccessControl, GuardianPausable {
     /// @dev 10**(18 - 6).
     uint256 public constant DECIMALS_SCALE = 1e12;
     uint8 public constant COLLATERAL_DECIMALS = 6;
+    uint256 internal constant BPS = 10_000;
+    /// @notice Variation maximale du taux par changement (#131). PROVISOIRE (OPEN_QUESTIONS §18),
+    ///         à mesurer/valider : un stable 1:1 n'a pas besoin de bouger de plus de quelques %.
+    uint256 public constant MAX_RATE_STEP_BPS = 500; // 5 %
+    /// @notice Délai avant qu'un nouveau taux prenne effet : la fenêtre dont la surveillance a
+    ///         besoin pour réagir AVANT (#131, timelock). PROVISOIRE (OPEN_QUESTIONS §18).
+    uint64 public constant RATE_DELAY = 1 hours;
 
     enum RequestStatus {
         None,
@@ -52,6 +59,9 @@ contract ProtectedMinter is AccessControl, GuardianPausable {
     /// @notice Le M-Ghost adossé à M, déployé par ce contrat.
     GhostToken public immutable ghost;
     uint256 public rate;
+    /// @notice Taux proposé en attente d'effet (0 si aucun), et l'instant où il devient applicable.
+    uint256 public pendingRate;
+    uint64 public pendingRateEffectiveAt;
     uint256 public nextRequestId;
     uint256 public totalDeposited;
     uint256 public totalMinted;
@@ -68,11 +78,16 @@ contract ProtectedMinter is AccessControl, GuardianPausable {
         uint256 rate
     );
     event RateChanged(uint256 oldRate, uint256 newRate, address indexed changedBy);
+    event RateProposed(uint256 currentRate, uint256 newRate, uint64 effectiveAt, address indexed proposer);
+    event RateCancelled(uint256 cancelledRate, address indexed guardian);
 
     error ZeroAmount();
     error ZeroAddress();
     error SameAccount();
     error InvalidRate();
+    error RateStepTooLarge(uint256 newRate, uint256 maxStep);
+    error NoPendingRate();
+    error RateDelayNotElapsed(uint64 effectiveAt);
     error UnsupportedCollateralDecimals(uint8 decimals);
     error RequestNotFound(uint256 requestId);
     error RequestNotPending(uint256 requestId);
@@ -142,12 +157,44 @@ contract ProtectedMinter is AccessControl, GuardianPausable {
         emit SwapCompleted(requestId, depositor, depositor, depositAmount, minted, reqRate);
     }
 
-    /// @notice Change le taux appliqué aux NOUVELLES demandes. Réservé à `RATE_ADMIN_ROLE`.
-    function setRate(uint256 newRate) external onlyRole(RATE_ADMIN_ROLE) {
+    /// @notice Propose un nouveau taux (#131). Réservé à `RATE_ADMIN_ROLE`, borné à
+    ///         `MAX_RATE_STEP_BPS` de variation par rapport au taux courant, et NON appliqué
+    ///         immédiatement : il faut `executeRate()` après `RATE_DELAY`. Une clé de taux volée ne
+    ///         peut donc plus mint sans limite — au pire elle décale le taux de quelques %, après un
+    ///         délai pendant lequel la surveillance alerte (`RateProposed`) et un guardian peut
+    ///         annuler. Remplace une proposition précédente (le délai repart).
+    function proposeRate(uint256 newRate) external onlyRole(RATE_ADMIN_ROLE) {
         if (newRate == 0) revert InvalidRate();
+        uint256 cur = rate;
+        uint256 maxStep = cur * MAX_RATE_STEP_BPS / BPS;
+        uint256 diff = newRate > cur ? newRate - cur : cur - newRate;
+        if (diff > maxStep) revert RateStepTooLarge(newRate, maxStep);
+        pendingRate = newRate;
+        pendingRateEffectiveAt = uint64(block.timestamp) + RATE_DELAY;
+        emit RateProposed(cur, newRate, pendingRateEffectiveAt, msg.sender);
+    }
+
+    /// @notice Applique le taux proposé une fois `RATE_DELAY` écoulé. Permissionless : il ne fait
+    ///         qu'exécuter un changement déjà borné et temporisé.
+    function executeRate() external {
+        uint64 eff = pendingRateEffectiveAt;
+        if (eff == 0) revert NoPendingRate();
+        if (block.timestamp < eff) revert RateDelayNotElapsed(eff);
         uint256 oldRate = rate;
-        rate = newRate;
-        emit RateChanged(oldRate, newRate, msg.sender);
+        rate = pendingRate;
+        pendingRate = 0;
+        pendingRateEffectiveAt = 0;
+        emit RateChanged(oldRate, rate, msg.sender);
+    }
+
+    /// @notice Annule la proposition de taux en attente. Un guardian suffit (geste non destructif,
+    ///         c'est le frein d'urgence contre une clé de taux volée, §131).
+    function cancelRate() external onlyGuardian {
+        if (pendingRateEffectiveAt == 0) revert NoPendingRate();
+        uint256 cancelled = pendingRate;
+        pendingRate = 0;
+        pendingRateEffectiveAt = 0;
+        emit RateCancelled(cancelled, msg.sender);
     }
 
     /// @notice minted = deposit × 1e12 × rate / 1e18, arrondi vers le bas (exact si rate = 1e18).

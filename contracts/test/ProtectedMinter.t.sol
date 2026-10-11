@@ -46,36 +46,39 @@ contract ProtectedMinterTest is BaseTest {
         minter.completeSwap(id);
         assertEq(ghost.balanceOf(alice), DEPOSIT * SCALE); // rate = 1e18 => 1:1
 
-        vm.prank(admin);
-        minter.setRate(0.5e18);
+        _proposeExecuteRate(minter, 0.95e18); // baisse de 5 % (borne max), via timelock #131
         uint256 id2 = _requestProtected(minter, bob, DEPOSIT);
         vm.prank(service);
         minter.completeSwap(id2);
-        assertEq(ghost.balanceOf(bob), DEPOSIT * SCALE / 2);
+        assertEq(ghost.balanceOf(bob), minter.quoteMint(DEPOSIT, 0.95e18));
     }
 
     /// @notice Le taux est figé à la création de la demande : le changer ensuite n'a pas d'effet.
     function test_I1_rateSnapshotAtRequest() public {
         uint256 id = _requestProtected(minter, alice, DEPOSIT);
-        vm.prank(admin);
-        minter.setRate(3e18);
+        _proposeExecuteRate(minter, 1.05e18); // hausse de 5 % après la demande
         vm.prank(service);
         minter.completeSwap(id);
         assertEq(ghost.balanceOf(alice), DEPOSIT * SCALE);
         assertEq(minter.getRequest(id).rate, INITIAL_RATE);
     }
 
-    function testFuzz_I1_mintedEqualsQuote(uint256 deposit, uint256 rate_) public {
+    function testFuzz_I1_mintedEqualsQuote(uint256 deposit) public {
         deposit = bound(deposit, 1, 1e18);
-        rate_ = bound(rate_, 1e6, 1e24);
-        vm.prank(admin);
-        minter.setRate(rate_);
-        uint256 expected = deposit * SCALE * rate_ / 1e18; // recalculé par le test
+        uint256 expected = deposit * SCALE * INITIAL_RATE / 1e18; // recalculé par le test
         vm.assume(expected > 0);
         uint256 id = _requestProtected(minter, alice, deposit);
         vm.prank(service);
         minter.completeSwap(id);
         assertEq(ghost.balanceOf(alice), expected);
+        assertEq(minter.quoteMint(deposit, INITIAL_RATE), expected);
+    }
+
+    /// @notice La formule de quote est pure : exacte sur toute la plage de taux explorée.
+    function testFuzz_quoteMint_pure(uint256 deposit, uint256 rate_) public view {
+        deposit = bound(deposit, 1, 1e18);
+        rate_ = bound(rate_, 1e6, 1e24);
+        uint256 expected = deposit * SCALE * rate_ / 1e18;
         assertEq(minter.quoteMint(deposit, rate_), expected);
     }
 
@@ -86,13 +89,16 @@ contract ProtectedMinterTest is BaseTest {
     }
 
     function test_requestSwap_revertsOnZeroQuote() public {
-        vm.prank(admin);
-        minter.setRate(1); // 1 unité USDC × 1e12 × 1 / 1e18 = 0
+        // Un taux minuscule rend quoteMint(1) == 0. On ne peut plus l'atteindre via proposeRate
+        // (borné), donc on déploie un minter à taux initial 1 (le constructeur n'est pas borné).
+        ProtectedMinter tiny =
+            new ProtectedMinter(IERC20(address(usdc)), admin, service, 1, _guardians(), _ghostConfig());
         _fund(alice, 1);
-        _approve(alice, address(minter));
+        vm.prank(alice);
+        usdc.approve(address(tiny), 1);
         vm.prank(alice);
         vm.expectRevert(ProtectedMinter.ZeroAmount.selector);
-        minter.requestSwap(1);
+        tiny.requestSwap(1);
     }
 
     // ---------------------------------------------------------------- I2
@@ -208,7 +214,7 @@ contract ProtectedMinterTest is BaseTest {
         bytes32 role = minter.RATE_ADMIN_ROLE();
         vm.prank(service);
         vm.expectRevert(abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, service, role));
-        minter.setRate(1000e18);
+        minter.proposeRate(1.01e18);
     }
 
     function test_roles_adminCannotComplete() public {
@@ -253,18 +259,20 @@ contract ProtectedMinterTest is BaseTest {
         new ProtectedMinter(IERC20(address(t)), admin, service, INITIAL_RATE, _guardians(), _ghostConfig());
     }
 
-    function test_setRate_rejectsZero() public {
+    function test_proposeRate_rejectsZero() public {
         vm.prank(admin);
         vm.expectRevert(ProtectedMinter.InvalidRate.selector);
-        minter.setRate(0);
+        minter.proposeRate(0);
     }
 
-    function test_setRate_emitsRateChanged() public {
-        vm.expectEmit(true, true, true, true, address(minter));
-        emit RateChanged(INITIAL_RATE, 2e18, admin);
+    function test_rate_timelockEmitsRateChangedOnExecute() public {
         vm.prank(admin);
-        minter.setRate(2e18);
-        assertEq(minter.rate(), 2e18);
+        minter.proposeRate(1.05e18);
+        vm.warp(block.timestamp + minter.RATE_DELAY());
+        vm.expectEmit(true, true, true, true, address(minter));
+        emit RateChanged(INITIAL_RATE, 1.05e18, address(this));
+        minter.executeRate();
+        assertEq(minter.rate(), 1.05e18);
     }
 
     // ---------------------------------------------------------------- événements

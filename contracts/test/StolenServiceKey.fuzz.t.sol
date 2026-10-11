@@ -22,15 +22,12 @@ contract StolenServiceKeyFuzzTest is BaseTest {
 
     /// @notice Quels que soient le montant et le destinataire voulus, la clé volée obtient
     ///         exactement dépôt × taux, versé au déposant.
-    function testFuzz_stolenKey_cannotInflate(uint256 deposit, uint256 rate_, uint256 fakeAmount, address fakeRecipient)
+    function testFuzz_stolenKey_cannotInflate(uint256 deposit, uint256 fakeAmount, address fakeRecipient)
         public
     {
         deposit = bound(deposit, 1, 1e18);
-        rate_ = bound(rate_, 1e6, 1e24);
-        uint256 expected = deposit * SCALE * rate_ / 1e18; // recalculé par le test
+        uint256 expected = deposit * SCALE * INITIAL_RATE / 1e18; // recalculé par le test
         vm.assume(expected > 0);
-        vm.prank(admin);
-        minter.setRate(rate_);
 
         uint256 id = _requestProtected(minter, attacker, deposit);
         vm.prank(attacker);
@@ -93,7 +90,7 @@ contract StolenServiceKeyFuzzTest is BaseTest {
         vm.expectRevert(
             abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, attacker, role)
         );
-        minter.setRate(newRate);
+        minter.proposeRate(newRate);
         assertEq(minter.rate(), INITIAL_RATE);
     }
 
