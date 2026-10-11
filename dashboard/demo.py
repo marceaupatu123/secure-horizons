@@ -11,6 +11,8 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 # Permet aussi `python dashboard/demo.py` depuis n'importe ou.
@@ -30,6 +32,29 @@ from dashboard.scenarios import (  # noqa: E402
 from dashboard.view_model import MISSING_LABEL, format_base_units  # noqa: E402
 
 NOT_MEASURED_LABEL = "non mesuré"
+
+
+@contextmanager
+def quiet_detection_warmup() -> Iterator[None]:
+    """Masque le temps d'un rejeu le bruit de chauffe du surveillant #12.
+
+    Le rejeu de plusieurs jours de trafic fait loguer un WARNING par tranche de chauffe
+    (« historique insuffisant ») : utile en production, du bruit pour la demo. Le niveau du
+    logger `detection` est restaure en sortie (pas d'effet de bord global).
+    """
+    logger = logging.getLogger("detection")
+    previous = logger.level
+    logger.setLevel(logging.ERROR)
+    try:
+        yield
+    finally:
+        logger.setLevel(previous)
+
+
+def run_scenario_quietly(scenario_id: str, seed: int, disabled: frozenset[str]) -> ScenarioResult:
+    """`run_scenario` sans le bruit de chauffe du surveillant (CLI et page)."""
+    with quiet_detection_warmup():
+        return run_scenario(scenario_id, seed=seed, disabled=disabled)
 
 
 def format_metric_value(metric: MeasuredMetric) -> str:
@@ -104,9 +129,6 @@ def main(argv: list[str] | None = None) -> int:
     reconfigure = getattr(sys.stdout, "reconfigure", None)
     if reconfigure is not None:
         reconfigure(errors="replace")
-    # Le rejeu de plusieurs jours de trafic fait loguer au surveillant #12 un WARNING par tranche
-    # de chauffe (« historique insuffisant ») : utile en production, du bruit pour la demo.
-    logging.getLogger("detection").setLevel(logging.ERROR)
     args = _parser().parse_args(argv)
     known = {spec.id for spec in list_specs()}
     unknown = sorted((set(args.disable) | {getattr(args, "scenario_id", None)}) - known - {None})
@@ -118,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "list":
         _print_list(disabled)
         return 0
-    result = run_scenario(args.scenario_id, seed=args.seed, disabled=disabled)
+    result = run_scenario_quietly(args.scenario_id, seed=args.seed, disabled=disabled)
     print(result.model_dump_json(indent=2) if args.json else format_result(result))
     if args.report and not args.json:
         reports = [v.incident_report for v in result.variants if v.incident_report]

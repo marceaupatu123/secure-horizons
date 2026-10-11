@@ -52,3 +52,19 @@ def test_cli_report_flag(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Capture
     assert "Rapport d'incident" in capsys.readouterr().out
     assert demo_main(["run", "N1", "--seed", "20", "--report"]) == 0
     assert "Aucun rapport d'incident" in capsys.readouterr().out
+
+
+
+def test_quiet_warmup_restores_detection_logger_level() -> None:
+    """La CLI masque le bruit du surveillant sans effet de bord global (autres tests)."""
+    import logging
+
+    from dashboard.demo import quiet_detection_warmup
+
+    logger = logging.getLogger("detection")
+    before = logger.level
+    with quiet_detection_warmup():
+        assert logger.level == logging.ERROR
+    assert logger.level == before
+    demo_main(["run", "N1", "--seed", "20"])
+    assert logger.level == before

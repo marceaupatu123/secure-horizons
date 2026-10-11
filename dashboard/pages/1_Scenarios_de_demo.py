@@ -9,7 +9,6 @@ Lancer : make run-dashboard, puis « Scénarios de démo » dans la barre latera
 
 from __future__ import annotations
 
-import logging
 import sys
 from pathlib import Path
 
@@ -23,6 +22,7 @@ import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
 import dashboard.scenarios  # noqa: E402,F401  (peuple le registre)
+from dashboard.demo import run_scenario_quietly  # noqa: E402
 from dashboard.demo_data import DEMO_SEED  # noqa: E402
 from dashboard.scenarios import (  # noqa: E402
     STATUS_LABELS,
@@ -31,7 +31,6 @@ from dashboard.scenarios import (  # noqa: E402
     ScenarioVariant,
     get_spec,
     list_specs,
-    run_scenario,
 )
 from dashboard.scenarios.view import (  # noqa: E402
     checks_to_frame,
@@ -119,8 +118,6 @@ def _render_result(result: ScenarioResult) -> None:
 
 def main() -> None:
     """Rend la page des scenarios de demo."""
-    # Bruit de chauffe du surveillant #12 (un WARNING par tranche rejouee) : masque en demo.
-    logging.getLogger("detection").setLevel(logging.ERROR)
     st.set_page_config(page_title="Scénarios de démo — Secure Horizons", layout="wide")
     st.title("Scénarios de démo")
     st.info(
@@ -153,7 +150,7 @@ def main() -> None:
     params = (scenario_id, seed, disabled)
     stored = st.session_state.get(RESULT_KEY)
     if clicked or (stored is not None and st.session_state.get(RESULT_PARAMS_KEY) != params):
-        stored = run_scenario(scenario_id, seed=seed, disabled=disabled)
+        stored = run_scenario_quietly(scenario_id, seed=seed, disabled=disabled)
         st.session_state[RESULT_KEY] = stored
         st.session_state[RESULT_PARAMS_KEY] = params
 
