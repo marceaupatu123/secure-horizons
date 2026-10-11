@@ -26,6 +26,7 @@ import dashboard.scenarios  # noqa: E402,F401  (peuple le registre)
 from dashboard.demo import run_scenario_quietly  # noqa: E402
 from dashboard.demo_data import DEMO_SEED  # noqa: E402
 from dashboard.scenarios import fuji_live  # noqa: E402
+from dashboard.scenarios.fuji_report import FujiReportError, fuji_incident_report  # noqa: E402
 from dashboard.story import FujiStory, Story, build_fuji_story, build_story, render_story_html  # noqa: E402
 
 STORY_KEY = "story"
@@ -50,7 +51,7 @@ def _replay(seed: int) -> tuple[Story, str | None, float]:
     return story, report, time.perf_counter() - start
 
 
-def _fuji_story(replay_now: bool) -> FujiStory | None:
+def _fuji_story(replay_now: bool) -> tuple[FujiStory | None, fuji_live.FujiRun | None]:
     """Rejeu Fuji : enregistre (ou rejoue en direct), puis relu sur la chaine si possible."""
     run = fuji_live.load_run()
     if replay_now:
@@ -65,12 +66,12 @@ def _fuji_story(replay_now: bool) -> FujiStory | None:
             except Exception as exc:  # noqa: BLE001 - RPC/transaction : on garde le dernier rejeu
                 status.update(label=f"Rejeu Fuji interrompu : {exc}", state="error")
     if run is None:
-        return None
+        return None, None
     try:
         live = fuji_live.read_live_state(fuji_live.connect(), run)
     except Exception:  # noqa: BLE001 - RPC injoignable : on affiche le rejeu enregistre
         live = None
-    return build_fuji_story(run, live)
+    return build_fuji_story(run, live), run
 
 
 def main() -> None:
@@ -101,33 +102,53 @@ def main() -> None:
         st.session_state[STORY_SEED_KEY] = seed
         st.session_state[STORY_SECONDS_KEY] = seconds
 
-    story = st.session_state[STORY_KEY].model_copy(update={"fuji": _fuji_story(fuji_clicked)})
+    fuji_story, run = _fuji_story(fuji_clicked)
+    story = st.session_state[STORY_KEY].model_copy(update={"fuji": fuji_story})
     st.caption(f"Scénarios rejoués en {st.session_state[STORY_SECONDS_KEY]:.1f} s "
                f"(seed {story.seed}). Clique sur les onglets puis sur ▶ pour lancer chaque animation.")
     components.html(render_story_html(story), height=COMPONENT_HEIGHT, scrolling=True)
-    _render_report(st.session_state.get(REPORT_KEY), story.seed)
+    _render_reports(_fuji_report(run), st.session_state.get(REPORT_KEY), story.seed)
 
 
-def _render_report(report: str | None, seed: int) -> None:
-    """Rapport d'incident DORA (#15) de l'acte 2, redige automatiquement."""
+def _fuji_report(run: fuji_live.FujiRun | None) -> str | None:
+    """Rapport DORA de l'incident reel Fuji (None sans rejeu ou rejeu incomplet)."""
+    if run is None:
+        return None
+    try:
+        return fuji_incident_report(run)
+    except FujiReportError:
+        return None
+
+
+def _render_reports(fuji_report: str | None, report: str | None, seed: int) -> None:
+    """Rapports d'incident DORA (#15) : incident reel Fuji, puis acte 2."""
     st.header("📄 Le rapport réglementaire, rédigé tout seul")
     st.markdown(
         "En Europe, le règlement **DORA** oblige les acteurs financiers à déclarer chaque incident "
         "informatique majeur, avec un rapport structuré. C'est comme le **constat amiable** après un "
-        "accrochage : il faut le remplir vite et bien. Dès que les humains confirment l'attaque de "
-        "l'acte 2, notre IA rédige ce rapport à partir des vraies alertes et du vrai journal "
-        "d'audit. Elle **rédige seulement** : elle ne décide d'aucune action."
+        "accrochage : il faut le remplir vite et bien. Dès que les humains confirment une attaque, "
+        "notre IA rédige ce rapport à partir des vraies alertes et du vrai journal d'audit. Elle "
+        "**rédige seulement** : elle ne décide d'aucune action."
     )
-    if report is None:
-        st.info("Aucun rapport : aucune alerte confirmée dans ce rejeu.")
-        return
     st.caption("Mode hors ligne par défaut (aucun appel AWS, résultat reproductible) ; "
                "`LLM_LIVE=1` fait rédiger le rapport par Bedrock.")
+    tab_fuji, tab_b = st.tabs(["⛓️ Incident réel sur Avalanche Fuji", "🕵️ Acte 2 (pirate discret)"])
+    with tab_fuji:
+        _render_report(fuji_report, "rapport-dora-incident-fuji.md", "download_dora_fuji",
+                       "Aucun rejeu Fuji enregistré : pas encore de rapport.")
+    with tab_b:
+        _render_report(report, f"rapport-dora-scenario-B-seed{seed}.md", "download_dora",
+                       "Aucun rapport : aucune alerte confirmée dans ce rejeu.")
+
+
+def _render_report(report: str | None, file_name: str, key: str, empty: str) -> None:
+    if report is None:
+        st.info(empty)
+        return
     with st.container(border=True):
         st.markdown(report)
-    st.download_button("⬇️ Télécharger le rapport DORA (Markdown)", report,
-                       file_name=f"rapport-dora-scenario-B-seed{seed}.md", mime="text/markdown",
-                       key="download_dora")
+    st.download_button("⬇️ Télécharger le rapport DORA (Markdown)", report, file_name=file_name,
+                       mime="text/markdown", key=key)
 
 
 main()

@@ -25,7 +25,8 @@
       "label": "Déploiement du faux USDC de test",
       "tx_hash": "0xc25ac58243919a884afcdcc561a550e51bef235503c1092fa76488386024a259",
       "block_number": 59298941,
-      "success": true
+      "success": true,
+      "timestamp": "2026-10-11T08:34:55Z"
     },
     {
       "step": "Déploiement des contrats sur Fuji",
@@ -33,7 +34,8 @@
       "label": "Déploiement du contrat classique (vulnérable)",
       "tx_hash": "0x9beaee64508889860d25df98d90fca97bf04ff14ce57c6f3bb585677a02f9e8e",
       "block_number": 59298943,
-      "success": true
+      "success": true,
+      "timestamp": "2026-10-11T08:34:57Z"
     },
     {
       "step": "Déploiement des contrats sur Fuji",
@@ -41,7 +43,8 @@
       "label": "Déploiement du contrat Secure Horizons",
       "tx_hash": "0x9712857fdb5a1d6e296ab4e6d18d56284f3bcd7847ba20c61336c350369bfcf3",
       "block_number": 59298944,
-      "success": true
+      "success": true,
+      "timestamp": "2026-10-11T08:34:59Z"
     },
     {
       "step": "Déploiement des contrats sur Fuji",
@@ -49,7 +52,8 @@
       "label": "Le surveillant reçoit son rôle (il peut seulement retarder)",
       "tx_hash": "0x42b5271d934e66b03aadc8063cf064383a8ed5bc29f756fef6f30ffac312e80b",
       "block_number": 59298947,
-      "success": true
+      "success": true,
+      "timestamp": "2026-10-11T08:35:01Z"
     },
     {
       "step": "Attaque n°1 : contrat classique",
@@ -57,7 +61,8 @@
       "label": "attacker reçoit 1000 USDC de test",
       "tx_hash": "0x165d04f262100ddbdc56e41e90cbe7ef8d8940eb2ce4851b6a24a96f6bf761df",
       "block_number": 59298949,
-      "success": true
+      "success": true,
+      "timestamp": "2026-10-11T08:35:04Z"
     },
     {
       "step": "Attaque n°1 : contrat classique",
@@ -65,7 +70,8 @@
       "label": "attacker autorise le dépôt",
       "tx_hash": "0x2b19172eacb282c87b659fa5f983f2c530f959f149f2e9a878b896256a7f8485",
       "block_number": 59298950,
-      "success": true
+      "success": true,
+      "timestamp": "2026-10-11T08:35:06Z"
     },
     {
       "step": "Attaque n°1 : contrat classique",
@@ -73,7 +79,8 @@
       "label": "attacker dépose 1000 USDC (demande n°0)",
       "tx_hash": "0x34793a8b34d2d0222a254782b4fd6bae475cc61115823e5ff3ef9155591811ee",
       "block_number": 59298951,
-      "success": true
+      "success": true,
+      "timestamp": "2026-10-11T08:35:08Z"
     },
     {
       "step": "Attaque n°1 : contrat classique",
@@ -81,7 +88,8 @@
       "label": "Clé volée : mint signé de 1000 × le dépôt",
       "tx_hash": "0x8d8a006715e4bf0c6bdb66ac16a91b250287a397781688ce8c8ee94e2df91e0c",
       "block_number": 59298952,
-      "success": true
+      "success": true,
+      "timestamp": "2026-10-11T08:35:10Z"
     },
     {
       "step": "Attaque n°2 : contrat Secure Horizons",
@@ -89,7 +97,8 @@
       "label": "whale reçoit 10000 USDC de test",
       "tx_hash": "0x6df08f484783c6e723e7237e125c28b04a07df20b1c10f49999363db3942c96f",
       "block_number": 59298955,
-      "success": true
+      "success": true,
+      "timestamp": "2026-10-11T08:35:13Z"
     },
     {
       "step": "Attaque n°2 : contrat Secure Horizons",
@@ -97,7 +106,8 @@
       "label": "whale autorise le dépôt",
       "tx_hash": "0x4a93f3e0961e1acedb50498c3b352175672fe83f304adf3f9c5c432cedea8dd2",
       "block_number": 59298956,
-      "success": true
+      "success": true,
+      "timestamp": "2026-10-11T08:35:14Z"
     },
     {
       "step": "Attaque n°2 : contrat Secure Horizons",
@@ -105,7 +115,8 @@
       "label": "whale dépose 10000 USDC (demande n°0)",
       "tx_hash": "0x622b6a8019523b90c990fde20a7f0325dae8735ec4100adb7036cb7b69800894",
       "block_number": 59298957,
-      "success": true
+      "success": true,
+      "timestamp": "2026-10-11T08:35:16Z"
     },
     {
       "step": "Attaque n°2 : contrat Secure Horizons",
@@ -113,7 +124,8 @@
       "label": "Un utilisateur honnête est servi normalement",
       "tx_hash": "0xd900ada75527263515b1130133e26c3e500806d895c0df4e0ca6a20490680ad5",
       "block_number": 59298958,
-      "success": true
+      "success": true,
+      "timestamp": "2026-10-11T08:35:18Z"
     },
     {
       "step": "Attaque n°2 : contrat Secure Horizons",
@@ -121,7 +133,8 @@
       "label": "attacker reçoit 1000 USDC de test",
       "tx_hash": "0x911fabad44a8ada6d7f1f74551462521a3d18764486c45f82e1622fc929036e9",
       "block_number": 59298959,
-      "success": true
+      "success": true,
+      "timestamp": "2026-10-11T08:35:20Z"
     },
     {
       "step": "Attaque n°2 : contrat Secure Horizons",
@@ -129,7 +142,8 @@
       "label": "attacker autorise le dépôt",
       "tx_hash": "0x35684aeeaedb01dff66efb32e2bfb0357b4900c3e27644a426c9852eaee2940b",
       "block_number": 59298961,
-      "success": true
+      "success": true,
+      "timestamp": "2026-10-11T08:35:22Z"
     },
     {
       "step": "Attaque n°2 : contrat Secure Horizons",
@@ -137,7 +151,8 @@
       "label": "attacker dépose 1000 USDC (demande n°1)",
       "tx_hash": "0xd988b0c48da0b67a382062899b901386962d7fc3fcd029536a775e62ad06e42d",
       "block_number": 59298963,
-      "success": true
+      "success": true,
+      "timestamp": "2026-10-11T08:35:24Z"
     },
     {
       "step": "Attaque n°2 : contrat Secure Horizons",
@@ -145,7 +160,8 @@
       "label": "Clé volée : même mint signé de 1000 × le dépôt (rejeté)",
       "tx_hash": "0x7838d0ae8f1ce1621a9b3e14b8b523114f60e5243fd19e9877142361f3e0e286",
       "block_number": 59298965,
-      "success": false
+      "success": false,
+      "timestamp": "2026-10-11T08:35:26Z"
     },
     {
       "step": "Attaque n°2 : contrat Secure Horizons",
@@ -153,7 +169,8 @@
       "label": "Seul appel possible : « traiter la demande n°X » (montant lu dans le coffre)",
       "tx_hash": "0x302180c147beb3a76b2d4a5c366c592474b0b084cc6a32ed30ef30980f0df5ed",
       "block_number": 59298966,
-      "success": true
+      "success": true,
+      "timestamp": "2026-10-11T08:35:28Z"
     },
     {
       "step": "Réponse : le surveillant retarde, les humains détruisent",
@@ -161,7 +178,8 @@
       "label": "Le surveillant retarde le Ghost de l'attaquant",
       "tx_hash": "0x461d6a0256ecf185ded846afbd4b4ca1bba61624ce9d53f35250662595837e30",
       "block_number": 59298967,
-      "success": true
+      "success": true,
+      "timestamp": "2026-10-11T08:35:30Z"
     },
     {
       "step": "Réponse : le surveillant retarde, les humains détruisent",
@@ -169,7 +187,8 @@
       "label": "Gardien 1 propose la destruction",
       "tx_hash": "0x50372247c943d128cf368e758b4733577e4bac681c8ae651721a564c58196ac2",
       "block_number": 59298970,
-      "success": true
+      "success": true,
+      "timestamp": "2026-10-11T08:35:32Z"
     },
     {
       "step": "Réponse : le surveillant retarde, les humains détruisent",
@@ -177,7 +196,8 @@
       "label": "Gardien 2 valide : 2 sur 3, le Ghost suspect est détruit",
       "tx_hash": "0x270204f71cddb9a81117ff865bf73a687c0b20b1eee9642d0ca3ff79955e5884",
       "block_number": 59298972,
-      "success": true
+      "success": true,
+      "timestamp": "2026-10-11T08:35:35Z"
     }
   ],
   "deposit": 1000000000000000000000,

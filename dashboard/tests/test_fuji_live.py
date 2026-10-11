@@ -61,3 +61,33 @@ def test_histoire_fuji(run):
     assert story.protected_minted_tokens <= story.protected_collateral_tokens
     assert story.live_block is None and story.live_matches_record is None
     assert all(c.url.startswith(fuji_live.EXPLORER_URL + "/address/0x") for c in story.contracts)
+
+
+
+def test_rapport_dora_fuji(run):
+    from dashboard.scenarios.fuji_report import (
+        DEMO_RULE_NAME,
+        build_fuji_incident,
+        fuji_incident_report,
+    )
+
+    alert, actions, audit = build_fuji_incident(run)
+    inflated = next(t for t in run.transactions if t.actor == "attacker" and not t.success)
+    assert alert.source_tx_hash == inflated.tx_hash
+    assert alert.monitor_name == DEMO_RULE_NAME
+    assert [a.action_type.value for a in actions] == ["delay", "destroy"]
+    assert actions[1].suspect_amount == run.attacker_ghost_before - run.attacker_ghost_after
+    assert all(e.related_tx_hash for e in audit)
+    report = fuji_incident_report(run)
+    assert "Rapport d'incident" in report
+    assert inflated.url in report
+    assert "hors ligne" in report  # aucun appel AWS par defaut
+
+
+def test_rapport_dora_fuji_incomplet(run):
+    from dashboard.scenarios.fuji_report import FujiReportError, build_fuji_incident
+
+    partial = run.model_copy(update={"transactions": [t for t in run.transactions
+                                                      if t.actor != "guardian2"]})
+    with pytest.raises(FujiReportError):
+        build_fuji_incident(partial)

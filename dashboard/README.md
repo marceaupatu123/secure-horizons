@@ -35,6 +35,11 @@
   `GUARDIAN_PRIVATE_KEY` d'un compte de **TEST** Fuji dans `.env` ; les autres rôles sont des comptes
   de test dérivés de cette clé et approvisionnés par elle). Le signal de réponse (mint gonflé rejeté)
   est une règle de démo, pas un surveillant du module `detection`.
+- `scenarios/fuji_report.py` : **rapport d'incident DORA de l'incident réel Fuji** (#148). Traduit
+  les vraies transactions en `Alert` / `ResponseAction` / `AuditLogEntry` partagés et appelle
+  `llm.report` tel quel (hors ligne par défaut, Bedrock avec `LLM_LIVE=1`), puis ajoute un tableau de
+  preuves avec un lien Snowtrace par étape. Affiché (et téléchargeable) sous la démo interactive, à
+  côté du rapport de l'acte 2.
 
 Aucun chiffre affiché n'est écrit en dur : tout est calculé à partir du jeu synthétique. Ce sont
 des comptages, pas des mesures de performance.

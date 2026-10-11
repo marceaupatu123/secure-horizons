@@ -59,6 +59,16 @@ SUB_ACCOUNT_MIN_WEI = 5 * 10**15
 FALLBACK_GAS = 600_000
 RECEIPT_TIMEOUT_SECONDS = 180
 ROLES = ("attacker", "watcher", "guardian1", "guardian2", "guardian3", "whale")
+# Role -> acteur du journal d'audit (convention `shared.AuditLogEntry.actor`).
+FUJI_ACTORS_ONCHAIN = {
+    "admin": "equipe:deploiement",
+    "attacker": "attaquant:cle_service_volee",
+    "watcher": "monitor:surveillant_onchain",
+    "guardian1": "multisig:gardien1",
+    "guardian2": "multisig:gardien2",
+    "guardian3": "multisig:gardien3",
+    "whale": "utilisateur:honnete",
+}
 INFLATED_SIG = "completeSwap(uint256,address,uint256)"
 
 
@@ -77,6 +87,7 @@ class TxRecord(BaseModel):
     tx_hash: str
     block_number: int
     success: bool
+    timestamp: datetime | None = None  # horodatage du bloc (UTC)
 
     @property
     def url(self) -> str:
@@ -215,10 +226,12 @@ class FujiRunner:
         tx_hash = self.w3.eth.send_raw_transaction(signed.raw_transaction)
         receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash,
                                                            timeout=RECEIPT_TIMEOUT_SECONDS)
+        block = self.w3.eth.get_block(int(receipt["blockNumber"]))
         record = TxRecord(step=self._step, actor=role, label=label,
                           tx_hash="0x" + bytes(receipt["transactionHash"]).hex().removeprefix("0x"),
                           block_number=int(receipt["blockNumber"]),
-                          success=int(receipt["status"]) == 1)
+                          success=int(receipt["status"]) == 1,
+                          timestamp=datetime.fromtimestamp(int(block["timestamp"]), timezone.utc))
         self.records.append(record)
         self._progress(f"{'✔' if record.success else '✖'} {label}")
         return receipt
