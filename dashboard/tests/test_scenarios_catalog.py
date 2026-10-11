@@ -1,4 +1,9 @@
-"""Catalogue des 7 scenarios (#47) : reproductibilite et attendus mesures."""
+"""Catalogue des 7 scenarios (#47) : reproductibilite et attendus mesures.
+
+Depuis #70, B, N1, N2 et N3 tournent sur le vrai code (#11/#12, #17, #24) ; A sur les
+vrais contrats seulement avec le backend anvil (opt-in, absent en CI) ; C et D restent
+simules (#7, #8, #25 non livres).
+"""
 
 import pytest
 
@@ -9,8 +14,14 @@ from dashboard.scenarios import (
     ScenarioStatus,
     run_scenario,
 )
+from dashboard.scenarios.models import REAL_LABEL
 from dashboard.view_model import PerimeterState, derive_perimeter_states
 from shared.models import ResponseActionStatus, ResponseActionType
+
+# Scenarios entierement branches (aucune brique simulee) / partiellement / simules.
+FULLY_REAL = {"N1", "N2"}
+PARTLY_REAL = {"B", "N3"}  # le Ghost (#8) reste simule
+SIMULATED = {"A", "C", "D"}  # A : simulation par defaut, anvil en opt-in
 
 
 def _texts(result: ScenarioResult) -> list[str]:
@@ -30,10 +41,19 @@ def test_same_seed_same_json(scenario_id: str) -> None:
     second = run_scenario(scenario_id, seed=20)
     assert first.model_dump_json() == second.model_dump_json()
     assert first.status == ScenarioStatus.COMPLETED
-    assert first.simulated is True
     assert first.variants
-    for variant in first.variants:
-        assert all(m.source == SIMULATION_LABEL for m in variant.metrics)
+    sources = {m.source for variant in first.variants for m in variant.metrics}
+    if scenario_id in FULLY_REAL:
+        assert first.simulated is False and first.replace_by == []
+        assert all(s.startswith(REAL_LABEL) for s in sources)
+    elif scenario_id in PARTLY_REAL:
+        assert first.simulated is True and first.replace_by == [8]
+        assert any(s.startswith(REAL_LABEL) for s in sources)
+        assert SIMULATION_LABEL in sources
+    else:
+        assert scenario_id in SIMULATED
+        assert first.simulated is True
+        assert sources == {SIMULATION_LABEL}
     assert not any("prouv" in text.lower() for text in _texts(first))
 
 

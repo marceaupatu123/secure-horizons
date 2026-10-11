@@ -14,6 +14,7 @@ from datetime import timedelta
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from dashboard.demo_data import DEMO_EXTENDED_WINDOW
+from detection.params import TransferRuleParams
 
 
 class SimulationParams(BaseModel):
@@ -63,11 +64,29 @@ class SimulationParams(BaseModel):
     # --- N3 : burst legitime concentre ---
     consolidation_transfers: int = Field(300, gt=0)  # a calibrer (docs/OPEN_QUESTIONS.md §6)
 
+    # --- Trafic du generateur `data/` (#24) pour B, N1, N2, N3 (#70) ---
+    # Jours simules : le surveillant #12 compare chaque tranche au MEME creneau des jours
+    # precedents et exige `min_history_slots` jours d'historique (detection/params.py).
+    real_traffic_days: int = Field(6, gt=0)  # a calibrer (docs/OPEN_QUESTIONS.md §6)
+    # Part du solde envoyee par un transfert legitime. Profil « petits transferts » (1-10 %)
+    # de `data/DECISION_SUPPORT_3.md` §2, choisi pour la demo (#70, a valider en equipe) :
+    # aux seuils par defaut du surveillant #12 (z = 3 / 3), il donne 0 faux positif sur N1/N2
+    # (seeds 7, 20, 42) et detecte B. Avec le profil « gros transferts » du generateur
+    # (5-50 %), le meme surveillant leve 1 faux positif sur N1 (seed 20) : mesure a montrer,
+    # pas a cacher (docs/CLAIMS.md).
+    real_transfer_fraction_min: float = Field(0.01, gt=0.0, le=1.0)  # a calibrer (§6)
+    real_transfer_fraction_max: float = Field(0.1, gt=0.0, le=1.0)  # a calibrer (§6)
+
     @model_validator(mode="after")
     def _coherent(self) -> SimulationParams:
         """Coherence interne (pas un choix de seuil) : sinon le scenario n'a pas de sens."""
         if self.legit_amount_min > self.legit_amount_max:
             raise ValueError("legit_amount_min doit etre <= legit_amount_max")
+        if self.real_transfer_fraction_min > self.real_transfer_fraction_max:
+            raise ValueError("real_transfer_fraction_min doit etre <= real_transfer_fraction_max")
+        if self.real_traffic_days <= TransferRuleParams().min_history_slots:
+            raise ValueError("real_traffic_days : la baseline du surveillant #12 n'aurait "
+                             "jamais assez d'historique")
         if self.attack_amount_per_tx >= self.onchain_cap_per_tx:
             raise ValueError("B : l'attaquant doit rester sous le plafond on-chain")
         if timedelta(minutes=self.human_confirmation_delay_minutes) >= DEMO_EXTENDED_WINDOW:
