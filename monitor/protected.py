@@ -28,6 +28,11 @@ Choix d'architecture (tranche ici, documente dans `monitor/README.md`) :
 3. **Un mint sans `SwapCompleted` dans sa transaction** est un mint passe par
    un chemin non prevu (I4/I5) : la provenance est `None`, la detection leve
    une alerte critique.
+4. **Mode Ghost (#8)**, si `MONITOR_GHOST_ADDRESS` est renseignee : le mint est
+   `GhostIssued(kind=MINT)` (seul chemin de creation de valeur) ; un
+   `Transfer(0x0)` sur M n'est legitime que s'il accompagne un `GhostConverted`
+   de meme porteur et meme montant (conversion, retiree du flux de mints),
+   sinon il reste un mint sans provenance (I4). Voir `monitor/README.md`.
 
 Le module ne depend PAS de `detection/` : il produit des faits bruts
 (`MintProvenance`, `AdminObservation`) que `detection` traduit en
@@ -72,6 +77,23 @@ MINTER_TOPICS: tuple[str, ...] = (
     ROLE_REVOKED_TOPIC,
     RATE_CHANGED_TOPIC,
 )
+
+#: Evenements du M-Ghost (#8, `contracts/src/GhostToken.sol`). `IssueKind` est
+#: un enum Solidity, encode en ABI comme un `uint8`.
+GHOST_ISSUED_TOPIC = event_topic(
+    "GhostIssued(address,address,uint256,uint256,uint256,uint64,uint8)"
+)
+GHOST_CONVERTED_TOPIC = event_topic(
+    "GhostConverted(address,uint256,uint256,uint256,uint256)"
+)
+
+#: topic0 lus sur l'adresse du Ghost, en UN appel `eth_getLogs`.
+GHOST_TOPICS: tuple[str, ...] = (GHOST_ISSUED_TOPIC, GHOST_CONVERTED_TOPIC)
+
+#: `GhostToken.IssueKind` (ordre de declaration de l'enum).
+ISSUE_KIND_MINT = 0
+ISSUE_KIND_TRANSFER_M = 1
+ISSUE_KIND_RESTITUTION = 2
 
 #: Roles connus du contrat protege (`keccak256("SERVICE_ROLE")`, ...).
 #: `DEFAULT_ADMIN_ROLE` vaut 0x00..00 (AccessControl).
@@ -266,6 +288,129 @@ def decode_admin(log: RawLog) -> AdminObservation:
             detail=f"taux {old} -> {new} (x 1e18)",
         )
     raise ValueError("log d'administration inconnu")
+
+
+@dataclass(frozen=True)
+class GhostIssuedLog:
+    """`GhostIssued` decode (#8) : Ghost frais credite a `recipient`.
+
+    `kind == ISSUE_KIND_MINT` (emis par `issueFromMinter`, appele par
+    `ProtectedMinter.completeSwap`) est le SEUL chemin legitime de creation de
+    valeur avec le Ghost : c'est lui, et non plus un `Transfer(0x0)` sur M, qui
+    porte le mint (I4 revise, #8).
+    """
+
+    position: LogPosition
+    recipient: str
+    source: str
+    request_id: int
+    amount: int
+    kind: int
+
+
+@dataclass(frozen=True)
+class GhostConvertedLog:
+    """`GhostConverted` decode (#8) : conversion Ghost -> M de `holder`.
+
+    `token_amount` est le M minte au porteur dans la meme transaction
+    (`GhostedStable.mint`, donc un `Transfer(0x0 -> holder, token_amount)` sur M).
+    """
+
+    position: LogPosition
+    holder: str
+    ghost_amount: int
+    token_amount: int
+    fee_amount: int
+
+
+def decode_ghost_issued(log: RawLog) -> GhostIssuedLog:
+    """Decode `GhostIssued(address indexed, address indexed, uint256 indexed,
+    uint256, uint256, uint64, uint8)`."""
+    topics = _topics(log)
+    if len(topics) != 4 or topics[0] != GHOST_ISSUED_TOPIC:
+        raise ValueError("log GhostIssued mal forme")
+    amount, _ratio, _maturity, kind = _words(log, 4)
+    return GhostIssuedLog(
+        position=LogPosition.of(log),
+        recipient=_topic_address(topics[1]),
+        source=_topic_address(topics[2]),
+        request_id=int(topics[3], 16),
+        amount=amount,
+        kind=kind,
+    )
+
+
+def decode_ghost_converted(log: RawLog) -> GhostConvertedLog:
+    """Decode `GhostConverted(address indexed, uint256, uint256, uint256, uint256)`."""
+    topics = _topics(log)
+    if len(topics) != 2 or topics[0] != GHOST_CONVERTED_TOPIC:
+        raise ValueError("log GhostConverted mal forme")
+    ghost_amount, token_amount, fee, _ratio = _words(log, 4)
+    return GhostConvertedLog(
+        position=LogPosition.of(log),
+        holder=_topic_address(topics[1]),
+        ghost_amount=ghost_amount,
+        token_amount=token_amount,
+        fee_amount=fee,
+    )
+
+
+def split_underlying_mints(
+    underlying_mints: Sequence[tuple[str, int, str, int]],
+    conversions: Sequence[GhostConvertedLog],
+) -> tuple[list[tuple[str, int, str, int]], list[tuple[str, int, str, int]]]:
+    """Separe, sur M, les conversions Ghost -> M des mints hors chemin (#8).
+
+    Avec le Ghost, M n'est minte QUE par `GhostToken.convert` : chaque
+    `Transfer(0x0 -> holder, v)` sur M doit avoir, dans SA transaction, un
+    `GhostConverted(holder, _, v, _, _)` non encore utilise. Sinon c'est un mint
+    de M qui contourne le Ghost (I4) : il est rendu a part pour que la detection
+    leve une alerte critique.
+
+    Args:
+        underlying_mints: `(tx_hash, log_index, recipient, amount)` des
+            `Transfer(0x0)` de M.
+        conversions: `GhostConverted` de la meme plage.
+
+    Returns:
+        `(conversions_appariees, mints_hors_chemin)`, dans l'ordre d'entree.
+        Une `GhostConverted` sans `Transfer` correspondant est journalisee en
+        ERROR (le Ghost annonce un M qui n'a pas ete credite).
+    """
+    by_tx: dict[str, list[GhostConvertedLog]] = {}
+    for conv in sorted(conversions, key=lambda c: c.position.log_index):
+        by_tx.setdefault(conv.position.tx_hash.lower(), []).append(conv)
+    matched: list[tuple[str, int, str, int]] = []
+    rogue: list[tuple[str, int, str, int]] = []
+    for mint in underlying_mints:
+        tx_hash, _index, recipient, amount = mint
+        candidates = by_tx.get(tx_hash.lower(), [])
+        chosen = next(
+            (
+                c
+                for c in candidates
+                if c.holder.lower() == recipient.lower() and c.token_amount == amount
+            ),
+            None,
+        )
+        if chosen is None:
+            LOGGER.error(
+                "M minte sans GhostConverted correspondant dans la tx %s : mint "
+                "hors chemin (I4, #8)",
+                tx_hash,
+            )
+            rogue.append(mint)
+            continue
+        candidates.remove(chosen)
+        matched.append(mint)
+    for leftovers in by_tx.values():
+        for conv in leftovers:
+            LOGGER.error(
+                "GhostConverted de %s sans M credite dans la tx %s",
+                conv.holder,
+                conv.position.tx_hash,
+            )
+    return matched, rogue
 
 
 @dataclass

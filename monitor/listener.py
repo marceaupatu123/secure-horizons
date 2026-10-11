@@ -49,15 +49,22 @@ from web3 import Web3
 from monitor.checkpoint import BlockCheckpoint
 from monitor.config import MonitorConfig
 from monitor.protected import (
+    GHOST_ISSUED_TOPIC,
+    GHOST_TOPICS,
+    ISSUE_KIND_MINT,
     MINTER_TOPICS,
     SWAP_COMPLETED_TOPIC,
     SWAP_REQUESTED_TOPIC,
     AdminObservation,
+    GhostConvertedLog,
     MintCorrelator,
     SwapCompletedLog,
     decode_admin,
+    decode_ghost_converted,
+    decode_ghost_issued,
     decode_swap_completed,
     decode_swap_requested,
+    split_underlying_mints,
 )
 from shared.models import MintEvent, TransferEvent
 
@@ -725,6 +732,7 @@ class ChainListener:
                 "MONITOR_MINTER_ADDRESS manquante : mode contrat protege inactif."
             )
         token = self._token_address()
+        ghost = self._config.ghost_address
         events: list[ProtectedObservedEvent] = []
         for start, end in block_ranges(
             from_block, to_block, self._config.block_batch_size
@@ -787,16 +795,100 @@ class ChainListener:
                     continue
                 if transfer is not None:
                     events.append(transfer)
-            correlator.correlate(
-                [(m.tx_hash, m.log_index, m.recipient, m.amount) for m in mints],
-                completions,
-            )
+            if ghost is None:
+                correlator.correlate(
+                    [(m.tx_hash, m.log_index, m.recipient, m.amount) for m in mints],
+                    completions,
+                )
+            else:
+                mints = self._ghost_mints(start, end, ghost, mints, completions)
             for mint in mints:
                 found = correlator.peek(mint.tx_hash, mint.log_index)
                 request_id = found.request_id if found is not None else None
                 events.append(mint.model_copy(update={"request_id": request_id}))
         events.sort(key=lambda e: (e.block_number, e.log_index))
         return events
+
+    def _ghost_mints(
+        self,
+        start: int,
+        end: int,
+        ghost: str,
+        underlying_mints: list[MintEvent],
+        completions: list[SwapCompletedLog],
+    ) -> list[MintEvent]:
+        """Mode Ghost (#8) : les mints a verifier sur une plage deja lue.
+
+        - Un `GhostIssued(kind=MINT)` est LE mint (seul chemin de creation de
+          valeur, `ProtectedMinter.completeSwap` -> `issueFromMinter`) : il
+          devient un `MintEvent` rattache au `SwapCompleted` de sa transaction.
+        - Un `Transfer(0x0)` sur M accompagne d'un `GhostConverted` est une
+          conversion (valeur deja comptee a l'emission du Ghost) : retire du
+          flux de mints.
+        - Un `Transfer(0x0)` sur M SANS `GhostConverted` contourne le Ghost :
+          garde comme mint SANS provenance -> alerte I4 critique en detection.
+        """
+        correlator = self.correlator
+        assert correlator is not None  # garanti par fetch_protected_events
+        ghost_logs = self._eth.get_logs(
+            {
+                "fromBlock": start,
+                "toBlock": end,
+                "address": ghost,
+                "topics": [list(GHOST_TOPICS)],
+            }
+        )
+        issued: list[MintEvent] = []
+        conversions: list[GhostConvertedLog] = []
+        for log in ghost_logs:
+            if log.get("removed"):
+                continue
+            try:
+                if to_hex(log["topics"][0]) == GHOST_ISSUED_TOPIC:
+                    decoded = decode_ghost_issued(log)
+                    if decoded.kind != ISSUE_KIND_MINT or decoded.amount <= 0:
+                        # TRANSFER_M / RESTITUTION : pas de valeur nouvelle.
+                        continue
+                    issued.append(
+                        MintEvent(
+                            tx_hash=decoded.position.tx_hash,
+                            log_index=decoded.position.log_index,
+                            block_number=decoded.position.block_number,
+                            chain_id=self._config.chain_id,
+                            observed_at=self._now(),
+                            recipient=decoded.recipient,
+                            amount=decoded.amount,
+                            request_id=None,
+                        )
+                    )
+                else:
+                    conversions.append(decode_ghost_converted(log))
+            except (ValueError, KeyError, TypeError, IndexError) as exc:
+                LOGGER.error(
+                    "log du Ghost ignore (bloc %s, index %s) : %s",
+                    log.get("blockNumber"),
+                    log.get("logIndex"),
+                    exc,
+                )
+        correlator.correlate(
+            [(m.tx_hash, m.log_index, m.recipient, m.amount) for m in issued],
+            completions,
+        )
+        _converted, rogue = split_underlying_mints(
+            [(m.tx_hash, m.log_index, m.recipient, m.amount) for m in underlying_mints],
+            conversions,
+        )
+        rogue_keys = {(tx.lower(), idx) for tx, idx, _r, _a in rogue}
+        rogue_mints = [
+            m for m in underlying_mints if (m.tx_hash.lower(), m.log_index) in rogue_keys
+        ]
+        # Aucun SwapCompleted offert : un mint de M hors conversion n'a jamais
+        # de provenance legitime (I4), meme si la tx contient un traitement.
+        correlator.correlate(
+            [(m.tx_hash, m.log_index, m.recipient, m.amount) for m in rogue_mints],
+            [],
+        )
+        return issued + rogue_mints
 
     def stream_event_batches(
         self, max_polls: int | None = None
