@@ -93,6 +93,7 @@ class FujiStep(BaseModel):
     narration: str
     effect: str
     outcome: str  # accepted | rejected | defended
+    countdown: bool  # affiche une animation d'attente (échéance 10 min) avant l'effet
     tx_urls: list[str]
 
 
@@ -179,7 +180,8 @@ def build_fuji_story(run: FujiRun, live: LiveState | None = None) -> FujiStory:
     for case_id in FUJI_CASE_ORDER:
         steps = [FujiStep(command=s.command, actor=s.actor_label, contract=s.contract,
                           contract_url=s.contract_url, narration=s.narration, effect=s.effect,
-                          outcome=s.outcome, tx_urls=list(s.tx_urls))
+                          outcome=s.outcome, countdown=s.command.startswith("⏱"),
+                          tx_urls=list(s.tx_urls))
                  for s in run.steps if s.case == case_id]
         if not steps:
             continue
@@ -379,6 +381,14 @@ background:var(--accent);color:#06102a;cursor:pointer;font-weight:700;font-size:
 .rchip{padding:7px 9px;border-radius:9px;background:var(--panel);border:1px solid var(--border);font-size:12px;transition:all .3s}
 .rchip.active{border-color:var(--accent);box-shadow:0 0 0 2px #6ea8ff33}
 .rchip a{color:var(--accent)}.rchip .rt{display:block;font-size:10px;color:var(--muted)}
+.cd{margin:4px 0 12px;padding:12px;border:1px solid var(--border);border-radius:10px;background:#0d1430}
+.cdtop{display:flex;align-items:center;justify-content:space-between;font-size:16px}
+.cdclock{font-family:monospace;font-weight:800;color:var(--warn);font-variant-numeric:tabular-nums;font-size:22px}
+.cdghost,.cdcoin{font-size:26px;transition:transform .4s,opacity .4s}
+.cdcoin{opacity:.3}.cd.done .cdghost{opacity:.25;transform:scale(.8)}.cd.done .cdcoin{opacity:1;transform:scale(1.25)}
+.cdbar{height:12px;border-radius:7px;background:var(--panel2);overflow:hidden;margin:9px 0 5px}
+.cdbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--ok))}
+.cdnote{font-size:11px;color:var(--muted)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body><div class="wrap">
 
@@ -541,9 +551,21 @@ else{
    return}
   var s=curCase.steps[stepIdx];var b=document.createElement('button');b.className='cmdbtn';
   b.innerHTML=s.narration+'<code>▶ '+s.command+'</code>';b.disabled=typing;b.onclick=function(){runStep()};box.appendChild(b)}
+ function playCountdown(done){var box=document.createElement('div');box.className='termline';
+  box.innerHTML='<div class="cd"><div class="cdtop"><span class="cdghost">👻 M-Ghost</span>'+
+   '<span class="cdclock">10:00</span><span class="cdcoin">M-Coin 🪙</span></div>'+
+   '<div class="cdbar"><i></i></div><div class="cdnote">fenêtre de sécurité — aucune anomalie détectée…</div></div>';
+  out.appendChild(box);out.scrollTop=out.scrollHeight;
+  var cd=box.querySelector('.cd'),clk=box.querySelector('.cdclock'),bar=box.querySelector('.cdbar i');
+  if(RM){clk.textContent='0:00';bar.style.width='100%';cd.className='cd done';done();return}
+  typing=true;var dur=5200,t0=null;
+  (function tick(ts){if(!t0)t0=ts;var p=Math.min((ts-t0)/dur,1);bar.style.width=(p*100)+'%';
+   var rem=Math.round(600*(1-p));clk.textContent=Math.floor(rem/60)+':'+String(rem%60).padStart(2,'0');
+   if(p<1){requestAnimationFrame(tick)}else{clk.textContent='0:00';cd.className='cd done';typing=false;done()}})(performance.now())}
  function runStep(){if(typing||!curCase||stepIdx>=curCase.steps.length)return;var s=curCase.steps[stepIdx];
   renderRail(s.contract);$('f-next').innerHTML='';
-  typeCmd(s.command,function(){printEffect(s);stepIdx++;renderNext()})}
+  typeCmd(s.command,function(){function fin(){printEffect(s);stepIdx++;renderNext()}
+   if(s.countdown){playCountdown(fin)}else{fin()}})}
  function selectCase(c){curCase=c;stepIdx=0;typing=false;out.innerHTML='';$('f-verdict').className='verdict';
   [].forEach.call($('f-cases').children,function(b,i){b.setAttribute('aria-pressed',F.cases[i]===c)});
   var intro=document.createElement('div');intro.className='termline';intro.style.color='var(--muted)';
