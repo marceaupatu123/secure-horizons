@@ -42,7 +42,7 @@ brique n'est pas disponible afficherait « non disponible (dépend de #X) ».
 |----------|---------------------|--------------------------------|---------------|
 | A | Le vulnérable se fait vider, le protégé borne la perte. | contrats Foundry #4/#5 sur anvil local, **opt-in** (`SH_DEMO_CONTRACTS_BACKEND=anvil`) | tout, par défaut (repli automatique si Foundry absent) |
 | B | Détection + alerte + allongement de fenêtre Ghost. | trafic #24, surveillants #11/#12, réponse #17 ; démo on-chain séparée des contrats Ghost #8, **opt-in** (`SH_DEMO_CONTRACTS_BACKEND=anvil`) | Ghost (#8) dans la variante principale |
-| C (optionnel) | Moins de pertes en aval quand la balise est lue. | — | tout (#7, #25) |
+| C (optionnel) | Moins de pertes en aval quand la balise est lue. | `RiskBeacon` + `MockLendingMarket` #7 sur anvil local, **opt-in** (`SH_DEMO_CONTRACTS_BACKEND=anvil`) | M-Ghost (#8, remplacé par `MockGhostRisk`) ; tout, par défaut |
 | D (optionnel) | Pertes côté protocole ≈ zéro (à vérifier) vs pertes côté spéculateurs. | — | tout (#8, #25) |
 | N1 | Zéro alerte, zéro gel. | trafic #24, surveillants #11/#12, réponse #17 | rien |
 | N2 | Pas de déclenchement (volume élevé sans dispersion effondrée). | trafic #24, surveillants #11/#12, réponse #17 | rien |
@@ -62,6 +62,13 @@ Une chaîne anvil jetable est lancée sur `127.0.0.1` (port libre), `MockUSDC`, 
 avec les comptes **déverrouillés** d'anvil (aucune clé privée manipulée). Si Foundry manque ou si
 le rejeu échoue, A retombe sur la simulation et le message le dit. Le job CI `scenario A (anvil)`
 rejoue ce chemin sur chaque PR.
+
+Le même backend rejoue **C** sur la balise de risque et le faux marché de prêt de #7
+(`RiskBeacon`, `MockLendingMarket`) : un emprunteur légitime et l'attaquant (Ghost 100 % suspect)
+empruntent sur deux marchés, sans et avec lecture de la balise, puis la garantie suspecte du
+marché est détruite. Le M-Ghost est `MockGhostRisk` (`contracts/test/utils/`) tant que #8 n'est
+pas livré, d'où le bandeau « à remplacer par #8 ». Paramètres du marché : `lending_ltv` et
+`beacon_ratio_threshold` de `scenarios/config.py`, décotes du test de #7 (provisoires).
 
 ### Démontrer la partie Ghost de B et N3 sur les vrais contrats (anvil, #110)
 

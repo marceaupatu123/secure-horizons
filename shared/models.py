@@ -1,8 +1,9 @@
 """Modeles de donnees partages (Pydantic STRICT) — contrat de `docs/CONTRACTS.md`.
 
-Ce module implemente EXACTEMENT les 13 modeles specifies dans `docs/CONTRACTS.md`.
-Les conventions transverses y sont actees (voir aussi `docs/OPEN_ANSWERS.md`
-§0, §0bis, §9) :
+Ce module implemente EXACTEMENT les 15 modeles specifies dans `docs/CONTRACTS.md`
+(13 d'origine, PR #53 ; `AdminEvent` et `SupplySnapshot` ajoutes par la revision
+groupee #104, decidee en OPEN_ANSWERS §79). Les conventions transverses y sont
+actees (voir aussi `docs/OPEN_ANSWERS.md` §0, §0bis, §9) :
 
 - Pydantic strict : chaque modele interdit tout champ hors schema
   (`model_config = ConfigDict(extra="forbid")`). Il n'y a plus de base
@@ -24,7 +25,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # --- Alias de types reutilisables (identites EVM, valides par regex) ---
 
@@ -42,6 +43,20 @@ TxHash = Annotated[
         description="Hash de transaction / de log (32 octets hex).",
     ),
 ]
+Bytes32 = Annotated[
+    str,
+    Field(
+        pattern=r"^0x[a-fA-F0-9]{64}$",
+        description="Mot de 32 octets hex (ex. identifiant de role AccessControl).",
+    ),
+]
+
+#: Echelle des taux `*_rate_wad` : la valeur brute `ProtectedMinter.rate` du
+#: contrat, x 10**18 (1e18 = 1 unite de M par unite de collateral). Base units
+#: mintees = depot x 10**(decimales M - decimales collateral) x rate_wad / 1e18
+#: (`ProtectedMinter.quoteMint`) ; la conversion reste au consommateur
+#: (ex. `detection.provenance.rate_from_wad`).
+RATE_WAD_SCALE = 10**18
 
 
 # --- Enums fermes (cf. docs/CONTRACTS.md) ---
@@ -114,6 +129,36 @@ class BeaconRiskLevel(str, Enum):
     FROZEN = "frozen"
 
 
+class AdminEventKind(str, Enum):
+    """Evenements d'administration surveilles (OPEN_ANSWERS §1 Q2, §79).
+
+    `role_granted` / `role_revoked` / `rate_changed` sont emis aujourd'hui par
+    le contrat protege #5 (AccessControl + `RateChanged`) et decodes par le
+    monitor (#116). `upgraded` et `oracle_changed` sont les deux autres cas de
+    §1 : aucun contrat du depot ne les emet encore, ils restent dans l'enum
+    pour que detection garde une seule liste.
+    """
+
+    UPGRADED = "upgraded"
+    ROLE_GRANTED = "role_granted"
+    ROLE_REVOKED = "role_revoked"
+    RATE_CHANGED = "rate_changed"
+    ORACLE_CHANGED = "oracle_changed"
+
+
+class MintProvenanceSource(str, Enum):
+    """D'ou viennent les champs de demande d'un `MintEvent` (#104).
+
+    - `request` : lus dans `SwapRequested`, enregistre au depot AVANT tout
+      traitement (independant du traitement qui minte).
+    - `completion` : demande anterieure a l'ecoute, champs relus dans
+      `SwapCompleted`, ecrit par le contrat surveille (moins fiables).
+    """
+
+    REQUEST = "request"
+    COMPLETION = "completion"
+
+
 # --- Base stricte commune : interdit tout champ hors schema ---
 
 
@@ -123,7 +168,7 @@ class _StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-# --- Modeles partages (13), conformes a docs/CONTRACTS.md ---
+# --- Modeles partages (15), conformes a docs/CONTRACTS.md ---
 
 
 class MintEvent(_StrictModel):
@@ -131,6 +176,13 @@ class MintEvent(_StrictModel):
 
     Le montant est celui derive on-chain par le contrat (volet 1), pas un
     montant signe par le demandeur.
+
+    Revision groupee #104 (OPEN_ANSWERS §79) : en mode contrat protege, le
+    monitor rattache le mint a sa demande (`SwapRequested` / `SwapCompleted` de
+    la meme transaction) et renseigne les champs de demande ci-dessous. Hors de
+    ce mode (Transfer ERC-20 nu), ils valent `None` = INCONNU. `amount` et
+    `recipient` restent la verite du solde credite (le log du token), jamais
+    les champs ecrits par le contrat surveille.
     """
 
     tx_hash: TxHash = Field(..., description="Hash de la transaction de mint.")
@@ -158,11 +210,94 @@ class MintEvent(_StrictModel):
             "demande : les demandes reelles sont numerotees a partir de 0 "
             "(cf. `data/generate.py`, `MintRequest.request_id` ge=0), donc une "
             "sentinelle entiere (ex. 0) entrerait en collision. Le decodeur "
-            "ERC-20 du monitor met None ; un evenement dedie (`Minted` avec "
-            "request_id, cote contrat #5) le renseigne. detection ne correle "
-            "pas par ce champ tant qu'il peut etre None."
+            "ERC-20 nu du monitor met None ; en mode contrat protege, il vient "
+            "de `SwapCompleted` (#104)."
         ),
     )
+    depositor: Address | None = Field(
+        None,
+        description=(
+            "Deposant enregistre de la demande (I3 : doit egaler `recipient`). "
+            "None = inconnu."
+        ),
+    )
+    deposit_amount: int | None = Field(
+        None,
+        gt=0,
+        description=(
+            "Depot de la demande, base units du collateral depose (I1). "
+            "None = inconnu."
+        ),
+    )
+    rate_wad: int | None = Field(
+        None,
+        gt=0,
+        description=(
+            "Taux fige a la demande, valeur brute du contrat x 1e18 "
+            "(`ProtectedMinter.rate`, echelle RATE_WAD_SCALE). None = inconnu."
+        ),
+    )
+    provenance_source: MintProvenanceSource | None = Field(
+        None,
+        description=(
+            "Origine des champs de demande : `request` (SwapRequested) ou "
+            "`completion` (SwapCompleted, moins fiable). None = aucune demande "
+            "rattachee."
+        ),
+    )
+    claimed_minted: int | None = Field(
+        None,
+        ge=0,
+        description=(
+            "Montant que `SwapCompleted` DIT avoir minte (ecrit par le contrat "
+            "surveille ; a comparer a `amount`, qui fait foi). None = inconnu."
+        ),
+    )
+    via_protected_path: bool | None = Field(
+        None,
+        description=(
+            "True = mint rattache au chemin prevu du contrat protege (demande "
+            "dans la transaction) ; False = mint SANS provenance, chemin non "
+            "prevu (I4 viole) ; None = non verifie (observation hors mode "
+            "contrat protege)."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _check_provenance(self) -> MintEvent:
+        """Coherence des champs de demande (#104).
+
+        Les champs de demande ne viennent que des evenements du minter, et un
+        mint rattache au chemin prevu a toujours sa demande :
+        `provenance_source` est renseignee SI ET SEULEMENT SI
+        `via_protected_path=True`, et elle exige `request_id` et `depositor`.
+        Sans provenance, aucun champ de demande n'est porte (pas de
+        `request_id` non plus quand le mint est explicitement sans provenance).
+        """
+        request_fields = (
+            self.depositor,
+            self.deposit_amount,
+            self.rate_wad,
+            self.claimed_minted,
+        )
+        if (self.provenance_source is not None) != (self.via_protected_path is True):
+            raise ValueError(
+                "provenance_source est renseignee si et seulement si "
+                "via_protected_path=True"
+            )
+        if self.provenance_source is None:
+            if any(value is not None for value in request_fields):
+                raise ValueError(
+                    "depositor/deposit_amount/rate_wad/claimed_minted exigent "
+                    "provenance_source"
+                )
+        elif self.request_id is None or self.depositor is None:
+            raise ValueError("provenance_source exige request_id et depositor")
+        if self.via_protected_path is False and self.request_id is not None:
+            raise ValueError(
+                "via_protected_path=False (mint sans provenance) exclut request_id"
+            )
+        return self
 
 
 class TransferEvent(_StrictModel):
@@ -187,7 +322,11 @@ class TransferEvent(_StrictModel):
     amount: int = Field(..., gt=0, description="Montant transfere en base units.")
     is_ghost: bool = Field(
         ...,
-        description="True si le token transfere est deja un Ghost (Ghost d'un Ghost).",
+        description=(
+            "True si le log vient du contrat Ghost M' (contrat separe, #8 ; "
+            "transfert de Ghost), False s'il vient du vrai token M. Il n'existe "
+            "pas de « Ghost d'un Ghost » (OPEN_ANSWERS §0bis-b)."
+        ),
     )
 
 
@@ -616,4 +755,114 @@ class GhostTokenBurnEvent(_StrictModel):
         ...,
         min_length=1,
         description="ReleaseDecision multisig autorisant la destruction.",
+    )
+
+
+# --- Revision groupee #104 (OPEN_ANSWERS §79) : administration, offre/collateral ---
+
+_ROLE_KINDS = frozenset({AdminEventKind.ROLE_GRANTED, AdminEventKind.ROLE_REVOKED})
+
+
+class AdminEvent(_StrictModel):
+    """Evenement d'administration observe on-chain (OPEN_ANSWERS §1 Q2, §79).
+
+    Le surveillant de mint verifie que les hypotheses du volet 1 tiennent : un
+    role accorde/retire, un changement de taux, un upgrade ou un changement
+    d'oracle NON annonce est une alerte. Les champs propres a un type
+    d'evenement sont types (pas de dictionnaire libre) et exiges seulement pour
+    ce type : `role` pour `role_granted` / `role_revoked`, `old_rate_wad` et
+    `new_rate_wad` pour `rate_changed`.
+    """
+
+    tx_hash: TxHash = Field(..., description="Transaction ayant emis l'evenement.")
+    log_index: int = Field(..., ge=0, description="Index du log dans la transaction.")
+    block_number: int = Field(..., ge=0, description="Numero de bloc.")
+    chain_id: int = Field(..., ge=1, description="Identifiant de chaine EVM.")
+    observed_at: datetime = Field(
+        ..., description="Horodatage d'observation par le monitor (UTC)."
+    )
+    contract_address: Address = Field(
+        ..., description="Contrat emetteur du log (minter, token, Ghost...)."
+    )
+    kind: AdminEventKind = Field(..., description="Nature de l'evenement.")
+    subject_address: Address = Field(
+        ...,
+        description=(
+            "Compte concerne : recoit/perd le role, auteur du changement de taux, "
+            "nouvelle implementation ou nouvel oracle."
+        ),
+    )
+    actor: Address | None = Field(
+        None,
+        description=(
+            "Compte ayant declenche le changement quand le log le porte "
+            "(`sender` de RoleGranted/RoleRevoked). None = non porte."
+        ),
+    )
+    role: Bytes32 | None = Field(
+        None,
+        description=(
+            "Identifiant bytes32 du role (AccessControl ; DEFAULT_ADMIN_ROLE = "
+            "0x00..00). Exige pour role_granted / role_revoked, interdit sinon."
+        ),
+    )
+    old_rate_wad: int | None = Field(
+        None,
+        gt=0,
+        description="Ancien taux x 1e18 (rate_changed seulement).",
+    )
+    new_rate_wad: int | None = Field(
+        None,
+        gt=0,
+        description="Nouveau taux x 1e18 (rate_changed seulement).",
+    )
+
+    @model_validator(mode="after")
+    def _check_kind_fields(self) -> AdminEvent:
+        """Les champs types ne sont portes que par le type qui les emet."""
+        is_role = self.kind in _ROLE_KINDS
+        if is_role != (self.role is not None):
+            raise ValueError("role est exige pour role_granted/role_revoked, interdit sinon")
+        is_rate = self.kind is AdminEventKind.RATE_CHANGED
+        rates = (self.old_rate_wad, self.new_rate_wad)
+        if is_rate and any(value is None for value in rates):
+            raise ValueError("rate_changed exige old_rate_wad et new_rate_wad")
+        if not is_rate and any(value is not None for value in rates):
+            raise ValueError("old_rate_wad/new_rate_wad reserves a rate_changed")
+        return self
+
+
+class SupplySnapshot(_StrictModel):
+    """Lecture de l'offre et du collateral a un bloc donne (invariants I5, I6).
+
+    I5 compare deux lectures successives de `total_supply` aux mints et burns
+    observes entre elles ; I6 compare la valeur en circulation
+    (`total_supply + ghost_supply`, = `GhostToken.supplyValue()` avec #8) a
+    `collateral_value`. Lectures de fonctions `view` a un bloc (pas des
+    evenements) : `totalSupply()`, `balanceOf(minter)` du collateral.
+    """
+
+    chain_id: int = Field(..., ge=1, description="Identifiant de chaine EVM.")
+    block_number: int = Field(..., ge=0, description="Bloc de la lecture.")
+    observed_at: datetime = Field(..., description="Horodatage de la lecture (UTC).")
+    token_address: Address = Field(..., description="Contrat du vrai token M lu.")
+    total_supply: int = Field(
+        ..., ge=0, description="`totalSupply()` de M au bloc, base units de M."
+    )
+    ghost_supply: int | None = Field(
+        None,
+        ge=0,
+        description=(
+            "`totalSupply()` du Ghost M' au bloc, base units (meme echelle que M). "
+            "None = pas de Ghost deploye ou non lu."
+        ),
+    )
+    collateral_value: int | None = Field(
+        None,
+        ge=0,
+        description=(
+            "Collateral detenu par le minter, exprime en base units de M (I6) : "
+            "solde du collateral x 10**(decimales M - decimales collateral), sans "
+            "taux. None = non lu."
+        ),
     )
