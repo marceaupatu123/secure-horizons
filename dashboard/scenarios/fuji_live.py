@@ -64,19 +64,36 @@ SUB_ACCOUNT_FUNDING_WEI = 10**16  # 0,01 AVAX de test par rôle
 SUB_ACCOUNT_MIN_WEI = 5 * 10**15
 FALLBACK_GAS = 900_000
 RECEIPT_TIMEOUT_SECONDS = 180
-ROLES = ("attacker", "buyer", "watcher", "guardian1", "guardian2", "guardian3", "whale")
+ROLES = ("attacker", "buyer", "spec1", "spec2", "spec3", "watcher",
+         "guardian1", "guardian2", "guardian3", "whale")
 INCIDENT_ACTORS = ("attacker", "buyer", "watcher", "guardian1", "guardian2", "guardian3")
 
 CASE_MINT_PASSES = "mint-passe"
 CASE_MINT_BLOCKED = "mint-bloque"
 CASE_RECOVERY_WINDOW = "fenetre-reprise"
+CASE_SPECULATIVE = "marche-speculatif"
 CASE_GHOST_SELLER = "ghost-vendeur"
+CASE_CONTAGION = "contagion"
+# Prix (USDC, 6 déc.) des reventes successives du M-Ghost : volatils = spéculation.
+SPEC_PRICES_USDC = (1_000 * 10**6, 1_300 * 10**6, 1_100 * 10**6)
+
+ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
+# Marché de prêt fictif (cf. real_contracts._market_config) : décotes PROVISOIRES de #7.
+MARKET_LTV_BPS = 8000
+MARKET_BASE_HAIRCUT_BPS = 500
+MARKET_SLOPE_HAIRCUT_BPS = 9500
+MARKET_MAX_BORROW_RATIO = 5 * 10**17  # 0,5 : seuil de ratio suspect (balise)
+MARKET_MAX_BORROW_SUSPECT = 1_000 * 10**18
+CONTAGION_LIQUIDITY = 100_000 * 10**6  # liquidité USDC du marché
 
 ACTOR_LABELS = {
     "admin": "L'équipe",
     "protocole": "Automatique (échéance atteinte)",
     "attacker": "Le pirate (clé volée)",
     "buyer": "Un acheteur honnête",
+    "spec1": "Spéculateur 1",
+    "spec2": "Spéculateur 2",
+    "spec3": "Spéculateur 3",
     "watcher": "Le surveillant",
     "guardian1": "Gardien 1",
     "guardian2": "Gardien 2",
@@ -512,6 +529,164 @@ def _case_recovery_window(runner: FujiRunner, usdc: Any) -> None:
         "defended", [conv.url], conv.success)
 
 
+def _contagion_world(runner: FujiRunner, usdc: Any, use_beacon: bool) -> tuple[Any, Any, Any]:
+    """Déploie minter+ghost (+balise si use_beacon) et un marché de prêt ; renvoie (ghost, market, incident).
+
+    Intendance NON exposée : l'attaquant reçoit du Ghost (collatéral), est signalé (suspect),
+    une offre de fond donne la marge du budget de quarantaine, le marché a sa liquidité USDC.
+    """
+    admin = runner.address("admin")
+    guardians = [runner.address(f"guardian{i}") for i in (1, 2, 3)]
+    suffix = "pare-feu" if use_beacon else "aveugle"
+    minter = runner.deploy("ProtectedMinter", f"Déploiement du minter ({suffix})",
+                           usdc.address, admin, runner.address("whale"), RATE_ONE, guardians,
+                           GHOST_CONFIG)
+    ghost = runner.at("GhostToken", minter.functions.ghost().call())
+    runner.contracts[f"GhostToken ({suffix})"] = ghost.address
+    runner.transact("admin", ghost.functions.grantRole(ghost.functions.WATCHER_ROLE().call(),
+                                                       runner.address("watcher")), "rôle surveillant")
+    beacon_addr = ZERO_ADDRESS
+    if use_beacon:
+        beacon = runner.deploy("RiskBeacon", "Déploiement de la balise de risque", ghost.address)
+        beacon_addr = beacon.address
+    cfg = (use_beacon, MARKET_LTV_BPS, MARKET_BASE_HAIRCUT_BPS, MARKET_SLOPE_HAIRCUT_BPS,
+           MARKET_MAX_BORROW_RATIO, MARKET_MAX_BORROW_SUSPECT)
+    market = runner.deploy("MockLendingMarket", f"Déploiement du marché de prêt ({suffix})",
+                           ghost.address, usdc.address, ghost.address, beacon_addr,
+                           DECIMALS_SCALE, cfg)
+    runner.contracts[f"Marché de prêt ({suffix})"] = market.address
+    runner.transact("whale", usdc.functions.mint(market.address, CONTAGION_LIQUIDITY),
+                    "liquidité du marché")  # intendance
+    _mint_ghost(runner, usdc, minter, "whale", "whale", BACKGROUND_DEPOSIT)  # budget quarantaine
+    _mint_ghost(runner, usdc, minter, "whale", "attacker", ATTACK_DEPOSIT)  # collatéral attaquant
+    suspect = int(ghost.functions.balanceOf(runner.address("attacker")).call())
+    delayed = runner.transact("watcher", ghost.functions.delay([runner.address("attacker")],
+                              [suspect], GHOST_W_SECONDS), "signalement de l'attaquant")  # intendance
+    incident = int(ghost.functions.openIncidentId().call())
+    return ghost, market, incident
+
+
+def _case_contagion(runner: FujiRunner, usdc: Any) -> None:
+    """Cas « pare-feu de contagion » (C) : un collatéral empoisonné contamine un marché aveugle,
+    mais est refusé par un marché qui lit la balise de risque."""
+    runner.phase("Cas « pare-feu de contagion » — la fraude ne se propage pas")
+    attacker = runner.address("attacker")
+
+    # Marché AVEUGLE : il ne lit pas la balise ; il accepte le collatéral suspect.
+    ghost, market, incident = _contagion_world(runner, usdc, use_beacon=False)
+    collat = int(ghost.functions.balanceOf(attacker).call())
+    runner.transact("attacker", ghost.functions.approve(market.address, collat),
+                    "approve collatéral")  # intendance
+    runner.transact("attacker", market.functions.deposit(collat), "dépôt collatéral")  # intendance
+    capacity = int(market.functions.capacityOf(attacker).call())
+    borrow = runner.transact("attacker", market.functions.borrow(capacity),
+                             "emprunt sur marché aveugle", expect_success=False)
+    borrowed = int(market.functions.totalDebt().call())
+    runner.add_step(
+        CASE_CONTAGION, f"pirate > emprunter --marche aveugle --max",
+        "attacker", "Marché de prêt (aveugle)",
+        "Le pirate dépose son Ghost suspect dans un marché de prêt qui ne lit PAS la balise, et "
+        "emprunte dessus.",
+        f"✗ ACCEPTÉ : {_usdc(borrowed)} USDC prêtés contre un collatéral empoisonné. Le marché "
+        "aveugle vient de laisser entrer la fraude.",
+        "accepted", [borrow.url], borrow.success)
+
+    # Les gardiens détruisent le Ghost suspect -> le collatéral du marché aveugle s'évapore.
+    runner.transact("guardian1", ghost.functions.proposeDestroy(incident, [market.address]),
+                    "proposition destruction")
+    approve = runner.transact("guardian2", ghost.functions.approveAction(
+        int(ghost.functions.proposalCount().call())), "validation 2/3")
+    remaining = int(ghost.functions.balanceOf(market.address).call()) // DECIMALS_SCALE
+    bad_debt = max(0, borrowed - remaining)
+    runner.add_step(
+        CASE_CONTAGION, f"gardiens > detruire-ghost --incident {incident}",
+        "guardian2", "GhostToken (aveugle)",
+        "La fraude est confirmée : les gardiens 2/3 détruisent le Ghost suspect, y compris celui "
+        "déposé dans le marché aveugle.",
+        f"⚠ Le collatéral du marché aveugle s'évapore : il reste {_usdc(borrowed)} USDC prêtés sans "
+        f"adossement → {_usdc(bad_debt)} USDC de créance douteuse. La fraude a contaminé le marché.",
+        "accepted", [approve.url], approve.success)
+
+    # Marché PARE-FEU : il lit la balise ; il refuse le même collatéral suspect.
+    ghost2, market2, _ = _contagion_world(runner, usdc, use_beacon=True)
+    collat2 = int(ghost2.functions.balanceOf(attacker).call())
+    runner.transact("attacker", ghost2.functions.approve(market2.address, collat2),
+                    "approve collatéral")  # intendance
+    runner.transact("attacker", market2.functions.deposit(collat2), "dépôt collatéral")  # intendance
+    cap2 = int(market2.functions.capacityOf(attacker).call())
+    refused = runner.transact("attacker", market2.functions.borrow(max(cap2, 1)),
+                              "emprunt sur marché pare-feu", expect_success=False)
+    runner.add_step(
+        CASE_CONTAGION, "pirate > emprunter --marche pare-feu --max",
+        "attacker", "Marché de prêt (pare-feu)",
+        "Le pirate tente EXACTEMENT le même emprunt sur un marché qui lit la balise de risque.",
+        "✓ REFUSÉ on-chain (BorrowRefused) : la balise signale que l'emprunteur n'est pas dans "
+        "l'état NORMAL. Zéro prêt, zéro créance douteuse. La contagion est stoppée à la porte.",
+        "defended", [refused.url], not refused.success)
+
+
+def _case_speculative_market(runner: FujiRunner, usdc: Any) -> None:
+    """Cas « marché spéculatif du Ghost » : le détenteur revend son M-Ghost en boucle AVANT toute
+    conversion en M-Coin (quarantaine liquide) ; une fraude confirmée tard frappe le spéculateur."""
+    runner.phase("Cas « marché spéculatif du Ghost » — reventes avant tout M-Coin")
+    admin = runner.address("admin")
+    guardians = [runner.address(f"guardian{i}") for i in (1, 2, 3)]
+    minter = runner.deploy("ProtectedMinter", "Déploiement du minter (marché)",
+                           usdc.address, admin, runner.address("whale"), RATE_ONE, guardians,
+                           GHOST_CONFIG)
+    runner.contracts["ProtectedMinter (marché)"] = minter.address
+    ghost = runner.at("GhostToken", minter.functions.ghost().call())
+    runner.contracts["GhostToken (marché)"] = ghost.address
+    router = runner.deploy("SettlementRouter", "Déploiement du routeur (marché)", ghost.address)
+    runner.contracts["SettlementRouter (marché)"] = router.address
+    runner.transact("admin", ghost.functions.grantRole(ghost.functions.WATCHER_ROLE().call(),
+                                                       runner.address("watcher")), "rôle surveillant")
+    # Intendance : offre de fond (budget) + le détenteur initial reçoit son M-Ghost.
+    _mint_ghost(runner, usdc, minter, "whale", "whale", BACKGROUND_DEPOSIT)
+    _mint_ghost(runner, usdc, minter, "whale", "attacker", SELL_AMOUNT_USDC)
+    mg = SELL_AMOUNT_USDC * DECIMALS_SCALE
+
+    # Chaîne de reventes : détenteur -> spec1 -> spec2 -> spec3, à des prix volatils.
+    chain = [("attacker", "spec1"), ("spec1", "spec2"), ("spec2", "spec3")]
+    urls = []
+    for (seller, buyer), price in zip(chain, SPEC_PRICES_USDC):
+        runner.transact(seller, ghost.functions.approve(router.address, mg), "approve M'")
+        runner.transact(buyer, usdc.functions.mint(runner.address(buyer), price), "faucet USDC")
+        runner.transact(buyer, usdc.functions.approve(router.address, price), "approve USDC")
+        rec = runner.transact(buyer, router.functions.buyWithAsset(
+            runner.address(seller), mg, usdc.address, price),
+            f"{buyer} achète le Ghost ({price // 10**6} USDC)")
+        urls.append(rec.url)
+    runner.add_step(
+        CASE_SPECULATIVE, "marche > revendre-ghost --chaine detenteur→spec1→spec2→spec3",
+        "spec3", "SettlementRouter (marché)",
+        "Le détenteur n'a pas encore de M-Coin, mais revend son M-Ghost. Puis les spéculateurs se "
+        "le revendent entre eux.",
+        f"✓ Le même lot de M-Ghost a changé de mains {len(chain)} fois en quelques secondes, à "
+        f"{', '.join(str(p // 10**6) for p in SPEC_PRICES_USDC)} USDC — un marché spéculatif liquide "
+        "s'est formé, alors qu'AUCUN M-Coin n'existe encore (fenêtre non échue).",
+        "accepted", urls, True)
+
+    # Fraude confirmée tardivement : le Ghost est détruit chez le spéculateur qui le détient.
+    holder = runner.address("spec3")
+    runner.transact("watcher", ghost.functions.delay([holder], [mg], GHOST_W_SECONDS),
+                    "signalement tardif")
+    incident = int(ghost.functions.openIncidentId().call())
+    runner.transact("guardian1", ghost.functions.proposeDestroy(incident, [holder]),
+                    "proposition destruction")
+    approve = runner.transact("guardian2", ghost.functions.approveAction(
+        int(ghost.functions.proposalCount().call())), "validation 2/3")
+    holder_after = int(ghost.functions.balanceOf(holder).call())
+    runner.add_step(
+        CASE_SPECULATIVE, "gardiens > detruire-ghost (fraude confirmée tard)",
+        "guardian2", "GhostToken (marché)",
+        "On confirme la fraude APRÈS plusieurs reventes. Qui paie ?",
+        f"✓ Le Ghost est détruit chez le dernier spéculateur (solde : {_tok(holder_after)}). C'est "
+        "LUI qui encaisse la perte — le protocole n'a jamais émis de M-Coin, sa perte est de 0. Le "
+        "risque a été transféré au marché spéculatif.",
+        "defended", [approve.url], approve.success)
+
+
 def _case_ghost_seller(runner: FujiRunner, usdc: Any) -> dict[str, int]:
     """Cas 3 : un vendeur de Ghost est signalé -> destruction de tout le Ghost + USDC gelé rendu."""
     runner.phase("Cas 3 — un vendeur de Ghost pose problème")
@@ -636,7 +811,9 @@ def replay_on_fuji(web3: Any, master_key: str,
     case1 = _case_mint_passes(runner, usdc)
     case2 = _case_mint_blocked(runner, usdc)
     _case_recovery_window(runner, usdc)
+    _case_speculative_market(runner, usdc)
     case3 = _case_ghost_seller(runner, usdc)
+    _case_contagion(runner, usdc)
 
     runner.phase("Le monitor relit la chaîne")
     stable_v = runner.at("StableToken",
@@ -669,24 +846,17 @@ class LiveState(BaseModel):
 
     block_number: int
     vulnerable_minted: int
-    seller_usdc_final: int
 
 
 def read_live_state(web3: Any, run: FujiRun) -> LiveState:
-    """Relit sur Fuji (appels en lecture, aucune clé) des invariants du rejeu."""
+    """Relit sur Fuji (appels en lecture, aucune clé) un invariant stable du rejeu."""
     vulnerable = web3.eth.contract(
         address=web3.to_checksum_address(run.contracts["VulnerableMinter"]),
         abi=load_artifact("VulnerableMinter")["abi"])
     stable = web3.eth.contract(address=web3.to_checksum_address(vulnerable.functions.stable().call()),
                                abi=load_artifact("StableToken")["abi"])
-    usdc = web3.eth.contract(address=web3.to_checksum_address(run.contracts["MockUSDC"]),
-                             abi=load_artifact("MockUSDC")["abi"])
-    return LiveState(
-        block_number=int(web3.eth.block_number),
-        vulnerable_minted=int(stable.functions.totalSupply().call()),
-        seller_usdc_final=int(usdc.functions.balanceOf(
-            web3.to_checksum_address(run.accounts["attacker"])).call()),
-    )
+    return LiveState(block_number=int(web3.eth.block_number),
+                     vulnerable_minted=int(stable.functions.totalSupply().call()))
 
 
 def connect(rpc_url: str | None = None) -> Any:

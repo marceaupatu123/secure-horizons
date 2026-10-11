@@ -81,6 +81,38 @@ class FujiTx(BaseModel):
     url: str
 
 
+class FujiActor(BaseModel):
+    """Un acteur (nœud) d'une scène de flux."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    label: str
+    emoji: str
+
+
+class FujiFlow(BaseModel):
+    """Un flux animé entre deux acteurs (une flèche + un jeton qui voyage)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    src: str
+    dst: str
+    token: str  # ce qui circule (ex. '1 000 USDC', '👻 Ghost')
+    tone: str  # ok | danger | info | warn
+    kind: str  # send | block | burn | freeze
+
+
+class FujiScene(BaseModel):
+    """Scène animée « qui fait quoi à qui » jouée au-dessus du terminal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    caption: str
+    actors: list[FujiActor]
+    flows: list[FujiFlow]
+
+
 class FujiStep(BaseModel):
     """Etape intéressante d'un cas : commande de terminal + effet."""
 
@@ -94,6 +126,7 @@ class FujiStep(BaseModel):
     effect: str
     outcome: str  # accepted | rejected | defended
     countdown: bool  # affiche une animation d'attente (échéance 10 min) avant l'effet
+    scene: FujiScene | None  # scène animée illustrant l'étape
     tx_urls: list[str]
 
 
@@ -152,8 +185,12 @@ FUJI_CASE_META: dict[str, tuple[str, str, str]] = {
     "mint-bloque": ("Le mint est bloqué", "Crypto-Secure : la clé volée ne gagne rien", "good"),
     "fenetre-reprise": ("La fenêtre de reprise", "Un échange donne du M-Ghost, pas du M-Coin",
                         "window"),
+    "marche-speculatif": ("Le marché spéculatif du Ghost",
+                          "On revend le Ghost avant d'avoir des coins", "market"),
     "ghost-vendeur": ("Un vendeur de Ghost pose problème",
                       "On gèle, on détruit, on rembourse l'honnête", "resolved"),
+    "contagion": ("Le pare-feu de contagion",
+                  "La fraude ne se propage pas au reste de la DeFi", "resolved"),
 }
 FUJI_CASE_VERDICT: dict[str, str] = {
     "mint-passe": "✗ Sur un contrat classique, la clé volée a réussi : des jetons sans réserve ont "
@@ -164,25 +201,106 @@ FUJI_CASE_VERDICT: dict[str, str] = {
                        "de sécurité n'est pas écoulée, tout est réversible — c'est le levier de "
                        "reprise. Au bout des 10 min sans anomalie, le M-Ghost arrive à échéance et "
                        "vaut du M-Coin 1:1, automatiquement : personne n'a à le décider.",
+    "marche-speculatif": "💱 Quarantaine LIQUIDE : le détenteur revend son M-Ghost autant qu'il "
+                         "veut avant toute conversion → un marché spéculatif se forme. Si une fraude "
+                         "est confirmée, c'est le spéculateur qui détient le Ghost qui encaisse la "
+                         "perte, pas le protocole (qui n'a jamais émis de M-Coin).",
     "ghost-vendeur": "🛡️ Problème résolu on-chain : pendant la fenêtre, tout le Ghost suspect est "
                      "détruit et l'argent gelé rendu à l'acheteur honnête ; le vendeur finit à zéro.",
+    "contagion": "🧱 Pare-feu : un marché aveugle se fait contaminer (créance douteuse), mais le "
+                 "marché qui lit la balise de risque refuse le collatéral empoisonné — zéro perte. "
+                 "La fraude est stoppée avant de se propager au reste de la DeFi.",
 }
-FUJI_CASE_ORDER = ("mint-passe", "mint-bloque", "fenetre-reprise", "ghost-vendeur")
+FUJI_CASE_ORDER = ("mint-passe", "mint-bloque", "fenetre-reprise", "marche-speculatif",
+                   "ghost-vendeur", "contagion")
 
 
 def _tokens(amount: int) -> float:
     return amount / TOKEN_UNIT
 
 
+# Acteurs par cas (nœuds de la scène).
+_ACTORS: dict[str, dict[str, tuple[str, str]]] = {
+    "mint-passe": {"key": ("Clé volée", "🔑"), "contrat": ("Contrat classique", "🏦"),
+                   "jetons": ("Jetons créés", "💸")},
+    "mint-bloque": {"key": ("Clé volée", "🔑"), "sh": ("Crypto-Secure", "🛡️")},
+    "fenetre-reprise": {"user": ("Utilisateur honnête", "🙂"), "contrat": ("Contrat", "🏦")},
+    "ghost-vendeur": {"seller": ("Vendeur", "🕵️"), "buyer": ("Acheteur honnête", "🙂"),
+                      "vault": ("Coffre", "🔒"), "watcher": ("Surveillant", "📡"),
+                      "guardians": ("Gardiens 2/3", "👥")},
+    "marche-speculatif": {"holder": ("Détenteur", "🙂"), "spec1": ("Spéculateur 1", "🧑‍💼"),
+                          "spec2": ("Spéculateur 2", "🧑‍💼"), "spec3": ("Spéculateur 3", "🧑‍💼"),
+                          "guardians": ("Gardiens 2/3", "👥")},
+    "contagion": {"pirate": ("Pirate", "🕵️"), "blind": ("Marché aveugle", "🏦"),
+                  "firewall": ("Marché pare-feu", "🧱"), "guardians": ("Gardiens 2/3", "👥")},
+}
+# Flux par (cas, index d'étape) : (src, dst, token, tone, kind).
+_FLOWS: dict[tuple[str, int], tuple[str, list[tuple[str, str, str, str, str]]]] = {
+    ("mint-passe", 0): ("Le contrat croit la signature volée", [
+        ("key", "contrat", "mint ×1000 signé", "danger", "send"),
+        ("contrat", "jetons", "1 000 000 jetons sans réserve", "danger", "send")]),
+    ("mint-bloque", 0): ("Le même mint gonflé est rejeté", [
+        ("key", "sh", "mint ×1000 signé", "danger", "block")]),
+    ("mint-bloque", 1): ("Seul le dépôt réel est servi, 1:1", [
+        ("key", "sh", "traiter la demande", "info", "send"),
+        ("sh", "key", "1 000 M-Ghost (1:1)", "ok", "send")]),
+    ("fenetre-reprise", 0): ("L'échange ne donne pas du M-Coin, mais du M-Ghost", [
+        ("user", "contrat", "1 000 USDC", "info", "send"),
+        ("contrat", "user", "👻 1 000 M-Ghost", "warn", "send")]),
+    ("fenetre-reprise", 1): ("Échéance atteinte sans anomalie", [
+        ("contrat", "user", "🪙 1 000 M-Coin (1:1)", "ok", "send")]),
+    ("ghost-vendeur", 0): ("L'acheteur paie, le vendeur est payé en Ghost", [
+        ("buyer", "vault", "1 000 USDC (bloqués)", "info", "freeze"),
+        ("vault", "seller", "👻 Ghost de paiement", "warn", "send")]),
+    ("ghost-vendeur", 1): ("Le surveillant gèle le Ghost suspect", [
+        ("watcher", "seller", "⚠ gel (pas de destruction)", "warn", "freeze")]),
+    ("ghost-vendeur", 2): ("Les gardiens détruisent tout le Ghost suspect", [
+        ("guardians", "buyer", "🔥 Ghost détruit", "danger", "burn")]),
+    ("ghost-vendeur", 3): ("Le Ghost de paiement du vendeur est annulé", [
+        ("guardians", "seller", "🔥 paiement annulé", "danger", "burn")]),
+    ("ghost-vendeur", 4): ("L'argent gelé revient à l'acheteur honnête", [
+        ("vault", "buyer", "1 000 USDC rendus", "ok", "send")]),
+    ("marche-speculatif", 0): ("Le M-Ghost se revend de main en main, avant tout M-Coin", [
+        ("holder", "spec1", "👻 vendu 1 000 USDC", "info", "send"),
+        ("spec1", "spec2", "👻 revendu 1 300 USDC", "warn", "send"),
+        ("spec2", "spec3", "👻 revendu 1 100 USDC", "info", "send")]),
+    ("marche-speculatif", 1): ("Fraude confirmée tard : le spéculateur encaisse, pas le protocole", [
+        ("guardians", "spec3", "🔥 Ghost détruit", "danger", "burn")]),
+    ("contagion", 0): ("Un marché aveugle prête contre un collatéral empoisonné", [
+        ("pirate", "blind", "collatéral empoisonné", "danger", "send"),
+        ("blind", "pirate", "760 USDC prêtés", "danger", "send")]),
+    ("contagion", 1): ("La destruction évapore le collatéral → créance douteuse", [
+        ("guardians", "blind", "🔥 collatéral détruit", "danger", "burn")]),
+    ("contagion", 2): ("Le marché qui lit la balise refuse tout", [
+        ("pirate", "firewall", "même collatéral", "ok", "block")]),
+}
+
+
+def _scene(case_id: str, index: int) -> "FujiScene | None":
+    found = _FLOWS.get((case_id, index))
+    if found is None:
+        return None
+    caption, flows = found
+    used = []
+    for src, dst, _tok, _tone, _kind in flows:
+        used += [src, dst]
+    actors = [FujiActor(key=k, label=lbl, emoji=emo)
+              for k, (lbl, emo) in _ACTORS.get(case_id, {}).items() if k in used]
+    return FujiScene(caption=caption, actors=actors,
+                     flows=[FujiFlow(src=s, dst=d, token=t, tone=tn, kind=k)
+                            for s, d, t, tn, k in flows])
+
+
 def build_fuji_story(run: FujiRun, live: LiveState | None = None) -> FujiStory:
     """Traduit un rejeu Fuji (et, si fourni, l'etat relu a l'instant) pour la page."""
     cases: list[FujiCase] = []
     for case_id in FUJI_CASE_ORDER:
+        src = [s for s in run.steps if s.case == case_id]
         steps = [FujiStep(command=s.command, actor=s.actor_label, contract=s.contract,
                           contract_url=s.contract_url, narration=s.narration, effect=s.effect,
                           outcome=s.outcome, countdown=s.command.startswith("⏱"),
-                          tx_urls=list(s.tx_urls))
-                 for s in run.steps if s.case == case_id]
+                          scene=_scene(case_id, i), tx_urls=list(s.tx_urls))
+                 for i, s in enumerate(src)]
         if not steps:
             continue
         title, subtitle, outcome = FUJI_CASE_META[case_id]
@@ -190,8 +308,7 @@ def build_fuji_story(run: FujiRun, live: LiveState | None = None) -> FujiStory:
                               verdict=FUJI_CASE_VERDICT[case_id], steps=steps))
     matches = None
     if live is not None:
-        matches = (live.vulnerable_minted, live.seller_usdc_final) == (
-            run.vulnerable_minted, run.seller_usdc_final)
+        matches = live.vulnerable_minted == run.vulnerable_minted
     return FujiStory(
         recorded_at=run.finished_at.strftime("%d/%m/%Y %H:%M UTC"),
         tx_count=len(run.transactions),
@@ -358,6 +475,7 @@ color:var(--text);border:1px solid var(--border);cursor:pointer;font-size:14px;f
 .casebtn .pill{font-size:10px;padding:1px 7px;border-radius:20px;float:right}
 .pill.bad{background:#ff5c7a22;color:var(--bad)}.pill.good{background:#3ddc9722;color:var(--ok)}
 .pill.resolved{background:#6ea8ff22;color:var(--accent)}.pill.window{background:#ffc35c22;color:var(--warn)}
+.pill.market{background:#6ea8ff22;color:var(--accent)}
 .termwrap{display:grid;grid-template-columns:1fr 230px;gap:14px}
 @media(max-width:720px){.termwrap{grid-template-columns:1fr}}
 .term{background:#060b18;border:1px solid var(--border);border-radius:12px;overflow:hidden;min-height:300px;display:flex;flex-direction:column}
@@ -389,6 +507,24 @@ background:var(--accent);color:#06102a;cursor:pointer;font-weight:700;font-size:
 .cdbar{height:12px;border-radius:7px;background:var(--panel2);overflow:hidden;margin:9px 0 5px}
 .cdbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--ok))}
 .cdnote{font-size:11px;color:var(--muted)}
+.scene{display:none;margin:0 0 12px;padding:16px 14px;border:1px solid var(--border);border-radius:12px;background:#0d1430}
+.scene.on{display:block;animation:fade .4s ease}
+.sccap{font-size:14px;color:var(--text);font-weight:600;text-align:center;margin-bottom:14px}
+.scstage{position:relative}
+.scrow{display:flex;justify-content:space-around;gap:8px}
+.scnode{flex:1;max-width:150px;text-align:center;padding:8px 6px;border-radius:10px;background:var(--panel);
+border:1px solid var(--border);transition:border-color .3s,box-shadow .3s,transform .3s}
+.scnode .e{font-size:30px;line-height:1.1}
+.scnode .n{font-size:11px;color:var(--muted);margin-top:3px}
+.scnode.hot{border-color:var(--accent);box-shadow:0 0 0 2px #6ea8ff44;transform:translateY(-2px)}
+.scwire{position:relative;height:30px;margin-top:4px}
+.sctok{position:absolute;top:2px;font-size:11px;white-space:nowrap;padding:2px 8px;border-radius:20px;
+transform:translateX(-50%);opacity:0;border:1px solid var(--border)}
+.sctok .arr{opacity:.7}
+.sctok.ok{background:var(--ok-subtle,#3ddc9722);color:var(--ok)}
+.sctok.danger{background:var(--danger-subtle,#ff5c7a22);color:var(--danger)}
+.sctok.info{background:var(--accent-subtle,#6ea8ff22);color:var(--accent)}
+.sctok.warn{background:var(--warn-subtle,#ffc35c22);color:var(--warn)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body><div class="wrap">
 
@@ -409,6 +545,7 @@ background:var(--accent);color:#06102a;cursor:pointer;font-weight:700;font-size:
  <div id="f-body">
   <span class="badge" id="f-live"></span>
   <div class="cases" id="f-cases" role="group" aria-label="Choix du cas"></div>
+  <div class="scene" id="f-scene"></div>
   <div class="termwrap">
    <div class="term">
     <div class="termbar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>
@@ -530,7 +667,7 @@ else{
  var curCase=null,stepIdx=0,typing=false,out=$('f-termout');
  // Boutons de cas
  F.cases.forEach(function(c){var b=document.createElement('button');b.className='casebtn';b.setAttribute('aria-pressed','false');
-  var names={bad:'✗ échec',good:'✓ bloqué',window:'⏳ réversible',resolved:'✓ résolu'};
+  var names={bad:'✗ échec',good:'✓ bloqué',window:'⏳ réversible',market:'💱 liquide',resolved:'✓ résolu'};
   var pill='<span class="pill '+c.outcome+'">'+(names[c.outcome]||'')+'</span>';
   b.innerHTML=pill+'<b>'+c.title+'</b><small>'+c.subtitle+'</small>';b.onclick=function(){selectCase(c)};$('f-cases').appendChild(b)});
  function typeCmd(cmd,done){var pr='<span class="pr">fuji$</span> ';var el=document.createElement('div');el.className='termline termcmd';
@@ -562,11 +699,30 @@ else{
   (function tick(ts){if(!t0)t0=ts;var p=Math.min((ts-t0)/dur,1);bar.style.width=(p*100)+'%';
    var rem=Math.round(600*(1-p));clk.textContent=Math.floor(rem/60)+':'+String(rem%60).padStart(2,'0');
    if(p<1){requestAnimationFrame(tick)}else{clk.textContent='0:00';cd.className='cd done';typing=false;done()}})(performance.now())}
+ function renderScene(s){var sc=$('f-scene');if(!s.scene){sc.className='scene';sc.innerHTML='';return}
+  var v=s.scene,idx={};
+  var row=v.actors.map(function(a,i){idx[a.key]=i;return '<div class="scnode" data-k="'+a.key+'"><div class="e">'+a.emoji+'</div><div class="n">'+a.label+'</div></div>'}).join('');
+  sc.innerHTML='<div class="sccap">'+v.caption+'</div><div class="scstage"><div class="scrow">'+row+'</div><div class="scwire" id="scwire"></div></div>';
+  sc.className='scene on';
+  var n=v.actors.length,wire=sc.querySelector('#scwire'),nodes=sc.querySelectorAll('.scnode');
+  function cx(k){return (idx[k]+0.5)/n*100}
+  function play(i){if(i>=v.flows.length)return;var f=v.flows[i];var sx=cx(f.src),dx=cx(f.dst);
+   nodes[idx[f.src]].classList.add('hot');
+   var t=document.createElement('div');t.className='sctok '+f.tone;t.innerHTML=f.token+' <span class="arr">▶</span>';
+   wire.appendChild(t);t.style.left=sx+'%';
+   if(RM){t.style.opacity='1';if(f.kind==='block'){t.innerHTML='⛔ refusé';}else{t.style.left=dx+'%';nodes[idx[f.dst]].classList.add('hot');if(f.kind==='burn')t.innerHTML='🔥 '+f.token;if(f.kind==='freeze')t.innerHTML='🔒 '+f.token;}play(i+1);return}
+   requestAnimationFrame(function(){t.style.transition='left .9s cubic-bezier(.3,.7,.3,1),opacity .3s';t.style.opacity='1';
+    t.style.left=(f.kind==='block'?(sx+(dx-sx)*0.4):dx)+'%'});
+   setTimeout(function(){if(f.kind==='block'){t.innerHTML='⛔ refusé';t.style.left=sx+'%'}
+    else{nodes[idx[f.dst]].classList.add('hot');if(f.kind==='burn')t.innerHTML='🔥 '+f.token;if(f.kind==='freeze')t.innerHTML='🔒 '+f.token}},950);
+   setTimeout(function(){play(i+1)},1300)}
+  play(0)}
  function runStep(){if(typing||!curCase||stepIdx>=curCase.steps.length)return;var s=curCase.steps[stepIdx];
   renderRail(s.contract);$('f-next').innerHTML='';
-  typeCmd(s.command,function(){function fin(){printEffect(s);stepIdx++;renderNext()}
+  typeCmd(s.command,function(){function fin(){renderScene(s);printEffect(s);stepIdx++;renderNext()}
    if(s.countdown){playCountdown(fin)}else{fin()}})}
  function selectCase(c){curCase=c;stepIdx=0;typing=false;out.innerHTML='';$('f-verdict').className='verdict';
+  $('f-scene').className='scene';$('f-scene').innerHTML='';
   [].forEach.call($('f-cases').children,function(b,i){b.setAttribute('aria-pressed',F.cases[i]===c)});
   var intro=document.createElement('div');intro.className='termline';intro.style.color='var(--muted)';
   intro.textContent='# '+c.title+' — '+c.subtitle+'. Clique le bouton pour exécuter chaque étape.';
