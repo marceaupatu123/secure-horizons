@@ -1,4 +1,4 @@
-"""Tests de fumee des 13 modeles partages (shared.models).
+"""Tests de fumee des 15 modeles partages (shared.models).
 
 Un test par modele : instanciation avec l'exemple VALIDE de `docs/CONTRACTS.md`,
 puis verification qu'un exemple INVALIDE leve bien `pydantic.ValidationError`
@@ -15,6 +15,9 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from shared.models import (
+    RATE_WAD_SCALE,
+    AdminEvent,
+    AdminEventKind,
     Alert,
     AlertSeed,
     AuditLogEntry,
@@ -23,16 +26,19 @@ from shared.models import (
     GhostTokenMintEvent,
     GhostTokenRedemptionEvent,
     MintEvent,
+    MintProvenanceSource,
     MintRequest,
     QuarantineRecord,
     ReleaseDecision,
     ResponseAction,
     RiskBeaconUpdate,
+    SupplySnapshot,
     TransferEvent,
 )
 
 # --- Exemples VALIDES (repris des exemples JSON de docs/CONTRACTS.md) ---
 
+# Mint observe en mode contrat protege (#104) : demande rattachee via SwapRequested.
 MINT_EVENT: dict[str, Any] = {
     "tx_hash": "0x3f2a1b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f701",
     "log_index": 0,
@@ -42,6 +48,21 @@ MINT_EVENT: dict[str, Any] = {
     "recipient": "0x1111111111111111111111111111111111111111",
     "amount": 1000000000000000000,
     "request_id": 42,
+    "depositor": "0x1111111111111111111111111111111111111111",
+    "deposit_amount": 1000000,
+    "rate_wad": 1000000000000000000,
+    "provenance_source": "request",
+    "claimed_minted": 1000000000000000000,
+    "via_protected_path": True,
+}
+
+# Mint observe par un Transfer ERC-20 nu (hors mode protege) : demande inconnue.
+MINT_EVENT_BARE: dict[str, Any] = {
+    key: MINT_EVENT[key]
+    for key in (
+        "tx_hash", "log_index", "block_number", "chain_id", "observed_at",
+        "recipient", "amount",
+    )
 }
 
 TRANSFER_EVENT: dict[str, Any] = {
@@ -203,6 +224,37 @@ GHOST_BURN_EVENT: dict[str, Any] = {
 }
 
 
+ADMIN_EVENT: dict[str, Any] = {
+    "tx_hash": "0x5b6c7d8e9f00112233445566778899aabbccddeeff00112233445566778899aa",
+    "log_index": 1,
+    "block_number": 12345600,
+    "chain_id": 43113,
+    "observed_at": "2026-10-10T14:20:00Z",
+    "contract_address": "0x5555555555555555555555555555555555555555",
+    "kind": "role_granted",
+    "subject_address": "0x6666666666666666666666666666666666666666",
+    "actor": "0x7777777777777777777777777777777777777777",
+    "role": "0x" + "00" * 32,
+}
+
+ADMIN_EVENT_RATE: dict[str, Any] = {
+    **{k: v for k, v in ADMIN_EVENT.items() if k not in ("role", "actor")},
+    "kind": "rate_changed",
+    "old_rate_wad": 1000000000000000000,
+    "new_rate_wad": 1002000000000000000,
+}
+
+SUPPLY_SNAPSHOT: dict[str, Any] = {
+    "chain_id": 43113,
+    "block_number": 12345700,
+    "observed_at": "2026-10-10T14:35:00Z",
+    "token_address": "0x8888888888888888888888888888888888888888",
+    "total_supply": 900000000000000000000,
+    "ghost_supply": 100000000000000000000,
+    "collateral_value": 1000000000000000000000,
+}
+
+
 def _mutate(base: dict[str, Any], **overrides: Any) -> dict[str, Any]:
     """Copie profonde de `base` avec champs remplaces/ajoutes."""
     data = copy.deepcopy(base)
@@ -213,6 +265,7 @@ def _mutate(base: dict[str, Any], **overrides: Any) -> dict[str, Any]:
 # (modele, exemple valide, exemple invalide) — une entree par modele.
 VALID_CASES: list[tuple[type[BaseModel], dict[str, Any]]] = [
     (MintEvent, MINT_EVENT),
+    (MintEvent, MINT_EVENT_BARE),
     (TransferEvent, TRANSFER_EVENT),
     (Alert, ALERT),
     (ResponseAction, RESPONSE_ACTION),
@@ -225,6 +278,9 @@ VALID_CASES: list[tuple[type[BaseModel], dict[str, Any]]] = [
     (GhostTokenMintEvent, GHOST_MINT_EVENT),
     (GhostTokenRedemptionEvent, GHOST_REDEMPTION_EVENT),
     (GhostTokenBurnEvent, GHOST_BURN_EVENT),
+    (AdminEvent, ADMIN_EVENT),
+    (AdminEvent, ADMIN_EVENT_RATE),
+    (SupplySnapshot, SUPPLY_SNAPSHOT),
 ]
 
 
@@ -277,6 +333,10 @@ INVALID_CASES: list[tuple[type[BaseModel], dict[str, Any]]] = [
     (GhostTokenRedemptionEvent, _mutate(GHOST_REDEMPTION_EVENT, ghost_amount=0)),
     # Adresse mal formee.
     (GhostTokenBurnEvent, _mutate(GHOST_BURN_EVENT, address="0xzzzz")),
+    # Role bytes32 mal forme.
+    (AdminEvent, _mutate(ADMIN_EVENT, role="0x00")),
+    # Offre negative.
+    (SupplySnapshot, _mutate(SUPPLY_SNAPSHOT, total_supply=-1)),
 ]
 
 
@@ -306,7 +366,7 @@ def test_mint_event_request_id_defaults_to_none_when_absent() -> None:
     demande ; l'ancienne sentinelle 0 entrait en collision avec la vraie
     demande n°0 (les demandes sont numerotees a partir de 0).
     """
-    payload = {k: v for k, v in MINT_EVENT.items() if k != "request_id"}
+    payload = {k: v for k, v in MINT_EVENT_BARE.items() if k != "request_id"}
     event = MintEvent.model_validate(payload)
     assert event.request_id is None
 
@@ -321,3 +381,121 @@ def test_mint_event_request_id_rejects_negative() -> None:
     """request_id reste >= 0 quand il est fourni (ge=0)."""
     with pytest.raises(ValidationError):
         MintEvent.model_validate(_mutate(MINT_EVENT, request_id=-1))
+
+
+# --- #104 : revision groupee (provenance du mint, administration, offre) ---
+
+
+def test_mint_event_bare_erc20_has_no_request_fields() -> None:
+    """Hors mode protege, les champs de demande valent None (inconnu)."""
+    event = MintEvent.model_validate(MINT_EVENT_BARE)
+    assert event.depositor is None
+    assert event.deposit_amount is None
+    assert event.rate_wad is None
+    assert event.provenance_source is None
+    assert event.claimed_minted is None
+    assert event.via_protected_path is None
+
+
+def test_mint_event_legacy_request_id_alone_stays_valid() -> None:
+    """Retrocompatible : un MintEvent avec seulement request_id reste valide."""
+    event = MintEvent.model_validate(_mutate(MINT_EVENT_BARE, request_id=7))
+    assert event.request_id == 7
+    assert event.provenance_source is None
+
+
+def test_mint_event_protected_example_carries_provenance() -> None:
+    """L'exemple de CONTRACTS.md porte la demande rattachee (I1, I3)."""
+    event = MintEvent.model_validate(MINT_EVENT)
+    assert event.provenance_source is MintProvenanceSource.REQUEST
+    assert event.via_protected_path is True
+    # I1 recalculable cote consommateur : depot (6 dec.) x 1e12 x taux / 1e18.
+    assert event.deposit_amount is not None and event.rate_wad is not None
+    assert event.deposit_amount * 10**12 * event.rate_wad // RATE_WAD_SCALE == event.amount
+
+
+def test_mint_event_unexpected_path_carries_no_request() -> None:
+    """Mint sans provenance (I4) : via_protected_path=False, aucune demande."""
+    event = MintEvent.model_validate(_mutate(MINT_EVENT_BARE, via_protected_path=False))
+    assert event.via_protected_path is False
+    with pytest.raises(ValidationError):
+        MintEvent.model_validate(
+            _mutate(MINT_EVENT_BARE, via_protected_path=False, request_id=3)
+        )
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        # Champ de demande sans provenance_source.
+        {"provenance_source": None, "via_protected_path": None},
+        # provenance_source sans chemin protege.
+        {"via_protected_path": None},
+        {"via_protected_path": False},
+        # provenance_source sans request_id ni deposant.
+        {"request_id": None},
+        {"depositor": None},
+        # Valeur hors enum.
+        {"provenance_source": "guess"},
+        # Bornes.
+        {"deposit_amount": 0},
+        {"rate_wad": 0},
+        {"claimed_minted": -1},
+    ],
+)
+def test_mint_event_rejects_incoherent_provenance(overrides: dict[str, Any]) -> None:
+    """Les champs de demande ne viennent que des evenements du minter."""
+    with pytest.raises(ValidationError):
+        MintEvent.model_validate(_mutate(MINT_EVENT, **overrides))
+
+
+def test_mint_event_protected_path_requires_provenance() -> None:
+    """via_protected_path=True sans provenance_source est incoherent."""
+    with pytest.raises(ValidationError):
+        MintEvent.model_validate(_mutate(MINT_EVENT_BARE, via_protected_path=True))
+
+
+def test_admin_event_kinds_match_detection_list() -> None:
+    """L'enum partage couvre les 5 types de detection.inputs.AdminEventKind."""
+    assert {kind.value for kind in AdminEventKind} == {
+        "upgraded", "role_granted", "role_revoked", "rate_changed", "oracle_changed",
+    }
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        # Role exige pour role_granted.
+        _mutate(ADMIN_EVENT, role=None),
+        # Role interdit hors evenement de role.
+        _mutate(ADMIN_EVENT_RATE, role="0x" + "00" * 32),
+        # rate_changed exige les deux taux.
+        _mutate(ADMIN_EVENT_RATE, new_rate_wad=None),
+        # Taux interdits hors rate_changed.
+        _mutate(ADMIN_EVENT, old_rate_wad=1, new_rate_wad=2),
+        # Taux nul.
+        _mutate(ADMIN_EVENT_RATE, old_rate_wad=0),
+    ],
+)
+def test_admin_event_kind_specific_fields(payload: dict[str, Any]) -> None:
+    """Chaque champ type n'est porte que par le type d'evenement qui l'emet."""
+    with pytest.raises(ValidationError):
+        AdminEvent.model_validate(payload)
+
+
+def test_admin_event_upgrade_needs_no_extra_field() -> None:
+    """Un upgrade ne porte ni role ni taux."""
+    payload = {k: v for k, v in ADMIN_EVENT.items() if k not in ("role", "actor")}
+    event = AdminEvent.model_validate(_mutate(payload, kind="upgraded"))
+    assert event.kind is AdminEventKind.UPGRADED
+    assert event.role is None and event.old_rate_wad is None
+
+
+def test_supply_snapshot_optional_reads() -> None:
+    """Ghost et collateral sont optionnels (non deployes ou non lus)."""
+    payload = {
+        k: v for k, v in SUPPLY_SNAPSHOT.items() if k not in ("ghost_supply", "collateral_value")
+    }
+    snapshot = SupplySnapshot.model_validate(payload)
+    assert snapshot.ghost_supply is None
+    assert snapshot.collateral_value is None
