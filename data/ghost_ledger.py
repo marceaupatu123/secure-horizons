@@ -15,6 +15,12 @@ pas le contrat : la verite reste on-chain.
 - §3      : pendant un retard, le Ghost circule mais ne se convertit pas.
 - §9      : conversion seulement si le ratio ET le montant absolu suspect sont sous seuil.
 - §0bis-c : reserve = collateral - valeur(supply M + supply Ghost).
+- GHOST_MARKET_SEIZURE (proposition) : marche du Ghost (decote de rapidite + commission) et
+  sequestre / saisie. `lock_escrow` bloque la vraie valeur a la source ; `flag_alert` ancre la
+  chaine sur la premiere adresse ayant declenche une alerte (D2) ; `market_sell` cede du Ghost a
+  decote avec commission (valeur existante, jamais mintee) ; `seize` detruit le Ghost aval
+  (dernier acheteur perd tout, D1) et restitue le sequestre aux autorites (D1). Voir
+  `docs/GHOST_MARKET_SEIZURE.md`.
 
 Simplifications (a signaler pour #8) :
 
@@ -42,12 +48,16 @@ class LedgerParams:
         slot: largeur d'une tranche d'echeance (§0bis-b, proposition : 1 min).
         ratio_threshold: ratio maximal autorisant la conversion (§9).
         suspect_threshold: montant absolu suspect maximal autorisant la conversion (§9).
+        commission_rate: part prelevee par le protocole sur chaque vente de Ghost au marche
+            secondaire, dans [0, 1] (GHOST_MARKET_SEIZURE §1.1, D3). `0` = pas de commission.
+            Prelevee en valeur deja existante (jamais mintee).
     """
 
     window: timedelta = timedelta(minutes=10)
     slot: timedelta = timedelta(minutes=1)
     ratio_threshold: float = 0.01
     suspect_threshold: int = 100 * 10**6
+    commission_rate: float = 0.0
 
     def __post_init__(self) -> None:
         if self.window < timedelta(0):
@@ -58,6 +68,8 @@ class LedgerParams:
             raise ValueError("ratio_threshold doit etre dans [0, 1].")
         if self.suspect_threshold < 0:
             raise ValueError("suspect_threshold doit etre >= 0.")
+        if not 0.0 <= self.commission_rate <= 1.0:
+            raise ValueError("commission_rate doit etre dans [0, 1].")
 
     @property
     def ghost_enabled(self) -> bool:
@@ -113,6 +125,49 @@ class Conversion:
     blocked_reason: str | None = None
 
 
+@dataclass(frozen=True)
+class MarketSale:
+    """Resultat d'une vente de Ghost sur le marche secondaire (decote de rapidite).
+
+    Le vendeur cede `amount` de Ghost (valeur faciale) contre un prix `price <= amount` paye
+    en VRAI token deja existant (jamais minte). Le protocole prend une commission `commission`
+    sur ce prix. Voir `docs/GHOST_MARKET_SEIZURE.md`.
+
+    Attributes:
+        amount: montant de Ghost cede (valeur faciale), base units.
+        price: prix paye par l'acheteur en vrai token, base units (`<= amount`).
+        discount: decote `amount - price` (prix du risque assume par l'acheteur).
+        commission: part prelevee par le protocole sur `price`, base units.
+        seller_proceeds: ce que touche le vendeur `price - commission`, base units.
+    """
+
+    amount: int
+    price: int
+    discount: int
+    commission: int
+    seller_proceeds: int
+
+
+@dataclass(frozen=True)
+class Seizure:
+    """Resultat d'une saisie (clawback) multisig sur une ancre frauduleuse.
+
+    Detruit le Ghost frauduleux non converti encore detenu en aval, et transfere le sequestre
+    de l'ancre vers l'adresse de restitution (autorites). Voir `docs/GHOST_MARKET_SEIZURE.md` D1/D2.
+
+    Attributes:
+        anchor: premiere adresse ayant declenche une alerte (point d'ancrage, D2).
+        burned_ghost: Ghost frauduleux detruit en aval, base units (perte des derniers acheteurs).
+        seized_collateral: sequestre transfere aux autorites, base units (restitution).
+        decision_id: ReleaseDecision multisig autorisant la saisie.
+    """
+
+    anchor: str
+    burned_ghost: int
+    seized_collateral: int
+    decision_id: str
+
+
 class GhostLedger:
     """Registre de reference : soldes, tranches, ratio de contamination, collateral."""
 
@@ -122,6 +177,19 @@ class GhostLedger:
         self.collateral = 0
         self.burned_total = 0
         self.converted_suspect = 0.0
+        # --- Marche du Ghost + sequestre / saisie (GHOST_MARKET_SEIZURE) ---
+        # Sequestre par ancre : vraie valeur bloquee, non recuperable par l'emetteur
+        # tant que le Ghost n'est pas verifie. L'ancre est une adresse (D2).
+        self.escrow: dict[str, int] = {}
+        # Ancre d'une adresse : la premiere adresse ayant declenche une alerte dans la
+        # chaine dont cette adresse descend (lignage d'origine, #85 piste a). None = non ancree.
+        self._anchor_of: dict[str, str] = {}
+        # Porteurs en aval d'une ancre (pour la saisie : qui detient du Ghost descendant).
+        self._downstream: dict[str, set[str]] = {}
+        # Valeur deja existante encaissee par le protocole en commission (base units).
+        self.commission_collected = 0
+        # Valeur saisie et restituee aux autorites (base units).
+        self.seized_total = 0
 
     # ----------------------------------------------------------------- lecture
 
@@ -238,6 +306,121 @@ class GhostLedger:
         """Seme un soupcon absolu (graine d'alerte), sans double comptage ni depasser le solde."""
         account = self.account(address)
         account.suspect = min(float(account.ghost), max(account.suspect, amount))
+
+    # ------------------------------------------- marche du Ghost + sequestre / saisie
+
+    def lock_escrow(self, anchor: str, amount: int) -> None:
+        """Place `amount` de vraie valeur en sequestre, rattachee a `anchor` (GHOST_MARKET_SEIZURE §2).
+
+        Le sequestre n'est pas rendu a l'emetteur tant que le Ghost n'est pas verifie. On compte
+        l'ancre comme son propre porteur en aval (point de depart du lignage).
+        """
+        self._positive(amount)
+        self.escrow[anchor] = self.escrow.get(anchor, 0) + amount
+        self._anchor_of.setdefault(anchor, anchor)
+        self._downstream.setdefault(anchor, set()).add(anchor)
+
+    def flag_alert(self, address: str, at: datetime, *, suspect_amount: float | None = None) -> str:
+        """Declenche une alerte a l'achat de Ghost par `address` et l'ancre si besoin (D2).
+
+        Le « premier emetteur de la chaine » = la PREMIERE adresse ayant declenche une alerte
+        lors de son achat de Ghost. La premiere alerte fixe l'ancre ; les alertes suivantes de la
+        meme chaine ne la deplacent pas. Seme eventuellement un soupcon absolu.
+
+        Returns:
+            L'adresse-ancre de la chaine (celle qui a declenche la premiere alerte).
+        """
+        anchor = self._anchor_of.get(address, address)
+        self._anchor_of.setdefault(address, anchor)
+        self._downstream.setdefault(anchor, set()).add(address)
+        self.delay(address, at + self.params.window)
+        if suspect_amount is not None:
+            self.mark_suspect(address, suspect_amount)
+        return anchor
+
+    def market_sell(
+        self, seller: str, buyer: str, amount: int, price: int, at: datetime
+    ) -> MarketSale:
+        """Vend `amount` de Ghost du vendeur a l'acheteur, a decote, avec commission (D3).
+
+        Le Ghost (valeur faciale `amount`) part du vendeur vers l'acheteur en gardant son echeance
+        et son lignage (§0bis-b, #85). L'acheteur paie `price <= amount` en VRAI token deja
+        existant (jamais minte -> solvabilite preservee). Le protocole prend
+        `commission = round(commission_rate x price)` sur ce prix ; le vendeur touche le reste.
+
+        Raises:
+            ValueError: montant <= 0, prix hors [0, amount], ou solde reel acheteur insuffisant.
+        """
+        self._positive(amount)
+        if not 0 <= price <= amount:
+            raise ValueError("price doit etre dans [0, amount] (pas de token minte).")
+        payer = self.account(buyer)
+        if payer.real < price:
+            raise ValueError("solde reel insuffisant pour payer le Ghost.")
+
+        # 1) paiement en vraie valeur existante : acheteur -> vendeur, moins commission.
+        commission = round(self.params.commission_rate * price)
+        seller_proceeds = price - commission
+        payer.real -= price
+        self.account(seller).real += seller_proceeds
+        self.commission_collected += commission
+
+        # 2) transfert du Ghost (echeance + ratio conserves) et propagation du lignage.
+        self.transfer(seller, buyer, amount, at, from_ghost=True)
+        anchor = self._anchor_of.get(seller)
+        if anchor is not None:
+            self._anchor_of.setdefault(buyer, anchor)
+            self._downstream.setdefault(anchor, set()).add(buyer)
+
+        return MarketSale(
+            amount=amount,
+            price=price,
+            discount=amount - price,
+            commission=commission,
+            seller_proceeds=seller_proceeds,
+        )
+
+    def seize(self, anchor: str, authorities: str, at: datetime, decision_id: str) -> Seizure:
+        """Saisie (clawback) multisig d'une ancre frauduleuse (GHOST_MARKET_SEIZURE D1/D2).
+
+        - Detruit tout le Ghost non converti encore detenu en aval de l'ancre : les derniers
+          acheteurs perdent tout (D1), ils assumaient le risque.
+        - Transfere le sequestre de l'ancre vers l'adresse de restitution (`authorities`) : le
+          fraudeur restitue la vraie valeur qu'il detient, qu'il n'a jamais pu sortir (D1).
+
+        `decision_id` est la ReleaseDecision multisig : une cle seule ne saisit pas (§3).
+
+        Returns:
+            Un `Seizure` chiffrant le Ghost detruit (perte marche) et le sequestre restitue.
+        """
+        burned = 0
+        for holder in sorted(self._downstream.get(anchor, {anchor})):
+            account = self.account(holder)
+            ghost = account.ghost
+            if ghost == 0:
+                continue
+            account.tranches.clear()
+            account.suspect = 0.0
+            self.burned_total += ghost
+            burned += ghost
+            self.lift_delay(holder)
+
+        seized = self.escrow.pop(anchor, 0)
+        if seized:
+            # Le sequestre quitte le protocole vers les autorites (coffre HORS systeme) : la vraie
+            # valeur restituee etait adossee (collateral), elle sort donc du collateral. On NE la
+            # recredite PAS comme offre en-protocole (sinon double comptage), on l'enregistre.
+            self.collateral = max(0, self.collateral - seized)
+            self.seized_total += seized
+
+        return Seizure(
+            anchor=anchor, burned_ghost=burned, seized_collateral=seized, decision_id=decision_id
+        )
+
+        """Allonge la fenetre d'une adresse (jamais ne la raccourcit)."""
+        account = self.account(address)
+        if account.delayed_until is None or account.delayed_until < until:
+            account.delayed_until = until
 
     def delay(self, address: str, until: datetime) -> None:
         """Allonge la fenetre d'une adresse (jamais ne la raccourcit)."""

@@ -16,6 +16,8 @@ synthèse, puis le détail.
 | Seuil de déclenchement `z volume` | 0 FP sur les deux profils à partir de 6 | **6** | à valider, dépend du profil |
 | Seuil de déclenchement `z Herfindahl` | 2 à 4 équivalents | **3** | à valider |
 | Lignage pour la récupération (#85) | prospectif seul = 0 % récupéré | **lignage d'origine (a) ou rétroactif (b)** | décision §10bis/#85 |
+| Facteur d'allongement (`max_monitor_delay_minutes`) | 60 min couvre `W`=10 min, jamais limitant | **60 min** (tant que `W` ≤ 60 min) | à valider |
+| Budget de quarantaine (part de l'offre sous retard) | ≈ 2× la taille d'attaque détectée (conséquence mesurée) | pas un réglage direct ; part max à acter | à valider |
 
 ## 1. Fenêtre Ghost W
 
@@ -78,11 +80,39 @@ Mesure de `data/late_marking.py` sur la chaîne des 40 (détection à 3 min, W =
 il faut aussi une récupération par lignage d'origine (décision §10bis/#85). Sinon, le gel/la
 destruction n'atteignent que ce que le voleur détient encore, soit 0 % d'une chaîne déjà revendue.
 
-## 5. Valeurs encore non mesurables (ne pas acter maintenant)
+## 5. Budget de quarantaine et facteur d'allongement (mesuré depuis `response/`)
+
+Nouvelle mesure (`make calibrate`, section « Budget de quarantaine ») : l'alerte du scénario B,
+une fois détectée au seuil proposé (§2), est **rejouée dans la réponse graduée** (`response/`,
+`ResponseOrchestrator.handle_alert`). On mesure la part de l'offre que la réponse place sous
+retard, et si le plafond d'allongement d'un surveillant tient jusqu'à la fenêtre Ghost `W`.
+Données fictives, graine 42, `W` = 10 min.
+
+| Taille attaque | Part de l'offre sous retard | Retard obtenu | Plafond surveillant | Tient jusqu'à `W` ? |
+|---|---|---|---|---|
+| 5 % (profil gros transferts) | 10 % | 60 min | 60 min | oui |
+| 10 % (profil gros transferts) | 20 % | 60 min | 60 min | oui |
+| 0,5 % → 10 % (profil petits transferts) | 0 % → 20 % | 60 min | 60 min | oui |
+
+Lecture :
+
+- **Budget de quarantaine** : la part de l'offre sous retard vaut environ **2× la taille de
+  l'attaque** (le point de sortie concentre la valeur détournée, plus la graine semée). C'est une
+  friction **ciblée** sur le périmètre suspect, à distinguer de la friction **de fond** du Ghost
+  (§1). À l'équipe de fixer la part max tolérée ; la mesure montre qu'au seuil proposé, seul le
+  périmètre de l'attaque est retardé (0 faux positif sur le trafic normal, §2).
+- **Facteur d'allongement** : le retard de référence (**60 min**, §3) couvre très largement la
+  fenêtre Ghost (10 min). `max_monitor_delay_minutes` = 60 min n'est donc jamais le facteur
+  limitant tant que `W` ≤ 60 min : la conversion reste suspendue jusqu'à ce que le multisig humain
+  tranche. Le plafond ne devient contraignant que si l'équipe choisit un `W` proche de l'heure.
+
+**Proposition (à valider)** : conserver `delay_minutes` = `max_monitor_delay_minutes` = **60 min**
+tant que `W` reste de l'ordre de 10 min ; traiter la part de l'offre sous retard comme une
+**conséquence mesurée** (≈ 2× la taille d'attaque détectée), pas un paramètre à régler directement.
+
+## 6. Valeurs encore non mesurables (ne pas acter maintenant)
 
 - **Seuils de conversion** (ratio, montant absolu) et **seuil de la balise** : dans les scénarios
   C/D, le soupçon n'est semé qu'à l'alerte, moment où l'adresse est déjà retardée ; le seuil ne
   joue qu'après une levée ou une expiration sans destruction, pas encore simulée.
-- **Budget de quarantaine, facteur d'allongement max** : il faut rejouer les alertes dans
-  `response/` avec les soldes Ghost ; faisable une fois le seuil de déclenchement choisi.
 - **Barème de la marge de conversion** : décision §0, rien à mesurer avant.

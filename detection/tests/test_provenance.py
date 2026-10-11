@@ -10,6 +10,8 @@ from detection.inputs import AdminAnnouncement, AdminEventKind
 from detection.pipeline import DetectionPipeline, run_live
 from detection.provenance import (
     correlator_context_provider,
+    event_context_provider,
+    mint_context_from_event,
     mint_context_from_provenance,
     rate_from_wad,
 )
@@ -203,3 +205,83 @@ def test_ghost_m_minte_hors_conversion_leve_i4() -> None:
     (alert,) = _run_ghost(logs)
     assert alert.severity == AlertSeverity.CRITICAL
     assert "I4 viole" in alert.reason
+
+
+# ------------------------------------------- #104/#135 : provenance SUR l'event
+
+
+def _mint(**kw):  # type: ignore[no-untyped-def]
+    from shared.models import MintEvent
+
+    base = dict(
+        tx_hash="0x" + "cd" * 32,
+        log_index=0,
+        block_number=1,
+        chain_id=43113,
+        observed_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        recipient=ALICE,
+        amount=10**18,
+    )
+    base.update(kw)
+    return MintEvent(**base)
+
+
+def test_event_context_non_verifie_rend_none() -> None:
+    """via_protected_path=None (hors mode protege) : aucune regle de mint evaluee."""
+    assert mint_context_from_event(_mint()) is None
+
+
+def test_event_context_sans_provenance_donne_path_unexpected() -> None:
+    """via_protected_path=False (mint sans SwapCompleted) : I4."""
+    ctx = mint_context_from_event(_mint(via_protected_path=False))
+    assert ctx is not None and ctx.path_unexpected is True
+
+
+def test_event_context_lit_depot_et_deposant() -> None:
+    """La detection lit depot/taux/deposant directement sur le MintEvent (#135)."""
+    event = _mint(
+        request_id=7,
+        depositor=ALICE,
+        deposit_amount=1_000_000,
+        rate_wad=WAD,
+        provenance_source="request",
+        claimed_minted=10**18,
+        via_protected_path=True,
+    )
+    ctx = mint_context_from_event(event)
+    assert ctx is not None
+    assert ctx.path_unexpected is False
+    assert ctx.deposit_amount == 1_000_000
+    assert ctx.requester is not None and ctx.requester.lower() == ALICE
+    # Taux converti 6->18 decimales : 1 USDC a 1:1 -> 1e18.
+    assert Fraction(1_000_000) * ctx.rate == 10**18
+
+
+def test_run_live_lit_la_provenance_sur_l_event() -> None:
+    """Bout en bout : le monitor renseigne la provenance, run_live la lit sur l'event.
+
+    Meme scenario Resolv que test_mint_gonfle_vers_un_tiers_leve_i1_et_i3, mais
+    on verifie en plus que le MintEvent emis par le listener porte la provenance
+    (depositor/deposit_amount/rate_wad/via_protected_path), pas seulement
+    request_id : c'est l'item #104 « lire ces champs partages ».
+    """
+    from shared.models import MintEvent
+
+    logs = [
+        swap_requested(3, ALICE, 1_000_000, WAD, block=10, index=0, tx=1),
+        transfer(ZERO, ATTACKER, 400 * 10**18, block=11, index=0, tx=2),
+        swap_completed(3, ALICE, ATTACKER, 400_000_000, 400 * 10**18, WAD, block=11, index=1, tx=2),
+    ]
+    config = MonitorConfig(
+        rpc_url=None, token_address=TOKEN, minter_address=MINTER, start_block=0
+    )
+    listener = ChainListener(
+        config, FakeWeb3(_SupplyEth(logs, 50)), sleep=lambda _: None, now=lambda: FIXED_NOW
+    )
+    (mint,) = [e for e in listener.fetch_events(0, 100) if isinstance(e, MintEvent)]
+    assert mint.via_protected_path is True
+    assert mint.deposit_amount == 1_000_000
+    assert mint.depositor is not None and mint.depositor.lower() == ALICE
+    # Et la detection branchee sur l'event (sans correlateur) leve I1 et I3.
+    reasons = " | ".join(a.reason for a in _run(logs))
+    assert "I1" in reasons and "I3" in reasons
