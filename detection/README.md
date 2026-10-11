@@ -37,6 +37,12 @@ sur la sortie standard (journaux sur la sortie d'erreur). Aucune intégration av
   PROVISOIRE** : chaque tranche est comparée aux 24 tranches précédentes, alerte possible après
   12 tranches (1 h). Sélection : `--profile`, sinon `DETECTION_PROFILE`, sinon `default`.
 - **Points de sortie** : `--exit-point ADRESSE` (répétable, PROVISOIRE).
+- **Mode contrat protégé (#104)** : avec `MONITOR_MINTER_ADDRESS`, chaque mint arrive avec sa
+  demande (`detection/provenance.py`) : I1 et I3 sont **vérifiés en LIVE** contre le dépôt et le
+  déposant lus dans `SwapRequested` (pas dans `SwapCompleted`, écrit par le contrat surveillé) ;
+  un mint sans `SwapCompleted` lève **I4** (critique) ; `RoleGranted` / `RoleRevoked` /
+  `RateChanged` non annoncés lèvent une alerte **dès leur lecture**
+  (`RuleBasedMonitor.check_admin_event`). Détails et limites : `monitor/README.md`.
 - **GAP pour `shared/` (@marceaupatu123, #79)** : aucun modèle partagé pour l'offre en
   circulation ni pour le contexte d'un mint (dépôt, taux) ; le pipeline les adapte dans
   `detection/`.
