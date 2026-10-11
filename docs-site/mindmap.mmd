@@ -1,34 +1,50 @@
 mindmap
-  root((Secure Horizons<br/>bouclier anti-vol DeFi))
+  root((Secure Horizons<br/>une clé volée ne vaut presque rien))
     Le problème
-      Un voleur a volé une clé
-      Avec la clé il fabrique de l'argent faux
-      Puis il s'enfuit avec
+      Clé de service volée
+      Mint sans contrepartie
+      Fuite avant toute réaction
       Réagir après = trop tard
     L'idée clé
-      La sécurité est DANS le coffre-fort
-      Une clé volée ne vaut presque rien
-    Volet 1 - Montant verrouillé
-      Le voleur ne choisit plus le montant
-      Le contrat calcule lui-même
-      à partir du dépôt réel
-    Volet 2 - Perte plafonnée
-      Même volé, pertes limitées
-      Vérifié par des tests
-      Jamais prouvé
-    Volet 3 - Mur anti-contagion
-      Une balise qui crie au danger
-      Les autres cessent d'accepter le jeton
+      La sécurité vit dans le contrat
+      Cœur acté : pricer le risque
+    Volet 1 - Montant dérivé on-chain
+      La signature dit traiter la demande n°X
+      Le contrat lit le dépôt enregistré
+      Ni montant ni destinataire libres
+    Volet 2 - Bornes testées
+      Perte max bornée
+      Friction max bornée
+      Baseline médiane + MAD
+      Volume élevé ET dispersion effondrée
+      Vérifié par tests, jamais prouvé
+    Volet 3 - Pare-feu de contagion
+      Balise de risque publique
+      Faux marché de prêt qui lit la balise
+    Token Ghost
+      Tous les transferts
+      Fenêtre portée par la valeur
+      Tranches d'échéance
+      Conversion 1:1 ou destruction
+      Réserve de restitution
+      Spéculos prend le risque contre une décote
+    Contamination par ratio
+      Ratio suspect par adresse
+      Se propage avec les transferts
+      Prix du risque lisible par l'aval
+      Marquage après coup : racine de Merkle
     Garde-fous
-      Quarantaine Token Ghost
-        Jeton temporaire échangeable
-        Converti en vrai si tout va bien
-        Détruit si fraude
-      Surveillants multiples
-        Règles + IA + signaux
-        Peuvent ralentir, pas accélérer
-        L'IA ne décide jamais seule
-      Humain décide la libération
-    Preuve de conformité
-      Journal d'audit DORA
-      Rapport d'incident auto
+      Retarder : surveillant ou IA seul
+      Détruire : multisig humain
+      Pause globale : multisig humain
+      Veto asymétrique
+    Chaîne de défense
+      contracts
+      monitor écoute
+      detection repère
+      response décide
+      llm explique
+      dashboard montre
+    Conformité DORA
+      Journal d'audit
+      Rapport d'incident pré-rempli

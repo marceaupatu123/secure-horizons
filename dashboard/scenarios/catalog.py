@@ -49,9 +49,15 @@ from dashboard.scenarios.real_pipeline import (
     TRAFFIC_REFS,
     alert_addresses,
     daily_volumes,
+    delayed_supply_share,
     generation_params,
     respond,
     run_detectors,
+)
+from dashboard.scenarios.real_report import (
+    incident_report_markdown,
+    related_actions,
+    related_audit,
 )
 from dashboard.scenarios.registry import register
 from dashboard.scenarios.sim_contracts import (
@@ -138,6 +144,14 @@ def _result(scenario_id: str, seed: int, variants: list[ScenarioVariant],
 
 def _bucket(params: SimulationParams) -> timedelta:
     return timedelta(minutes=params.bucket_minutes)
+
+
+def _delayed_share_metric(events: list, actions: list[ResponseAction], initial_supply: int,
+                          label: str) -> MeasuredMetric:
+    """Pic de la part de l'offre en fenetre allongee, en % (friction locale, #70)."""
+    share = delayed_supply_share(events, actions, initial_supply)
+    return _metric("delayed_supply_share", label, None if share is None else 100 * share,
+                   "% de l'offre", _RESPONSE_SOURCE)
 
 
 def _log_traffic(builder: _Builder, at: datetime, legit: int, attack: int = 0) -> None:
@@ -473,6 +487,18 @@ def run_b(seed: int, params: SimulationParams) -> ScenarioResult:
             and d.expires_at - d.created_at == DEMO_EXTENDED_WINDOW for d in actions)
         for a in attack_alerts
     )
+    # Rapport DORA (#15) sur la premiere alerte d'attaque confirmee par le multisig (#113).
+    destroyed_addresses = {address.lower() for address in response.destroyed_at}
+    confirmed_alert = next((a for a in attack_alerts
+                            if alert_addresses(a) & destroyed_addresses), None)
+    report = None
+    if confirmed_alert is not None:
+        scope = alert_addresses(confirmed_alert)
+        linked = related_actions(scope, actions)
+        report = incident_report_markdown(
+            confirmed_alert, linked,
+            related_audit(scope, linked, response.orchestrator.audit_log),
+            generated_at=response.end_time or gen.end)
     variant = ScenarioVariant(
         name=_MAIN, label="Détournement 1:1 puis sortie concentrée (trafic #24)",
         metrics=[
@@ -487,6 +513,9 @@ def run_b(seed: int, params: SimulationParams) -> ScenarioResult:
             _metric("suspect_ghost_destroyed", "Ghost suspect détruit", destroyed, "base units"),
             _metric("protocol_loss", "Perte protocole (Ghost suspect converti)",
                     ledger.total_converted_suspect(), "base units"),
+            _delayed_share_metric(scenario.events, actions,
+                                  int(scenario.manifest["initial_supply"]),
+                                  "Part de l'offre en fenêtre allongée (pic, friction locale)"),
         ],
         checks=[
             ScenarioCheck(label="détecté par les surveillants",
@@ -497,8 +526,12 @@ def run_b(seed: int, params: SimulationParams) -> ScenarioResult:
             ScenarioCheck(label="fenêtre allongée",
                           expected="retard appliqué sur chaque adresse de l'attaque alertée",
                           passed=extended),
+            ScenarioCheck(label="rapport d'incident DORA",
+                          expected="rapport #15 produit pour l'alerte confirmée par le multisig",
+                          passed=report is not None),
         ],
         dataset=build_dataset(builder, seed), end_time=response.end_time or gen.end,
+        incident_report=report,
     )
     return _result("B", seed, [variant], message=_real_message(seed, "Ghost (#8)"))
 
@@ -742,6 +775,8 @@ def run_n3(seed: int, params: SimulationParams) -> ScenarioResult:
             _metric("ghost_redeemed", "Ghost converti 1:1 après expiration",
                     sum(response.redeemed.values()), "base units"),
             _metric("destroy_count", "Destructions", destroys, "actions", _RESPONSE_SOURCE),
+            _delayed_share_metric(events, actions, int(scenario.manifest["initial_supply"]),
+                                  "Part de l'offre inutilement retardée (pic, borne basse)"),
         ],
         checks=[
             ScenarioCheck(label="fenêtre allongée déclenchée",

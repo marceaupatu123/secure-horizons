@@ -4,6 +4,8 @@ pragma solidity ^0.8.24;
 import {BaseTest} from "./utils/BaseTest.sol";
 import {ProtectedMinter} from "../src/ProtectedMinter.sol";
 import {StableToken} from "../src/StableToken.sol";
+import {GhostedStable} from "../src/GhostedStable.sol";
+import {GhostToken} from "../src/GhostToken.sol";
 import {VulnerableMinter} from "../src/VulnerableMinter.sol";
 
 /// @notice Scénario A : la MÊME séquence d'attaque, jouée par le même attaquant détenteur de la
@@ -16,12 +18,13 @@ contract ScenarioATest is BaseTest {
     VulnerableMinter internal vulnerable;
     StableToken internal vStable;
     ProtectedMinter internal protected;
-    StableToken internal pStable;
+    GhostedStable internal pStable;
+    GhostToken internal pGhost;
 
     function setUp() public {
         _deployUsdc();
         (vulnerable, vStable) = _deployVulnerable();
-        (protected, pStable) = _deployProtected();
+        (protected, pStable, pGhost) = _deployProtected();
     }
 
     /// @dev (a) l'attaquant dépose DEPOSIT ; (b) il tente le mint gonflé INFLATED vers lui-même.
@@ -40,7 +43,7 @@ contract ScenarioATest is BaseTest {
         // Seul appel possible : « traiter la demande n°id ».
         vm.prank(attacker);
         protected.completeSwap(id);
-        minted = pStable.balanceOf(attacker);
+        minted = pGhost.balanceOf(attacker);
     }
 
     function test_scenarioA_vulnerable_inflatedMintSucceeds() public {
@@ -53,7 +56,7 @@ contract ScenarioATest is BaseTest {
         (uint256 id, bool inflatedCallOk, uint256 minted) = _attackProtected();
         assertFalse(inflatedCallOk);
         assertEq(minted, DEPOSIT * SCALE); // 1:1 à rate = 1e18
-        assertEq(pStable.totalSupply(), DEPOSIT * SCALE);
+        assertEq(pGhost.supplyValue(), DEPOSIT * SCALE);
 
         vm.prank(attacker);
         vm.expectRevert(abi.encodeWithSelector(ProtectedMinter.RequestNotPending.selector, id));
@@ -64,8 +67,8 @@ contract ScenarioATest is BaseTest {
         uint256 id = _requestProtected(protected, alice, DEPOSIT);
         vm.prank(attacker);
         protected.completeSwap(id);
-        assertEq(pStable.balanceOf(alice), DEPOSIT * SCALE);
-        assertEq(pStable.balanceOf(attacker), 0);
+        assertEq(pGhost.balanceOf(alice), DEPOSIT * SCALE);
+        assertEq(pGhost.balanceOf(attacker), 0);
     }
 
     function test_scenarioA_sideBySide() public {
