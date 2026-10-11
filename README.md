@@ -3,6 +3,7 @@
 > ESSECKATHON — Track « Fintech Security : Guardians of Value ». Hackathon 48h.
 >
 > 📖 **Doc illustrée en ligne (Mintlify) :** <https://cryptosecure.mintlify.site/>
+> **Démo interactive (streamlit)** <https://secure-horizon-crypto-secure.streamlit.app/Demo_interactive>
 
 Ce README explique **tout le projet et tout l'outillage** mis en place. Si tu débarques, lis-le
 en entier une fois : il te dit quoi faire, dans quel ordre, et comment on travaille à plusieurs.
