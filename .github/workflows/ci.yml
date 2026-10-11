@@ -51,6 +51,46 @@ jobs:
       - name: Run tests
         run: python -m pytest -q
 
+  scenario-a-anvil:
+    # Rejoue le scenario A du dashboard sur les VRAIS contrats #4/#5 deployes sur anvil (#70).
+    # Le job `test` ne voit que la simulation (pas de Foundry) : ce job couvre le chemin reel.
+    name: scenario A (anvil)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with:
+          version: v1.8.5
+
+      - name: Install contract dependencies
+        working-directory: contracts
+        run: forge install --no-git foundry-rs/forge-std@v1.17.0 OpenZeppelin/openzeppelin-contracts@v5.4.0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Scenario A on anvil
+        env:
+          SH_DEMO_CONTRACTS_BACKEND: anvil
+        # Echoue si A est retombe sur la simulation (Foundry absent, rejeu en echec).
+        run: |
+          python -m dashboard.demo run A --seed 20 | tee scenario_a.txt
+          grep -q "Bandeau : implémentation réelle : #4, #5" scenario_a.txt
+          python -m pytest -q dashboard/tests/test_scenarios_real.py -k "real_anvil" -rs
+
   contracts:
     # Contrats Foundry (contracts/) : build + tests (profil default), voir contracts/README.md.
     name: contracts (forge build + forge test)

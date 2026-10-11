@@ -1,14 +1,18 @@
 """CLI des scenarios de demo (#47) : `python -m dashboard.demo list|run <id>`.
 
 Point d'entree unique pour lister et rejouer (seed fixe) les scenarios A, B, C,
-D, N1, N2, N3. Tout est simulation hors chaîne, à remplacer par #n (indique par
-scenario). Seules des grandeurs mesurees sont affichees.
+D, N1, N2, N3. Chaque scenario indique les briques branchees sur le vrai code
+et celles encore en simulation hors chaîne, à remplacer par #n. Seules des
+grandeurs mesurees (comptages, pas des mesures de performance) sont affichees.
 """
 
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 # Permet aussi `python dashboard/demo.py` depuis n'importe ou.
@@ -24,11 +28,33 @@ from dashboard.scenarios import (  # noqa: E402
     get_spec,
     list_specs,
     run_scenario,
-    simulation_banner,
 )
 from dashboard.view_model import MISSING_LABEL, format_base_units  # noqa: E402
 
 NOT_MEASURED_LABEL = "non mesuré"
+
+
+@contextmanager
+def quiet_detection_warmup() -> Iterator[None]:
+    """Masque le temps d'un rejeu le bruit de chauffe du surveillant #12.
+
+    Le rejeu de plusieurs jours de trafic fait loguer un WARNING par tranche de chauffe
+    (« historique insuffisant ») : utile en production, du bruit pour la demo. Le niveau du
+    logger `detection` est restaure en sortie (pas d'effet de bord global).
+    """
+    logger = logging.getLogger("detection")
+    previous = logger.level
+    logger.setLevel(logging.ERROR)
+    try:
+        yield
+    finally:
+        logger.setLevel(previous)
+
+
+def run_scenario_quietly(scenario_id: str, seed: int, disabled: frozenset[str]) -> ScenarioResult:
+    """`run_scenario` sans le bruit de chauffe du surveillant (CLI et page)."""
+    with quiet_detection_warmup():
+        return run_scenario(scenario_id, seed=seed, disabled=disabled)
 
 
 def format_metric_value(metric: MeasuredMetric) -> str:
@@ -52,7 +78,7 @@ def _print_list(disabled: frozenset[str]) -> None:
             "optionnel" if spec.optional else MISSING_LABEL,
             "désactivé" if spec.id in disabled else "activé",
             f"dépend de {_refs(spec.depends_on)}",
-            simulation_banner(spec.replace_by),
+            spec.implementation_label(),
         ]))
 
 
@@ -66,8 +92,8 @@ def format_result(result: ScenarioResult) -> str:
         f"Seed : {result.seed}",
         f"Attendu : {spec.expected}",
     ]
-    if result.simulated:
-        lines.append(f"Bandeau : {simulation_banner(result.replace_by)}")
+    if result.variants:
+        lines.append(f"Bandeau : {spec.result_banner(result)}")
     for variant in result.variants:
         lines.append(f"== {variant.label} ({variant.name}) ==")
         lines += [f"  {m.label} : {format_metric_value(m)}" for m in variant.metrics]
@@ -81,7 +107,7 @@ def format_result(result: ScenarioResult) -> str:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m dashboard.demo",
-        description="Scénarios de démo #47 (simulation hors chaîne).",
+        description="Scénarios de démo #47 (vrai code amont + simulation hors chaîne).",
     )
     sub = parser.add_subparsers(dest="command", required=True)
     list_cmd = sub.add_parser("list", help="Liste les scénarios.")
@@ -91,6 +117,8 @@ def _parser() -> argparse.ArgumentParser:
     run_cmd.add_argument("scenario_id", metavar="id")
     run_cmd.add_argument("--seed", type=int, default=DEMO_SEED)
     run_cmd.add_argument("--json", action="store_true", help="Sortie JSON du résultat.")
+    run_cmd.add_argument("--report", action="store_true",
+                         help="Affiche aussi le rapport d'incident DORA (#15) s'il existe.")
     run_cmd.add_argument("--disable", nargs="+", action="extend", default=[], metavar="ID",
                          help="Scénarios désactivés (ex. C D).")
     return parser
@@ -112,8 +140,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "list":
         _print_list(disabled)
         return 0
-    result = run_scenario(args.scenario_id, seed=args.seed, disabled=disabled)
+    result = run_scenario_quietly(args.scenario_id, seed=args.seed, disabled=disabled)
     print(result.model_dump_json(indent=2) if args.json else format_result(result))
+    if args.report and not args.json:
+        reports = [v.incident_report for v in result.variants if v.incident_report]
+        print("\n".join(["", *reports]) if reports
+              else "\nAucun rapport d'incident : aucune alerte confirmée dans ce scénario.")
     return 0
 
 
