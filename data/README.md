@@ -102,7 +102,7 @@ Le Ghost du générateur suit §0bis-b : un Ghost transféré garde son échéan
 
 `python -m data.calibrate` rejoue 8 jours de trafic dans les surveillants de `detection/` (#11,
 #12) et écrit `data/generated/calibration.{json,md}`. Il **mesure**, il ne choisit pas : le point de
-fonctionnement est une décision d'équipe (§5 Q2). Résultats avec la graine 42 (une seule graine,
+fonctionnement est une décision d'équipe (§5 Q2). Une proposition de valeurs argumentée sur ces mesures est dans [`data/DECISION_SUPPORT_3.md`](DECISION_SUPPORT_3.md) (à valider en équipe). Résultats avec la graine 42 (une seule graine,
 simulation) :
 
 **Fenêtre Ghost W** — part de l'offre immobilisée en Ghost sur le trafic normal (friction) :
