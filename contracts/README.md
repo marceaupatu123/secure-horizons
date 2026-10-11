@@ -325,12 +325,17 @@ d'incident, séries d'extension) et classe chaque action « doit réussir » / �
   avant l'expiration fige le soupçon (`Sc`), qui reste verrouillé.
 - Le M obtenu **avant** le gel n'est jamais repris (voulu) : seul du Ghost sans soupçon valide
   sort.
-- **Pas encore écrit** (suivi #124) : scénario de récupération après fragmentation.
-  Tailles mesurées (`forge build --sizes`) : `GhostToken` 21 173 o (limite 24 576), initcode
+- Tailles mesurées (`forge build --sizes`) : `GhostToken` 21 173 o (limite 24 576), initcode
   `ProtectedMinter` 33 546 o (limite 49 152).
 - **Parité avec le registre hors chaîne** `data/ghost_ledger.py` : `test/ghost/LedgerParity.t.sol`
   rejoue une chaîne courte (mints, transferts, conversions, transfert de M) et compare soldes,
   tranches et montants convertis aux valeurs du registre, recopiées en dur.
+- **Récupération après fragmentation** : `test/ScenarioRecovery.t.sol` (fuzz chaîne + fan-out)
+  mesure la part récupérée. Détection complète : 100 % du soupçon semé est récupéré par la
+  destruction (rien de suspect n'a pu être converti). Détection partielle (⅓ des détenteurs non
+  ciblés) : part récupérée affichée (≈ 73 % sur la graine testée), le soupçon confirmé restant
+  reste verrouillé chez les non-ciblés. Confirmation après `expiresAt` : récupération 0 (silence =
+  retour à la normale, limite honnête).
 
 ### Gas mesuré (`test/gas/GhostGas.t.sol`)
 
