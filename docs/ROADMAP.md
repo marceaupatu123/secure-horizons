@@ -18,7 +18,7 @@ collision). Les deux goulots (#2, #4) sont pris en priorité pour débloquer la 
 |--------|----------------|---------|-------|
 | **marceaupatu123** | #2 champs des modèles | `shared/` | 1 (`blocker`) |
 | **denybs** | #4 Foundry + contrat vulnérable | `contracts/` | 2 |
-| **EnzoFB06** | #26 onboarding | — | 0 |
+| **EnzoFB06** | #26 onboarding (fait) | — | 0 |
 | **Yannis1307** | #9 monitor : écoute des mints | `monitor/` | 2 |
 
 > Dès que #2 est mergée, monitor/detection/response/llm se débloquent : prochaine vague de
@@ -105,7 +105,7 @@ flowchart TD
 | Fait | Issue | Tâche | Pourquoi d'abord |
 |------|-------|-------|------------------|
 | [x] | #28 | setup RPC Fuji + faucet AVAX + BEDROCK_MODEL_ID | `blocker` : sans ça, ni chaîne ni LLM. (fermée via PR #32) |
-| [ ] | #26 | onboarding (clone, venv, make install, .env, branche) | chacun doit être opérationnel. _(EnzoFB06, en cours)_ |
+| [x] | #26 | onboarding (clone, venv, make install, .env, branche) | chacun doit être opérationnel. _(EnzoFB06, fait)_ |
 | [ ] | #27 | CODEOWNERS + tableau TEAM.md | fige « qui possède quoi » avant de coder. |
 | [x] | #31 | contracts : registre des déploiements Fuji (`DEPLOYMENTS.md`) | consigne staff : tracer les adresses déployées. |
 
