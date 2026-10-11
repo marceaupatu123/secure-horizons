@@ -116,7 +116,7 @@ flowchart TD
 | [x] | #1 | sécurité dans le contrat vs seulement autour | oriente contracts + response. **Tranché** (OPEN_ANSWERS §0), issue fermée. |
 | [ ] | #3 | plafonds / fenêtre quarantaine / mode Token Ghost | #5, #8, #18. Mécanismes tranchés ; recentrée sur les **valeurs à mesurer** (`module:data`). |
 | [x] | #2 | champs des modèles (CONTRACTS.md + shared/models.py) | presque tout le code (monitor, detection, response, llm). **Mergé** (PR #53), issue fermée — débloque la vague 2+. |
-| [ ] | #85 | contracts : contamination posée après coup (graine marquée après propagation) | **bloque #84**, touche #8. Pistes dans `OPEN_QUESTIONS.md` §11. |
+| [x] | #85 | contracts : contamination posée après coup (graine marquée après propagation) | **Tranché** (OPEN_ANSWERS §11, piste b : recalcul hors chaîne + racine de Merkle) — débloque #84. |
 
 ## Vague 2 — Fondations de code (après #2)
 
@@ -155,7 +155,7 @@ flowchart TD
 | [ ] | #8 | contracts : ERC20 Token Ghost + burn guardian | dépend de #5. Spec tranchée : §0bis-b (tranches d'échéance, #35), §0bis-c (réserve de restitution, #36), §9 (ratio) ; tests d'invariants de #33 inclus. |
 | [ ] | #7 | contracts : balise de risque + faux marché — volet 3 | **cœur du projet** (§0, §4), plus optionnel ; dépend de #8 (lit le ratio). |
 | [ ] | #65 | contracts : pool simulé M-Ghost/USDC, règlement différé `swap-id` (§10, #43) | dépend de #8 ; sert le scénario D (#25). Devient un cas particulier du routeur §10bis (#84). |
-| [ ] | #84 | contracts : M' protégé / pur / chèque, routeur + Ghost de paiement par actif, restitution (§10bis) | dépend de #8, étend #65 ; bloqué en conception par #85. |
+| [ ] | #84 | contracts : M' protégé / pur / chèque, routeur + Ghost de paiement par actif, restitution (§10bis) | dépend de #8, étend #65 ; conception **débloquée** par #85 (OPEN_ANSWERS §11). |
 | [x] | #13 | detection : surveillant ML / prédiction conforme | `optional` |
 | [x] | #25 | data : scénarios C et D (contagion + Token Ghost) | `optional`, dépend de #7/#8 _(simulation hors chaîne, PR #82)_ |
 

@@ -170,3 +170,40 @@ def test_oracle_deviation_alerts_with_seed() -> None:
 
 def test_no_context_no_alert() -> None:
     assert RuleBasedMonitor().check_mint(_mint(80_000_000 * UNIT)) is None
+
+
+# --- I3 : destinataire = deposant (#91) ---
+
+ATTACKER = "0x" + "e5" * 20
+
+
+def test_i3_recipient_is_requester_no_alert() -> None:
+    minted = 1_000 * UNIT
+    context = _consistent_context(minted, minted, requester=RECIPIENT.upper().replace("0X", "0x"))
+    assert RuleBasedMonitor().check_mint(_mint(minted), context) is None
+
+
+def test_i3_diverted_one_to_one_mint_alerts() -> None:
+    """Scenario B : demande d'une victime mintee a 1:1 vers une autre adresse.
+    I1, I5, I6 et l'oracle sont respectes ; seul I3 le voit."""
+    minted = 1_000 * UNIT
+    context = _consistent_context(minted, minted, requester=ATTACKER)
+    alert = RuleBasedMonitor().check_mint(_mint(minted), context)
+    assert alert is not None
+    assert alert.kind == AlertKind.MINT
+    assert "I3 viole" in alert.reason
+    assert alert.suspect_amount == minted
+    assert alert.contamination_ratio == 1.0
+    assert [s.address for s in alert.seeds] == [RECIPIENT]
+
+
+def test_i3_skipped_without_requester() -> None:
+    minted = 1_000 * UNIT
+    assert RuleBasedMonitor().check_mint(_mint(minted), _consistent_context(minted, minted)) is None
+
+
+def test_i3_invalid_requester_rejected() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="requester"):
+        MintContext(requester="pas-une-adresse")
