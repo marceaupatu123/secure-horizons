@@ -68,10 +68,14 @@ class SimulationParams(BaseModel):
     # Jours simules : le surveillant #12 compare chaque tranche au MEME creneau des jours
     # precedents et exige `min_history_slots` jours d'historique (detection/params.py).
     real_traffic_days: int = Field(6, gt=0)  # a calibrer (docs/OPEN_QUESTIONS.md §6)
-    # Part du solde envoyee par un transfert legitime : defaut = celui du generateur
-    # (`GenerationParams.transfer_fraction`), non retouche par le dashboard.
-    real_transfer_fraction_min: float = Field(0.05, gt=0.0, le=1.0)  # a calibrer (§6)
-    real_transfer_fraction_max: float = Field(0.5, gt=0.0, le=1.0)  # a calibrer (§6)
+    # Part du solde envoyee par un transfert legitime. Profil « petits transferts » (1-10 %)
+    # de `data/DECISION_SUPPORT_3.md` §2, choisi pour la demo (#70, a valider en equipe) :
+    # aux seuils par defaut du surveillant #12 (z = 3 / 3), il donne 0 faux positif sur N1/N2
+    # (seeds 7, 20, 42) et detecte B. Avec le profil « gros transferts » du generateur
+    # (5-50 %), le meme surveillant leve 1 faux positif sur N1 (seed 20) : mesure a montrer,
+    # pas a cacher (docs/CLAIMS.md).
+    real_transfer_fraction_min: float = Field(0.01, gt=0.0, le=1.0)  # a calibrer (§6)
+    real_transfer_fraction_max: float = Field(0.1, gt=0.0, le=1.0)  # a calibrer (§6)
 
     @model_validator(mode="after")
     def _coherent(self) -> SimulationParams:
