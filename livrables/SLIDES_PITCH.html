@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Crypto-Secure — Pitch Équipe 20</title>
+<!--
+  Deck du pitch, calé sur livrables/SCRIPT_PITCH.md et la démo interactive du dashboard (#148).
+  Fichier autonome : aucune ressource externe, s'ouvre dans n'importe quel navigateur.
+
+  Clavier : → / Espace / PageDown = suivante · ← / PageUp = précédente · Début / Fin
+            N = notes orateur + chrono · T = remet le chrono à zéro · F = plein écran
+  URL     : ?final        → version finale 3 min (slides 1, 3, 4, 5, 6 + annexes)
+            ?s=4 ou #4    → ouvre directement la slide 4
+  PDF     : Ctrl+P → « Enregistrer en PDF », une slide par page (format 1920×1080).
+-->
+<style>
+:root{
+  --bg:#0b1020;--panel:#141b33;--panel2:#1b2445;--text:#eef1fb;--muted:#9aa6c8;
+  --accent:#6ea8ff;--ok:#3ddc97;--bad:#ff5c7a;--warn:#ffc35c;--border:#2a3560;
+  --mono:ui-monospace,"DejaVu Sans Mono","Cascadia Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;overflow:hidden}
+.stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+.deck{position:relative;width:1920px;height:1080px;flex:none;transform-origin:center center}
+
+/* ---------- Slide ---------- */
+.slide{position:absolute;inset:0;display:none;flex-direction:column;padding:84px 120px 110px;
+  background:radial-gradient(1200px 700px at 85% -10%,#1a2a5a55,transparent 60%),
+             radial-gradient(900px 600px at -10% 110%,#3ddc9712,transparent 60%),var(--bg)}
+.slide.on{display:flex;animation:in .45s ease}
+@keyframes in{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.slide.on{animation:none}}
+.shot .slide.on{animation:none}
+.kicker{font-size:24px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:700;margin:0 0 18px}
+h1{font-size:150px;line-height:1;margin:0;font-weight:850;letter-spacing:-.02em}
+h2{font-size:66px;line-height:1.08;margin:0 0 40px;font-weight:800;letter-spacing:-.01em}
+p{margin:0}
+.lead{font-size:34px;color:var(--muted);line-height:1.4}
+.muted{color:var(--muted)}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}.acc{color:var(--accent)}
+b,strong{font-weight:750}
+code,.mono{font-family:var(--mono)}
+.foot{position:absolute;left:120px;right:120px;bottom:40px;display:flex;justify-content:space-between;
+  font-size:20px;color:var(--muted);border-top:1px solid var(--border);padding-top:16px}
+.foot .brand::before{content:"🛡 "}
+.grow{flex:1}
+
+.card{background:var(--panel);border:1px solid var(--border);border-radius:24px;padding:36px 38px}
+.card h3{font-size:36px;margin:0 0 14px;line-height:1.15}
+.card p,.card li{font-size:28px;line-height:1.4;color:#d6dcf0}
+.card ul{margin:0;padding-left:30px}.card li{margin:6px 0}
+.row{display:flex;gap:32px}
+.row>*{flex:1}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:32px}
+.compact .card{padding:28px 34px}.compact .badge{width:52px;height:52px;font-size:28px;margin-bottom:14px}
+.compact .card p{font-size:26px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:28px}
+.badge{display:inline-flex;align-items:center;justify-content:center;width:64px;height:64px;border-radius:18px;
+  background:var(--panel2);border:1px solid var(--border);font-size:34px;font-weight:800;color:var(--accent);margin-bottom:22px}
+.src{font-family:var(--mono);font-size:19px;color:var(--muted);margin-top:18px;line-height:1.4}
+.band{border-radius:22px;padding:28px 36px;font-size:30px;line-height:1.4;border:1px solid var(--border);background:var(--panel2)}
+.band.accent{border-color:#6ea8ff88;background:linear-gradient(90deg,#1b2b5c,#16204a)}
+.chip{display:inline-block;padding:10px 20px;border-radius:999px;background:var(--panel2);border:1px solid var(--border);
+  font-size:24px;margin:0 10px 10px 0}
+
+/* ---------- Flux (frises, Ghost) ---------- */
+.flow{display:flex;align-items:stretch;gap:0}
+.step{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:22px;padding:30px 28px;text-align:center}
+.step .ico{font-size:66px;display:block;margin-bottom:12px}
+.step .t{font-size:32px;font-weight:750;line-height:1.2}
+.step .d{font-size:24px;color:var(--muted);margin-top:8px;line-height:1.35}
+.arrow{flex:none;width:70px;display:flex;align-items:center;justify-content:center;font-size:48px;color:var(--muted)}
+.step.bad{border-color:#ff5c7a99;background:#2a1424}
+.step.ok{border-color:#3ddc9799;background:#10291f}
+
+/* ---------- Chiffres ---------- */
+.num{font-size:118px;font-weight:850;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.num small{font-size:48px;font-weight:700;color:var(--muted);margin-left:6px}
+.metric p{font-size:27px;margin-top:16px}
+
+/* ---------- Notes orateur ---------- */
+#notes{position:fixed;left:0;right:0;bottom:0;max-height:42vh;overflow:auto;background:#060a16f2;
+  border-top:2px solid var(--accent);padding:18px 28px 22px;font-size:20px;line-height:1.5;display:none;z-index:5}
+#notes.on{display:block}
+#notes .bar{display:flex;gap:24px;align-items:baseline;font-family:var(--mono);font-size:16px;color:var(--muted);margin-bottom:10px}
+#notes .bar strong{color:var(--text);font-size:22px}
+#notes .late{color:var(--bad)}
+#notes .txt p{margin:0 0 8px}
+#notes .txt li{margin:2px 0}
+.notes{display:none}
+#hint{position:fixed;right:20px;bottom:16px;font-size:14px;color:var(--muted);background:#000a;padding:8px 12px;
+  border-radius:8px;transition:opacity .6s;z-index:4}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* ---------- Impression : une slide par page ---------- */
+@page{size:1920px 1080px;margin:0}
+@media print{
+  html,body{overflow:visible;height:auto;background:var(--bg)}
+  .stage{position:static;display:block}
+  .deck{transform:none!important;width:auto;height:auto}
+  .slide,.slide.on{display:flex!important;position:relative;width:1920px;height:1080px;break-after:page;animation:none}
+  .slide.skip{display:none!important}
+  #notes,#hint{display:none!important}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+<div class="stage"><main class="deck" id="deck" aria-live="off">
+
+<!-- ======================= 1. TITRE ======================= -->
+<section class="slide" data-title="Titre et accroche" data-t="20" data-final="1">
+  <p class="kicker">Équipe 20 · Track 1 — Fintech Security : Guardians of Value</p>
+  <h1>🛡 Crypto-Secure</h1>
+  <p style="font-size:58px;font-weight:700;margin:26px 0 0;line-height:1.2">Une clé volée ne doit presque <span class="acc">rien</span> valoir.</p>
+  <div class="grow"></div>
+  <div class="card" style="padding:34px 40px">
+    <p class="muted" style="font-size:24px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;margin-bottom:22px">Protocole Resolv</p>
+    <div class="flow">
+      <div class="step"><span class="ico">💵</span><div class="t">~200&nbsp;000 $</div><div class="d">déposés par l'attaquant</div></div>
+      <div class="arrow">→</div>
+      <div class="step bad"><span class="ico">🖨</span><div class="t">80 M jetons</div><div class="d">mintés avec une clé valide</div></div>
+      <div class="arrow">→</div>
+      <div class="step bad"><span class="ico">📉</span><div class="t">17 min</div><div class="d">et le stablecoin perd son ancrage</div></div>
+    </div>
+    <p style="font-size:30px;margin-top:26px">Aucune cryptographie cassée. <b>Juste une clé valide.</b></p>
+  </div>
+  <div class="foot"><span class="brand">Crypto-Secure · Équipe 20</span><span class="pg"></span></div>
+  <aside class="notes">
+    <p>« Protocole Resolv. Un attaquant dépose environ 200&nbsp;000 dollars et minte 80 millions de jetons. Dix-sept minutes plus tard, le stablecoin a perdu son ancrage. Il n'a cassé aucune cryptographie : il avait une clé valide. »</p>
+    <p class="muted">Ne pas citer la date du hack tant que personne ne l'a vérifiée.</p>
+  </aside>
+</section>
+
+<!-- ======================= 2. PROBLÈME ======================= -->
+<section class="slide" data-title="Le problème" data-t="35">
+  <p class="kicker">Le problème</p>
+  <h2>Surveiller autour du contrat ne suffit pas.</h2>
+  <div style="display:flex;gap:0;margin-bottom:14px">
+    <div style="flex:3.2;border:2px dashed #3ddc9766;border-bottom:0;border-radius:18px 18px 0 0;padding:12px 20px;font-size:24px;color:var(--ok);text-align:center;margin-right:70px">
+      Tout est légitime pour le contrat : la signature est bonne</div>
+    <div style="flex:1"></div>
+  </div>
+  <div class="flow">
+    <div class="step"><span class="ico">🔑</span><div class="t">Signature valide</div><div class="d">la clé de service est volée</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><span class="ico">🖨</span><div class="t">Mint</div><div class="d">80 M jetons sans dépôt derrière</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><span class="ico">📉</span><div class="t">Vente, dépeg</div><div class="d">en 17 minutes</div></div>
+    <div class="arrow">→</div>
+    <div class="step bad"><span class="ico">🔔</span><div class="t">Alerte…</div><div class="d"><b class="bad">trop tard</b> : les jetons sont vendus</div></div>
+  </div>
+  <p style="text-align:right;font-size:24px;color:var(--bad);margin-top:12px">↑ c'est ici qu'un outil de surveillance classique réagit</p>
+  <div class="grow"></div>
+  <div class="row" style="align-items:stretch">
+    <div class="band" style="flex:1">⏱ Un exploit DeFi se joue en <b>minutes</b>, plus vite qu'une équipe humaine ne décide.</div>
+    <div class="band accent" style="flex:1.15"><span class="acc">Notre question :</span> comment faire pour qu'une clé volée ne vaille <b>presque rien</b> ?</div>
+  </div>
+  <div class="foot"><span class="brand">Crypto-Secure · Équipe 20</span><span class="pg"></span></div>
+  <aside class="notes">
+    <p>« Dans ce type d'attaque, tout est légitime du point de vue du contrat : la signature est bonne. Un outil de surveillance classique voit le problème après le mint, quand les jetons sont déjà vendus. En DeFi un exploit se joue en minutes, plus vite qu'une équipe humaine ne peut décider. Réagir après coup arrive trop tard. Notre question : comment faire pour qu'une clé volée ne vaille presque rien ? »</p>
+  </aside>
+</section>
+
+<!-- ======================= 3. SOLUTION ======================= -->
+<section class="slide" data-title="Notre solution" data-t="50" data-final="1">
+  <p class="kicker">Notre solution</p>
+  <h2>Trois protections, <span class="acc">dans le contrat</span>.</h2>
+  <div class="grid3 compact">
+    <div class="card"><div class="badge">1</div><h3>Le contrat dérive le montant</h3>
+      <p>La signature autorise « traiter la demande n°X ». Le montant, c'est le contrat qui le lit dans le dépôt on-chain.</p></div>
+    <div class="card"><div class="badge">2</div><h3>Perte maximale bornée</h3>
+      <p>Vérifiée par tests d'invariants et fuzzing Foundry, avec la clé de service volée.</p></div>
+    <div class="card"><div class="badge">3</div><h3>Pare-feu de contagion</h3>
+      <p>Une balise de risque que les protocoles de prêt lisent pour refuser une garantie suspecte.</p></div>
+  </div>
+  <div class="grow"></div>
+  <div class="card" style="border-color:#6ea8ff88;padding:26px 38px;margin-top:28px">
+    <div style="display:flex;align-items:center;gap:26px">
+      <div style="flex:none;width:300px">
+        <p style="font-size:40px;font-weight:800">👻 Token Ghost</p>
+        <p class="muted" style="font-size:24px;margin-top:6px">pour l'attaquant qui passe quand même</p>
+      </div>
+      <div class="step" style="flex:none;width:220px;padding:22px"><div class="t">Transfert</div></div>
+      <div class="arrow">→</div>
+      <div class="step" style="flex:none;width:300px;padding:22px"><div class="t">Jeton d'attente</div><div class="d">librement échangeable</div></div>
+      <div class="arrow">→</div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:14px">
+        <div class="step ok" style="padding:16px 22px;text-align:left"><div class="t" style="font-size:28px">⏱ 10 min sans anomalie → vrai jeton 1:1</div></div>
+        <div class="step bad" style="padding:16px 22px;text-align:left"><div class="t" style="font-size:28px">🔥 Fraude confirmée → détruit</div></div>
+      </div>
+    </div>
+    <p style="font-size:30px;margin-top:22px">Ces dix minutes, c'est <b class="acc">le temps qu'on achète aux défenseurs</b>.</p>
+  </div>
+  <div class="foot"><span class="brand">Crypto-Secure · Équipe 20</span><span class="pg"></span></div>
+  <aside class="notes">
+    <p>« Trois protections, dans le contrat. Un : la signature n'autorise plus un montant, elle autorise à traiter la demande numéro X, et le contrat calcule lui-même le montant à partir du dépôt. Deux : la perte maximale est bornée, et on le vérifie par fuzzing. Trois : une balise de risque que les protocoles de prêt peuvent lire pour refuser une garantie suspecte. Et pour l'attaquant qui passe quand même : le Token Ghost. Tout transfert émet d'abord un jeton d'attente, librement échangeable, qui ne devient du vrai jeton qu'après dix minutes sans alerte. Ces dix minutes, c'est le temps qu'on achète aux défenseurs. »</p>
+  </aside>
+</section>
+
+<!-- ======================= 4. DÉMO ======================= -->
+<section class="slide" data-title="Démo en direct" data-t="80" data-t-final="50" data-final="1">
+  <p class="kicker">Démo en direct</p>
+  <h2>La même attaque, rejouée devant vous.</h2>
+  <p class="lead" style="margin:-22px 0 34px">Dashboard → <b style="color:var(--text)">Démo interactive</b> · seed 20 · aucune vraie valeur en jeu</p>
+  <div class="grid3" style="flex:1">
+    <div class="card">
+      <h3>⛓ Sur Avalanche Fuji</h3>
+      <p class="muted" style="font-size:24px;margin-bottom:18px">vraies transactions, vérifiables sur Snowtrace</p>
+      <p><span class="bad">✗</span> <b>Contrat classique</b> : 1&nbsp;000 USDC déposés → <b class="bad">1&nbsp;000&nbsp;000</b> jetons acceptés</p>
+      <p style="margin-top:16px"><span class="ok">✓</span> <b>Crypto-Secure</b> : le même mint est <b class="ok">rejeté on-chain</b>, seuls les 1&nbsp;000 du dépôt sont servis</p>
+    </div>
+    <div class="card" style="border-color:#6ea8ff88">
+      <h3>🕵 Le pirate discret</h3>
+      <p class="muted" style="font-size:24px;margin-bottom:18px">il reste sous les plafonds</p>
+      <ul>
+        <li>Contrat seul : <b>0</b> rejet</li>
+        <li>Alerte <b class="acc">296 s</b> après le mint, fenêtre de 10 min</li>
+        <li>Retard ciblé : <b>&lt; 2 %</b> de l'offre</li>
+        <li>2 humains sur 3 confirment : Ghost suspect <b>détruit</b></li>
+        <li>Journal d'audit + rapport DORA pré-rempli</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>🔁 Et si on se trompe ?</h3>
+      <p class="muted" style="font-size:24px;margin-bottom:18px">fausse alerte (scénario N3)</p>
+      <ul>
+        <li>Personne ne confirme</li>
+        <li>Le retard <b class="ok">expire seul</b></li>
+        <li><b>0</b> destruction</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><span class="brand">Crypto-Secure · Équipe 20</span><span class="pg"></span></div>
+  <aside class="notes">
+    <p><b>Avant le pitch</b> : <code>make run-dashboard</code>, page « Démo interactive » ouverte, seed 20 rejouée (≈ quelques secondes), page « Scénarios de démo » dans un 2e onglet sur N3. Secours : vidéo 2-3 min, y passer sans commenter si ça plante.</p>
+    <p><b>Onglet Fuji, cas 1 puis 2 (0:25)</b> — « Même attaque sur deux contrats, en vraies transactions sur le testnet Avalanche. Le classique accepte mille fois le dépôt. Le nôtre rejette le mint gonflé sur la chaîne, et ne sert que le dépôt : perte du protocole, zéro. »</p>
+    <p><b>Onglet Acte 2 (0:40)</b> — « Attaquant plus malin : il reste sous les plafonds, le contrat seul ne rejette rien. Nos surveillants voient un volume élevé et une dispersion qui s'effondre : alerte 296 secondes après le mint, avant la fin de la fenêtre. La réponse retarde uniquement le périmètre suspect, moins de 2 % de l'offre. Deux signataires humains confirment, le Ghost suspect est détruit. Tout est au journal d'audit, et le rapport d'incident est pré-rempli. »</p>
+    <p><b>N3 (0:15)</b> — « Et si on se trompe ? Fausse alerte : personne ne confirme, le retard expire seul, rien n'est détruit. »</p>
+    <p class="muted">Lire les chiffres affichés à l'écran s'ils diffèrent. Version finale 3 min : Acte 2 seul (0:50).</p>
+  </aside>
+</section>
+
+<!-- ======================= 5. MESURES ======================= -->
+<section class="slide" data-title="Ce qu'on a mesuré" data-t="40" data-final="1">
+  <p class="kicker">Ce qu'on a mesuré</p>
+  <h2>Chaque chiffre sort d'une commande du dépôt.</h2>
+  <div class="grid4">
+    <div class="card metric"><div class="num ok">0</div>
+      <p>perte du protocole avec la clé de service volée</p>
+      <div class="src">tests d'invariants Foundry<br>dashboard.demo run A</div></div>
+    <div class="card metric"><div class="num acc">296<small>s</small></div>
+      <p>délai de détection, pour une fenêtre Ghost de 10 min</p>
+      <div class="src">dashboard.demo run B<br>seed 20</div></div>
+    <div class="card metric"><div class="num">0<small>/ 864</small></div>
+      <p>faux positif sur des tranches de 5 min de trafic normal</p>
+      <div class="src">make calibrate, seed 42<br>profil petits transferts</div></div>
+    <div class="card metric"><div class="num">&lt;2<small>%</small></div>
+      <p>de l'offre touchée par la réponse. <b>8 %</b> pour une fausse alerte, qui se résorbe seule</p>
+      <div class="src">dashboard.demo run B / N3<br>seeds 7, 20, 42</div></div>
+  </div>
+  <div class="grow"></div>
+  <div class="band"><span class="warn">Ce qu'on vous dit aussi :</span> profil « gros transferts », <b>5</b> faux positifs aux seuils bas, <b>0</b> en remontant le seuil · coût permanent : <b>~3 %</b> de l'offre immobilisée en Ghost.</div>
+  <p class="muted" style="font-size:24px;margin-top:20px">Données synthétiques, graines fixes, rejouables depuis le dépôt · détail : <code>docs/CLAIMS.md</code></p>
+  <div class="foot"><span class="brand">Crypto-Secure · Équipe 20</span><span class="pg"></span></div>
+  <aside class="notes">
+    <p>« Chaque chiffre que vous voyez sort d'une commande du dépôt, rejouable. Sur un autre profil de trafic, avec de gros transferts, on a des faux positifs aux seuils par défaut : cinq, puis zéro en remontant le seuil. On vous le dit parce que c'est ce qu'on a mesuré. Et notre surveillance a un coût permanent : environ 3 % de l'offre immobilisée en Ghost à tout instant. »</p>
+    <p class="muted">Dire « vérifié par tests », jamais « prouvé ». Détails : 1,4–1,7 % (B, seeds 7/20/42), 8,1–8,5 % (N3), friction 3,2 % médiane / 5,7 % p95.</p>
+  </aside>
+</section>
+
+<!-- ======================= 6. CONFORMITÉ ======================= -->
+<section class="slide" data-title="Conformité et explicabilité" data-t="30" data-final="1">
+  <p class="kicker">Conformité et explicabilité</p>
+  <h2>L'IA retarde. Les humains tranchent.</h2>
+  <div class="row" style="align-items:stretch">
+    <div class="card" style="flex:.85">
+      <h3>📄 DORA</h3>
+      <ul>
+        <li>Détection et classification</li>
+        <li>Journal d'audit horodaté, append-only</li>
+        <li>Rapport d'incident pré-rempli selon les rubriques de notification d'incident majeur</li>
+        <li class="muted">Un brouillon que l'humain relit, pas une déclaration automatique</li>
+      </ul>
+    </div>
+    <div style="flex:1.15;display:flex;flex-direction:column;gap:18px">
+      <p class="muted" style="font-size:24px;letter-spacing:.1em;text-transform:uppercase;font-weight:700">Qui décide quoi</p>
+      <div class="step ok" style="text-align:left;display:flex;align-items:center;gap:26px;padding:24px 30px">
+        <span style="font-size:52px">🤖</span><div><div class="t">IA et surveillants → retarder</div><div class="d">réversible, ciblé, expire seul</div></div></div>
+      <div class="step" style="text-align:left;display:flex;align-items:center;gap:26px;padding:24px 30px;border-color:#ffc35c99;background:#2a2412">
+        <span style="font-size:52px">👥</span><div><div class="t">Humains 2 sur 3 → détruire</div><div class="d">le Ghost suspect, irréversible</div></div></div>
+      <div class="step bad" style="text-align:left;display:flex;align-items:center;gap:26px;padding:24px 30px">
+        <span style="font-size:52px">🛑</span><div><div class="t">Humains 3 sur 3 → pause globale</div><div class="d">dernier recours</div></div></div>
+    </div>
+  </div>
+  <div class="grow"></div>
+  <div class="band"><b>Pour l'auditeur</b>, chaque décision a :
+    <span class="chip" style="margin:0 0 0 14px">un auteur</span><span class="chip" style="margin:0 0 0 10px">une alerte d'origine</span><span class="chip" style="margin:0 0 0 10px">un quorum</span><span class="chip" style="margin:0 0 0 10px">une heure</span></div>
+  <div class="foot"><span class="brand">Crypto-Secure · Équipe 20</span><span class="pg"></span></div>
+  <aside class="notes">
+    <p>« Vous allez nous demander : si le modèle se trompe, qui est responsable ? Le pire que notre IA puisse faire seule, c'est retarder une conversion, sur un périmètre ciblé, pour une durée bornée. Toute action irréversible porte la signature d'au moins deux humains. Le rapport DORA est un brouillon que l'humain relit, pas une déclaration automatique. »</p>
+  </aside>
+</section>
+
+<!-- ======================= 7. MARCHÉ ET MODÈLE ======================= -->
+<section class="slide" data-title="Pour qui, et quel modèle" data-t="25">
+  <p class="kicker">Pour qui, et quel modèle</p>
+  <h2>On fait payer le risque, pas l'usage.</h2>
+  <div class="grid3">
+    <div class="card"><h3>🏦 Émetteurs</h3><p>de stablecoins et d'actifs tokenisés</p></div>
+    <div class="card"><h3>📜 Prestataires crypto</h3><p>soumis à MiCA et DORA</p></div>
+    <div class="card"><h3>🤝 Protocoles de prêt</h3><p>qui acceptent ces jetons en garantie</p></div>
+  </div>
+  <div class="grow"></div>
+  <div class="card" style="padding:32px 38px">
+    <p style="font-size:30px;margin-bottom:24px">Une commission, à <b>un seul moment</b> : quand un Ghost sort de quarantaine et devient du vrai jeton.</p>
+    <div class="flow" style="align-items:center">
+      <div class="step" style="flex:.8"><span class="ico">👻</span><div class="t">Sortie de quarantaine</div></div>
+      <div class="arrow">=</div>
+      <div class="step"><div class="t">Petit plancher fixe</div><div class="d">→ rémunère l'opérateur</div></div>
+      <div class="arrow">+</div>
+      <div class="step" style="border-color:#ffc35c99;background:#2a2412"><div class="t">Supplément indexé sur le ratio de contamination</div><div class="d">→ alimente un fonds d'assurance</div></div>
+    </div>
+    <p class="muted" style="font-size:26px;margin-top:22px">Transferts et swaps : <b class="ok">gratuits</b> · rien n'est prélevé sur l'argent saisi et restitué aux victimes</p>
+  </div>
+  <div class="foot"><span class="brand">Crypto-Secure · Équipe 20</span><span class="pg"></span></div>
+  <aside class="notes">
+    <p>« Nos utilisateurs sont les émetteurs de jetons adossés et les protocoles qui acceptent ces jetons en garantie. Nous opérons le protocole, et nous prenons une commission à un seul moment : quand un Ghost sort de quarantaine et devient du vrai jeton. Un petit montant fixe, plus un supplément qui monte avec le risque. Un utilisateur propre paie presque rien, un Ghost suspect paie plus, et cette part va dans un fonds d'assurance qui couvre les destructions. On fait payer le risque, pas l'usage. »</p>
+    <p class="warn">Modèle proposé par Yannis le 2026-10-11, à valider en équipe. Aucun taux annoncé tant qu'il n'est pas mesuré.</p>
+  </aside>
+</section>
+
+<!-- ======================= 8. ÉQUIPE / LIMITES / SUITE ======================= -->
+<section class="slide" data-title="Équipe, limites, suite" data-t="20">
+  <p class="kicker">Équipe, limites, suite</p>
+  <div class="grid4" style="margin-bottom:34px">
+    <div class="card" style="padding:26px 30px"><h3 style="font-size:30px">@denybs</h3><p>Contrats · LLM</p></div>
+    <div class="card" style="padding:26px 30px"><h3 style="font-size:30px">@Yannis1307</h3><p>Monitor · Détection</p></div>
+    <div class="card" style="padding:26px 30px"><h3 style="font-size:30px">@EnzoFB06</h3><p>Réponse · Données</p></div>
+    <div class="card" style="padding:26px 30px"><h3 style="font-size:30px">@marceaupatu123</h3><p>Dashboard · Shared · Docs</p></div>
+  </div>
+  <div class="row" style="align-items:stretch">
+    <div class="card">
+      <h3 class="warn">Ce qu'on ne couvre pas</h3>
+      <ul>
+        <li>Clés d'administration supposées saines</li>
+        <li>Une détection plus lente que la fenêtre de 10 min</li>
+        <li>La perte est reportée sur les acheteurs de Ghost suspect, pas effacée</li>
+        <li class="muted">Contrats déployés sur Fuji ; détection mesurée sur trafic synthétique</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 class="acc">Suite</h3>
+      <ul>
+        <li>Surveillants branchés en continu sur testnet</li>
+        <li>Signatures à seuil (MPC)</li>
+        <li>Enclave pour la clé de service</li>
+      </ul>
+    </div>
+  </div>
+  <div class="grow"></div>
+  <p style="font-size:44px;font-weight:800">36 heures : une clé volée ne choisit plus le montant. <span class="acc">Merci.</span></p>
+  <div class="foot"><span class="brand">Crypto-Secure · Équipe 20</span><span class="pg"></span></div>
+  <aside class="notes">
+    <p>« Ce qu'on ne couvre pas : une clé d'administration compromise, et une détection plus lente que la fenêtre. Ce qu'on a construit en 36 heures : un contrat où une clé volée ne choisit plus le montant, et dix minutes de sursis mesurées pour que des humains décident. Merci. »</p>
+  </aside>
+</section>
+
+<!-- ======================= ANNEXES (questions) ======================= -->
+<section class="slide" data-title="Annexe — Qui perd avec le Ghost ?" data-annex="1" data-final="1">
+  <p class="kicker">Annexe A1 · Questions</p>
+  <h2>Qui perd quand on vend du Ghost suspect ?</h2>
+  <p class="lead" style="margin:-22px 0 34px">Cas 3 de la démo Fuji, en vraies transactions : le vendeur est payé en Ghost, pas en USDC.</p>
+  <div class="flow">
+    <div class="step"><span class="ico">🛒</span><div class="t">Achat</div><div class="d">l'acheteur honnête paie 1&nbsp;000 USDC, <b>bloqués au coffre</b></div></div>
+    <div class="arrow">→</div>
+    <div class="step"><span class="ico">⚠</span><div class="t">Signalement</div><div class="d">le Ghost suspect du vendeur est gelé</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><span class="ico">👥</span><div class="t">Gardiens 2 sur 3</div><div class="d">Ghost suspect détruit, Ghost de paiement du vendeur brûlé</div></div>
+    <div class="arrow">→</div>
+    <div class="step ok"><span class="ico">↩</span><div class="t">Restitution</div><div class="d"><b>1&nbsp;000 USDC</b> rendus à l'acheteur, coffre à 0</div></div>
+  </div>
+  <div class="grow"></div>
+  <div class="row">
+    <div class="band">Vendeur : <b class="bad">0 USDC</b> à la fin · protocole : <b class="ok">rien gardé</b></div>
+    <div class="band">Limite assumée : le Ghost déjà converti avant l'alerte échappe à la destruction.</div>
+  </div>
+  <div class="foot"><span class="brand">Crypto-Secure · Équipe 20</span><span class="pg"></span></div>
+  <aside class="notes"><p>Réponse courte : ceux qui achètent du Ghost suspect en connaissance de cause. La perte n'est pas effacée, elle est reportée et ciblée par ratio. Tension avec DORA assumée.</p></aside>
+</section>
+
+<section class="slide" data-title="Annexe — Contagion aval" data-annex="1" data-final="1">
+  <p class="kicker">Annexe A2 · Questions</p>
+  <h2>La balise protège les protocoles de prêt en aval.</h2>
+  <div class="row" style="align-items:stretch">
+    <div class="card">
+      <h3>Sans balise</h3>
+      <div class="num bad" style="font-size:110px">76&nbsp;000</div>
+      <p style="margin-top:12px">mUSDC de mauvaise créance</p>
+    </div>
+    <div class="card" style="border-color:#3ddc9799">
+      <h3>Avec balise lue</h3>
+      <div class="num ok" style="font-size:110px">0</div>
+      <p style="margin-top:12px">la garantie suspecte est refusée</p>
+    </div>
+  </div>
+  <div class="grow"></div>
+  <p style="font-size:28px;line-height:1.45">100&nbsp;000 Ghost 100 % suspects déposés en garantie, LTV 80 %. Rejeu dashboard (LTV 50 %, un emprunteur légitime en plus) : <b>21&nbsp;250 → 0</b>, et <b>0</b> emprunt légitime refusé.</p>
+  <div class="src">contracts/test/RiskBeacon.t.sol · test_scenarioC_bad_debt_with_vs_without_beacon · marché de prêt fictif</div>
+  <div class="foot"><span class="brand">Crypto-Secure · Équipe 20</span><span class="pg"></span></div>
+  <aside class="notes"><p>Limite : le protocole aval doit lire la balise ; prix 1:1 provisoire, pas de liquidation, paramètres de marché provisoires.</p></aside>
+</section>
+
+<section class="slide" data-title="Annexe — Coûts et limites" data-annex="1" data-final="1">
+  <p class="kicker">Annexe A3 · Questions</p>
+  <h2>Ce que ça coûte, ce qui reste ouvert.</h2>
+  <div class="row" style="align-items:stretch">
+    <div class="card">
+      <h3>Coûts mesurés</h3>
+      <ul>
+        <li>Ghost immobilisé (fenêtre 10 min) : <b>3,2 %</b> médiane, <b>5,7 %</b> p95</li>
+        <li>Fausse alerte (N3) : <b>8,1–8,5 %</b> de l'offre retardée, retour seul, 0 destruction</li>
+        <li>Faux positifs, gros transferts : <b>5</b> à z = 2, <b>0</b> dès z volume = 6</li>
+        <li>Ghost reste échangeable pendant l'attente</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Limites</h3>
+      <ul>
+        <li>Détection &gt; 10 min : tout est converti (marge bornée par la tranche de 5 min)</li>
+        <li>Latence réseau réelle non mesurée</li>
+        <li>Trafic synthétique, une graine pour la calibration</li>
+        <li>Multisig simulé dans la maquette ; seuils et durées non actés</li>
+        <li>Fuzzing = exploration, pas preuve formelle</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><span class="brand">Crypto-Secure · Équipe 20</span><span class="pg"></span></div>
+  <aside class="notes"><p>« Dix minutes, c'est acceptable ? » → coût assumé : environ 3 % de l'offre immobilisée en médiane, le Ghost reste échangeable. « Clé d'admin volée ? » → hors périmètre, pistes MPC et enclave.</p></aside>
+</section>
+
+<section class="slide" data-title="Annexe — NIST CSF 2.0" data-annex="1" data-final="1">
+  <p class="kicker">Annexe A4 · Questions</p>
+  <h2>Couverture NIST CSF 2.0</h2>
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div class="card" style="display:flex;gap:30px;padding:22px 32px"><b style="flex:none;width:200px;font-size:30px" class="acc">Govern</b><p style="font-size:26px">L'IA ne fait que retarder ; destruction et pause globale restent des décisions humaines tracées.</p></div>
+    <div class="card" style="display:flex;gap:30px;padding:22px 32px"><b style="flex:none;width:200px;font-size:30px" class="acc">Protect</b><p style="font-size:26px">Montant dérivé du dépôt on-chain ; tout transfert passe par un Token Ghost converti 1:1 après une fenêtre sans anomalie.</p></div>
+    <div class="card" style="display:flex;gap:30px;padding:22px 32px"><b style="flex:none;width:200px;font-size:30px" class="acc">Detect</b><p style="font-size:26px">Surveillants à règles : mints hors invariant, transferts à volume élevé ET dispersion effondrée.</p></div>
+    <div class="card" style="display:flex;gap:30px;padding:22px 32px"><b style="flex:none;width:200px;font-size:30px" class="acc">Respond</b><p style="font-size:26px">Réponse graduée : retard auto-expirant, destruction 2/3, pause globale 3/3 ; balise de risque vers l'aval.</p></div>
+    <div class="card" style="display:flex;gap:30px;padding:22px 32px"><b style="flex:none;width:200px;font-size:30px" class="acc">Recover</b><p style="font-size:26px">Transfert suspect annulable tant que son Ghost n'est pas converti ; restitution, journal d'audit, rapport d'incident.</p></div>
+  </div>
+  <div class="foot"><span class="brand">Crypto-Secure · Équipe 20</span><span class="pg"></span></div>
+  <aside class="notes"><p>Source : livrables/DEFENSE_SHEET.md §2.</p></aside>
+</section>
+
+</main></div>
+
+<div id="notes" role="complementary" aria-label="Notes orateur">
+  <div class="bar"><strong id="n-title"></strong><span id="n-slot"></span><span id="n-clock"></span><span>N : masquer · T : chrono à zéro</span></div>
+  <div class="txt" id="n-txt"></div>
+</div>
+<div id="hint">← → naviguer · N notes et chrono · F plein écran</div>
+<p class="sr" id="live" aria-live="polite"></p>
+
+<script>
+(function(){
+  var qs=new URLSearchParams(location.search);
+  var finalMode=qs.has('final'), shot=qs.has('shot');
+  if(shot) document.body.classList.add('shot');
+  var all=[].slice.call(document.querySelectorAll('.slide'));
+  if(finalMode) all.forEach(function(s){ if(!s.dataset.final) s.classList.add('skip'); });
+  var slides=all.filter(function(s){return !s.classList.contains('skip')});
+  var deck=document.getElementById('deck'), notes=document.getElementById('notes');
+  var main=slides.filter(function(s){return !s.dataset.annex});
+
+  // Numérotation : « 3 / 8 » pour le corps du deck, « A1 » pour les annexes.
+  var ai=0;
+  slides.forEach(function(s){
+    var pg=s.querySelector('.pg'); if(!pg) return;
+    if(s.dataset.annex){ ai++; pg.textContent='Annexe A'+ai; }
+    else pg.textContent=(main.indexOf(s)+1)+' / '+main.length;
+    s.setAttribute('role','group'); s.setAttribute('aria-roledescription','diapositive');
+    s.setAttribute('aria-label',(s.dataset.annex?'Annexe':'Diapositive '+(main.indexOf(s)+1))+' : '+s.dataset.title);
+  });
+
+  function fit(){
+    var k=Math.min(innerWidth/1920,(notes.classList.contains('on')?innerHeight*0.58:innerHeight)/1080);
+    deck.style.transform='scale('+k+')';
+    document.querySelector('.stage').style.alignItems=notes.classList.contains('on')?'flex-start':'center';
+    deck.style.transformOrigin=notes.classList.contains('on')?'center top':'center center';
+  }
+  addEventListener('resize',fit);
+
+  // Chrono : démarre au premier changement de slide (ou T).
+  var t0=null, cur=0;
+  function secs(s){return Math.floor(s/60)+':'+String(Math.round(s)%60).padStart(2,'0')}
+  function target(s){return Number((finalMode&&s.dataset.tFinal)||s.dataset.t||0)}
+  function tick(){
+    var s=slides[cur], el=document.getElementById('n-clock');
+    if(t0===null){el.textContent='chrono : —';return}
+    var e=(Date.now()-t0)/1000, end=0;
+    for(var i=0;i<=cur;i++) end+=target(slides[i]);
+    el.innerHTML='écoulé <b'+(e>end&&!s.dataset.annex?' class="late"':'')+'>'+secs(e)+'</b> · fin de slide visée '+secs(end)+' · total visé '+(finalMode?'3:00':'5:00');
+  }
+  setInterval(tick,500);
+
+  function show(i){
+    cur=Math.max(0,Math.min(slides.length-1,i));
+    slides.forEach(function(s,k){s.classList.toggle('on',k===cur)});
+    var s=slides[cur], n=s.querySelector('.notes');
+    document.getElementById('n-title').textContent=s.dataset.title;
+    document.getElementById('n-slot').textContent=s.dataset.annex?'annexe (questions)':'durée visée '+secs(target(s));
+    document.getElementById('n-txt').innerHTML=n?n.innerHTML:'';
+    document.getElementById('live').textContent=s.getAttribute('aria-label');
+    if(!shot) history.replaceState(null,'',location.pathname+location.search+'#'+(cur+1));
+    tick();
+  }
+  function go(d){ if(t0===null) t0=Date.now(); show(cur+d); }
+
+  addEventListener('keydown',function(e){
+    if(e.altKey||e.ctrlKey||e.metaKey) return;
+    var k=e.key;
+    if(k==='ArrowRight'||k===' '||k==='PageDown'||k==='Enter'){e.preventDefault();go(1)}
+    else if(k==='ArrowLeft'||k==='PageUp'||k==='Backspace'){e.preventDefault();go(-1)}
+    else if(k==='Home'){show(0)} else if(k==='End'){show(main.length-1)}
+    else if(k==='n'||k==='N'){notes.classList.toggle('on');fit()}
+    else if(k==='t'||k==='T'){t0=Date.now();tick()}
+    else if(k==='f'||k==='F'){ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen(); }
+  });
+  deck.addEventListener('click',function(e){ go(e.clientX<innerWidth/3?-1:1); });
+
+  var start=Number(qs.get('s')||location.hash.slice(1)||1);
+  fit(); show((isNaN(start)?1:start)-1);
+  var hint=document.getElementById('hint');
+  if(shot) hint.remove(); else setTimeout(function(){hint.style.opacity=0},3500);
+})();
+</script>
+</body>
+</html>
