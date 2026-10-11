@@ -1,0 +1,328 @@
+---
+title: "Lancer les démos"
+description: "Faire tourner les démonstrations qui existent vraiment et comprendre ce qu'elles affichent."
+icon: "play"
+---
+
+<Info>
+**Ce que tu vas comprendre ici**
+- Quelles démos **existent réellement** aujourd'hui, et comment les lancer.
+- Pour chacune : la **commande**, ce que tu **vois**, et comment **l'interpréter**.
+- Quelles démos se **décrivent** (Streamlit, Mintlify) plutôt que de se lancer ici.
+- Comment **ne rien laisser traîner** dans le dépôt après avoir généré des fichiers.
+
+Temps de lecture : environ 11 minutes.
+</Info>
+
+Avant de commencer : active ton environnement (`.venv`) et place-toi à la racine du projet. Si ce
+n'est pas fait, reviens à [Installer le projet](/pratique/installer).
+
+<Tip>
+**Analogie** : une démo, c'est le **mode « essai » d'un magasin**. Rien n'est réel — les montants,
+les adresses, les clés sont **fictifs** — mais le mécanisme tourne pour de vrai devant toi. Tu
+regardes la machine fonctionner sans risquer un centime.
+</Tip>
+
+## Les démos en un coup d'œil
+
+| Commande | Ce que ça montre | Se lance ici ? |
+|---|---|---|
+| `python -m response` | La réponse graduée + le journal d'audit DORA. | Oui (court) |
+| `python -m llm` | L'IA explique une alerte et pré-remplit un rapport (hors ligne). | Oui (court) |
+| `python -m dashboard.demo list` | La liste des scénarios A, B, C, D, N1, N2, N3. | Oui (court) |
+| `python -m dashboard.demo run A` | Un scénario rejoué avec des grandeurs mesurées. | Oui (court) |
+| `make data` / `python -m data.generate` | Génère les jeux de données synthétiques (JSONL). | Oui (écrit des fichiers) |
+| `make calibrate` | Mesure des seuils sur le trafic synthétique. | Oui (écrit des fichiers) |
+| `make run-dashboard` | Le tableau de bord métier (Streamlit). | **Non** — on le décrit |
+| `mintlify dev` | Cette doc, en local. | **Non** — on le décrit |
+
+Source : `Makefile`, `README.md` §3, et les `__main__.py` de chaque module.
+
+<Warning>
+Toutes les sorties ci-dessous sont **réelles**, copiées d'une exécution du 2026-10-11, puis
+**tronquées** pour la lisibilité. Les adresses (`0x2222…`), montants et horodatages sont
+**fictifs**.
+</Warning>
+
+## 1. La réponse graduée — `python -m response`
+
+Cette démo rejoue un parcours fictif de bout en bout : une alerte critique, un retard qui
+s'expire tout seul, une proposition de destruction par l'IA, une décision multisig 2/3, puis un
+second périmètre dont le retard expire **en silence** (faux positif). Source : `response/__main__.py`.
+
+```bash
+python -m response
+```
+
+**Sortie attendue** (réelle, tronquée) :
+
+```text
+Journal d'audit (DORA) - donnees fictives :
+  2026-10-10T14:30:00+00:00  monitor:rule_transfer  Alerte critical recue ... : Volume eleve ET dispersion effondree (donnees fictives)
+  2026-10-10T14:30:00+00:00  monitor:rule_transfer  Demande de gel (extend) par monitor:rule_transfer
+  2026-10-10T14:30:00+00:00  monitor:rule_transfer  Retard applique sur 0x2222... jusqu'a 2026-10-10T15:30 : auto-expirant, conversion Ghost suspendue, circulation autorisee
+  2026-10-10T14:32:00+00:00  llm                    Demande de gel (confirm) par llm
+  2026-10-10T14:32:00+00:00  llm                    Destruction proposee par llm sur 0x2222... : sans effet tant que le multisig (2 signatures) n'a pas tranche
+  2026-10-10T14:42:00+00:00  multisig               Decision multisig confirm_destroy : Audit humain : lignage frauduleux confirme (fictif)
+  2026-10-10T14:42:00+00:00  multisig               Destruction de la fraction suspecte (87.00% du Ghost non converti) autorisee par multisig sur 0x2222... : irreversible, burn on-chain
+  ...
+  2026-10-10T15:43:00+00:00  response:auto_expiry   Retard expire sans decision humaine sur 0x8888... : retour automatique a la normale
+```
+
+**Comment l'interpréter**, ligne par ligne :
+- Le **surveillant** (`monitor:rule_transfer`) lève une alerte et pose un **retard** : un gel
+  temporaire qui s'annule tout seul si personne ne confirme. La circulation reste autorisée.
+- L'**IA** (`llm`) *propose* une destruction. Noter : « **sans effet tant que le multisig n'a pas
+  tranché** ». L'IA ne décide jamais seule.
+- Le **multisig** (2 signatures sur 3) confirme : la fraction suspecte (87 %) est détruite. C'est
+  un acte humain, irréversible.
+- Dernière ligne : un **second** périmètre (`0x8888…`) a été mis en retard, mais **personne n'a
+  confirmé** → le retard **expire** et l'adresse revient à la normale. C'est le comportement
+  attendu sur un faux positif.
+
+<Tip>
+**Analogie** : c'est l'**alarme incendie avec confirmation**. L'alarme sonne (retard), mais la
+porte coupe-feu ne se verrouille définitivement que si **deux responsables** tournent leur clé
+(multisig). Sans confirmation, l'alarme s'arrête d'elle-même.
+</Tip>
+
+Source : `response/__main__.py`, `response/orchestrator.py`.
+
+## 2. L'IA qui explique — `python -m llm`
+
+Par défaut, cette démo tourne **hors ligne** : aucun appel à AWS, pas de `.env` requis. Un faux
+client imite la forme d'une réponse Bedrock. Source : `llm/__main__.py`, `llm/demo.py`.
+
+```bash
+python -m llm
+```
+
+**Sortie attendue** (réelle, tronquée) :
+
+```text
+llm : mode hors ligne (aucun appel AWS ; --live ou LLM_LIVE=1 pour Bedrock)
+
+--- Explication de l'alerte ---
+[demo hors ligne] Le surveillant a detecte un mint sans depot correspondant. L'IA ne decide rien : la suite revient au multisig.
+
+--- Rapport d'incident ---
+# Rapport d'incident (pre-rempli) — DEMO-ALERT-0001
+> Brouillon structure d'apres les rubriques de notification d'incident majeur lie aux TIC (DORA). ... Donnees fictives.
+## 2. Classification
+- Nature : mint
+- Gravite (alerte) : critical
+- Ratio de contamination : 1.0
+...
+## 6. Description (redaction IA — a relire)
+[demo hors ligne] Mint anormal signale par le surveillant ; voir les faits et la chronologie ci-dessus.
+```
+
+**Comment l'interpréter** :
+- La bannière confirme le **mode hors ligne**. Pour un vrai appel Bedrock : `--live` ou
+  `LLM_LIVE=1` (nécessite un `.env` renseigné et un accès AWS).
+- Le préfixe `[démo hors ligne]` marque les phrases rédigées par le **faux** client : elles ne
+  contiennent **aucun chiffre inventé**, elles renvoient aux faits.
+- Le rapport suit les rubriques **DORA**. Chaque section de rédaction porte « **à relire** » :
+  l'IA produit un **brouillon**, un humain valide.
+
+<Warning>
+Le mode `--live` consomme du quota Bedrock (≈ 1 requête/seconde/personne, via un limiteur). Pour
+apprendre, reste **hors ligne** : c'est gratuit et déterministe. Source : `README.md` §8,
+`shared/rate_limiter.py`.
+</Warning>
+
+## 3. Les scénarios — `python -m dashboard.demo`
+
+D'abord, **lister** ce qui existe :
+
+```bash
+python -m dashboard.demo list
+```
+
+**Sortie attendue** (réelle, tronquée) :
+
+```text
+A | Même attaque rejouée (vulnérable vs protégé) | — | active | depend de #4, #5 | simulation hors chaine, a remplacer par #4, #5, #24
+B | Attaquant sous les plafonds | — | active | depend de #11, #12, #17 | ...
+C | Gel et pare-feu de contagion | optionnel | active | depend de #7, #25 | ...
+D | Marche secondaire du Token Ghost | optionnel | active | depend de #8, #25 | ...
+N1 | Trafic legitime seul | — | active | ...
+N2 | Croissance legitime forte | — | active | ...
+N3 | Fausse alerte auto-expirante | — | active | ...
+```
+
+Chaque ligne porte un **bandeau « simulation hors chaîne, à remplacer par #… »** : la démo est une
+**simulation** destinée à être remplacée par le vrai code des issues citées. C'est honnête, et
+c'est voulu.
+
+Ensuite, **lancer** un scénario (ici A, avec une graine fixe) :
+
+```bash
+python -m dashboard.demo run A --seed 20
+```
+
+**Sortie attendue** (réelle) :
+
+```text
+Scenario A : Même attaque rejouée (vulnérable vs protégé)
+Statut : termine
+Message : Rejoue avec la seed 20 : grandeurs mesurees sur l'etat final (simulation hors chaine).
+Attendu : Le vulnerable se fait vider, le protege borne la perte.
+== Contrat vulnerable ==
+  Perte protocole (offre non adossee) : 999 000 000 000 base units
+  Montant emis : 1 000 000 000 000 base units
+  Depot adosse : 1 000 000 000 base units
+  [OK] vulnerable vide (attendu : perte protocole > 0)
+== Contrat protege ==
+  Perte protocole (offre non adossee) : 0 base units
+  Montant emis : 1 000 000 000 base units
+  Depot adosse : 1 000 000 000 base units
+  [OK] protege borne (attendu : perte protocole = 0)
+```
+
+**Comment l'interpréter** :
+- Sur le contrat **vulnérable**, un dépôt d'1 unité (1 000 000 000 base units) sert à émettre
+  **1000 fois plus** → « perte protocole » énorme. C'est l'attaque Resolv rejouée.
+- Sur le contrat **protégé**, le montant émis **égale** le dépôt (1:1) → « perte protocole = 0 ».
+  La clé volée ne crée rien au-delà du collatéral.
+- Les `[OK]` confirment que chaque **attendu** du scénario est respecté. Ce sont des grandeurs
+  **mesurées** sur l'état final de la simulation, pas des chiffres annoncés.
+
+<Note>
+« base units » = la plus petite unité du jeton (comme les centimes pour l'euro). Les gros nombres
+sont donc normaux. Source : `dashboard/demo.py`, `dashboard/scenarios/`.
+</Note>
+
+## 4. Générer les données — `make data`
+
+Cette commande fabrique des jeux de données **synthétiques** (fichiers JSONL) qui nourrissent les
+tests et les scénarios. Avec `make` :
+
+```bash
+make data
+```
+
+Son équivalent sans `make` :
+
+```bash
+python -m data.generate --scenario all --seed 42
+```
+
+**Sortie attendue** (réelle, tronquée) :
+
+```text
+data/generated/normal.jsonl : 4245 evenements {'TransferEvent': 3601, 'MintRequest': 322, 'MintEvent': 322}
+data/generated/scenario_a_vulnerable.jsonl : 4296 evenements {...}
+data/generated/scenario_a_protected.jsonl : 4296 evenements {...}
+data/generated/scenario_b.jsonl : 4241 evenements {...}
+data/generated/scenario_c_with_beacon.jsonl : 600 evenements {...}
+...
+data/generated/scenario_d_no_ghost.jsonl : 240 evenements {'TransferEvent': 240}
+```
+
+**Comment l'interpréter** : chaque ligne annonce un fichier écrit sous `data/generated/`, son
+nombre d'événements et leur répartition par type (`TransferEvent`, `MintEvent`…). La graine `42`
+rend la génération **reproductible** : relancée, elle produit exactement les mêmes fichiers.
+Source : `Makefile`, `data/generate.py`, `data/README.md`.
+
+## 5. Calibrer — `make calibrate`
+
+Cette commande **mesure** des seuils sur le trafic synthétique (il faut avoir lancé `make data`
+avant). Avec `make` :
+
+```bash
+make calibrate
+```
+
+Équivalent : `python -m data.calibrate --seed 42`.
+
+Pendant l'exécution, tu verras défiler beaucoup de lignes `tranche … NON evaluee : historique
+insuffisant …` : c'est **normal**, le détecteur se « chauffe » sur l'historique avant de pouvoir
+alerter. L'intérêt est le **résumé final** (réel, tronqué) :
+
+```text
+Fenetre Ghost W : part de l'offre en Ghost (trafic normal)
+| W (min) | mediane | p95 |
+| 5       | 1.6%    | 3.2% |
+| 10      | 3.2%    | 5.7% |
+| 30      | 8.7%    | 13.5% |
+
+Surveillant de mint (I1, taux 1:1)
+| jeu          | mints | mints d'attaque | alertes sur l'attaque |
+| normal       | 2423  | 0               | 0                     |
+| A_vulnerable | 2417  | 2               | 2                     |
+| A_protected  | 2417  | 2               | 0                     |
+```
+
+**Comment l'interpréter** : sur le jeu `A_vulnerable`, les 2 mints d'attaque **déclenchent 2
+alertes** ; sur `A_protected`, les mêmes 2 mints ne déclenchent **aucune** alerte, parce que le
+contrat protégé ne permet pas le mint gonflé. Ces chiffres sont **mesurés** sur les données
+générées, pas annoncés. Source : `data/calibrate.py`, `data/DECISION_SUPPORT_3.md`.
+
+## 6. Les démos qu'on NE lance PAS ici (on les décrit)
+
+<AccordionGroup>
+  <Accordion title="Le tableau de bord métier (Streamlit) — make run-dashboard">
+    `make run-dashboard` lance `python -m streamlit run dashboard/app.py`. Streamlit ouvre une
+    **page web** interactive dans ton navigateur. On ne la démarre pas depuis cette doc (c'est un
+    service qui reste ouvert), mais tu peux la lancer toi-même quand tu veux. Elle affiche l'état
+    des périmètres (normal / retardé / détruit), des métriques recalculées, et des scénarios. Le
+    code vérifie qu'aucun mot interdit (« prouvé », « révolutionnaire ») n'apparaît. Source :
+    `Makefile`, `dashboard/app.py`, `dashboard/README.md`.
+  </Accordion>
+  <Accordion title="Cette doc (Mintlify) — mintlify dev">
+    La doc que tu lis tourne avec **Node.js**, pas Python. Depuis le dossier `docs-site/` :
+    ```bash
+    npm i -g mintlify   # une seule fois
+    mintlify dev        # ouvre http://localhost:3000
+    ```
+    `mintlify dev` démarre un serveur local et reste ouvert ; on ne le lance pas depuis ici. La
+    config est dans `docs.json`, chaque page est un `.mdx`. Source : `docs-site/README.md`.
+  </Accordion>
+</AccordionGroup>
+
+## 7. Ne rien laisser traîner
+
+`make data` et `make calibrate` **écrivent** des fichiers dans `data/generated/`. Avant de
+committer quoi que ce soit, vérifie l'état de ton dépôt :
+
+```bash
+git status --short
+```
+
+Si tu vois apparaître `data/generated/`, c'est normal après une génération — mais ces fichiers
+**ne doivent pas** partir dans un commit de doc. Tu peux les retirer sans risque (ils sont
+regénérables) :
+
+```bash
+git clean -fd data/generated
+```
+
+<Warning>
+`git clean -fd` supprime des fichiers **non suivis**. Vise toujours un chemin précis
+(`data/generated`) et jamais la racine, pour ne pas effacer autre chose par mégarde. Après ça,
+`git status --short` ne doit plus montrer `data/generated/`.
+</Warning>
+
+<Check>
+**À retenir**
+- `python -m response` et `python -m llm` tournent **hors ligne**, sans rien écrire.
+- `dashboard.demo list` / `run` montrent des scénarios **simulés** (bandeau honnête).
+- `make data` et `make calibrate` **écrivent** sous `data/generated/` : nettoie après.
+- Streamlit et Mintlify sont des **serveurs** : on les décrit, on ne les lance pas depuis la doc.
+</Check>
+
+<CardGroup cols={2}>
+  <Card title="Comprendre les tests" icon="vial" href="/pratique/tests-expliques">
+    Pourquoi ces démos sont fiables : les tests qui les vérifient.
+  </Card>
+  <Card title="Qui fait quoi" icon="sitemap" href="/qui-fait-quoi">
+    À quel module appartient chaque démo que tu viens de lancer.
+  </Card>
+  <Card title="Le parcours d'une attaque" icon="route" href="/le-parcours-dune-attaque">
+    Le scénario A raconté comme une histoire, étape par étape.
+  </Card>
+  <Card title="Dépannage" icon="wrench" href="/pratique/depannage">
+    `make` absent, Bedrock throttling, Streamlit qui ne démarre pas…
+  </Card>
+</CardGroup>

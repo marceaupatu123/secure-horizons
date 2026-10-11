@@ -1,4 +1,4 @@
-# OPEN_QUESTIONS.md — décisions à prendre en équipe
+﻿# OPEN_QUESTIONS.md — décisions à prendre en équipe
 
 Ce fichier liste les décisions de conception **non tranchées**. Aucune n'est décidée par un
 assistant IA : on les discute et on les acte ici (ajouter la décision + la date sous chaque point).
@@ -411,6 +411,22 @@ d'usage nouveau) — hypothèse qu'un vrai protocole ne vérifie pas.
 prédiction conforme au jury comme piste mesurée, avec sa limite. Une seule graine mesurée : à
 répéter avant toute affirmation chiffrée (`docs/CLAIMS.md`).
 
+## 14. Lignage (#106) et conversions Ghost → M vues par le monitor — → Tranché, voir `docs/OPEN_ANSWERS.md` §14
+
+En mode Ghost (#8), le monitor émet les transferts ordinaires de Ghost en `TransferEvent(is_ghost=True)`. En
+revanche, comme pour tous les tokens depuis #10, il **n'émet pas les burns**, donc pas les conversions
+(`Ghost → 0x0`). Or `detection/lineage.retroactive_seeds` déduit le solde Ghost non converti en rejouant les
+transferts : sans la conversion, un porteur qui a converti garde, dans le rejeu, un solde fictif, et il peut
+recevoir une graine pour du Ghost qu'il n'a plus. La destruction sur la chaîne est plafonnée par le vrai solde,
+donc aucune perte de fonds, mais la restitution et le total « récupéré » sont surestimés.
+
+**→ Tranché, voir `docs/OPEN_ANSWERS.md` §14.** Décision du 2026-10-11 (marceaupatu123) : option **(c)** —
+au moment du semis, `retroactive_seeds` plafonne le soupçon de chaque détenteur par `balanceOf(Ghost, addr)`
+lu on-chain (vérité de la chaîne, le plus simple). **(b)** (flux dédié aux conversions) reste l'évolution
+propre si le coût RPC gêne ; **(a)** (émettre les burns comme transferts) est écartée car elle oblige à filtrer
+de faux transferts dans les règles de détection volume/HHI. Le texte complet des trois options et la limite
+mesurée (une lecture RPC par graine, à documenter dans `docs/CLAIMS.md`) vivent désormais dans `OPEN_ANSWERS` §14.
+
 ## 15. Token Ghost (#8) — tests et limites — _choix de l'agent (2026-10-11, provisoire, à valider en équipe)_
 
 Choix faits par l'assistant de @denybs en implémentant le design itération 3
@@ -437,3 +453,26 @@ pas citer comme chiffres de production (`docs/CLAIMS.md`) :
 - seuils de conversion à 0 : **1 wei** de soupçon reçu bloque toute la conversion du destinataire
   jusqu'à l'expiration de l'incident ; seuils > 0 : seule la part suspecte reste bloquée. Choisir
   des seuils > 0 pour la démo ? **Ouvert** (lié à #3, valeurs à mesurer).
+
+## 17. Règlement §10bis (#84) — architecture — _choix de l'agent (2026-10-11, provisoire, à valider en équipe)_
+
+Choix faits par l'assistant de @denybs pour implémenter la décision §10bis (`OPEN_ANSWERS.md`),
+sans trancher aucune règle de cette décision. Design détaillé : `contracts/.plan/design-84.md`.
+
+- **Couche séparée au-dessus de `GhostToken`.** Le routeur, les coffres (un par actif) et les
+  Ghost de paiement sont de NOUVEAUX contrats. On ne modifie pas le `GhostToken` de #8 tant que la
+  PR #123 n'est pas mergée, pour ne pas déstabiliser une PR en relecture. Conséquence : le statut
+  de tranche (`PROTEGE`/`PUR`/`CHEQUE`) est porté par le **routeur** (`statusOf`), pas par le
+  Ghost ; et la règle « le M' ne bouge que par le routeur » n'est pas encore imposée dans le Ghost
+  (différée après le merge de #123). **Ouvert** : à l'inverse, tout mettre dans `GhostToken`
+  (statut + restriction de transfert) une fois #123 mergé, si l'équipe préfère.
+- **Restitution par racine de Merkle, pas de prorata on-chain.** Le calcul des parts (point 4 :
+  prorata plafonné par le prix payé, reste au payeur du voleur) est fait **hors chaîne** et publié
+  en racine de Merkle contestable (cohérent avec #85 piste b). Le coffre vérifie une feuille et
+  paie ; il ne recalcule rien. **Ouvert** : faut-il un recalcul on-chain pour les petits lots ?
+- **Interfaces figées en premier** (`IAssetVault`, `ISettlementRouter`, `ISettlementTypes`) pour
+  que @Yannis1307 écrive les tests d'invariants en parallèle, comme pour #8.
+- **Un Ghost de paiement par actif, 1:1, sans oracle ni prix plancher** (reprend §10bis point 2).
+  Son échéance est celle du M' vendu.
+- Enforcement, modif de `GhostToken`, et événements de `docs/CONTRACTS.md` : différés / à proposer
+  aux propriétaires, non faits ici.
