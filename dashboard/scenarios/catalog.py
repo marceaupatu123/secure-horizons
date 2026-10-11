@@ -110,7 +110,7 @@ IMPLEMENTED_BY: dict[str, tuple[int, ...]] = {
     "B": _REAL_PIPELINE, "N1": _REAL_PIPELINE, "N2": _REAL_PIPELINE, "N3": _REAL_PIPELINE,
 }
 # Briques branchees sur le vrai code seulement via un backend optionnel (repli simulation).
-OPT_IN_BY: dict[str, tuple[int, ...]] = {"A": (4, 5)}
+OPT_IN_BY: dict[str, tuple[int, ...]] = {"A": (4, 5), "C": (7,)}
 _MAIN = "main"
 _DETECTION_SOURCE = real_source(DETECTION_REFS)
 _RESPONSE_SOURCE = real_source(RESPONSE_REFS)
@@ -527,7 +527,83 @@ def run_b(seed: int, params: SimulationParams) -> ScenarioResult:
 # --- C : gel et pare-feu de contagion (optionnel) ----------------------------
 
 
-def run_c(seed: int, params: SimulationParams) -> ScenarioResult:
+_C_VARIANTS = (("without_beacon", "Sans lecture de la balise"),
+               ("with_beacon", "Avec lecture de la balise"))
+# Briques encore simulees quand C tourne sur anvil : le M-Ghost (#8) est `MockGhostRisk`.
+_C_ANVIL_REPLACE_BY: tuple[int, ...] = (8,)
+
+
+def _run_c_anvil(seed: int, params: SimulationParams,
+                 chain_factory: Callable[[], real_contracts.AnvilChain]) -> ScenarioResult:
+    """Rejoue C sur les vrais `RiskBeacon` / `MockLendingMarket` (#7) d'une chaine anvil."""
+    rng = random.Random(seed)
+    with chain_factory() as chain:
+        readings = real_contracts.replay_scenario_c(chain, params.lending_ltv,
+                                                    params.beacon_ratio_threshold)
+    source = real_source(OPT_IN_BY["C"])
+    unit = "base units (MockUSDC, 6 déc.)"
+    variants: list[ScenarioVariant] = []
+    for name, label in _C_VARIANTS:
+        reading = readings[name]
+        builder = _Builder(rng, DEMO_REFERENCE_TIME)
+        at = builder.at(1)
+        builder.log(at, "contract", "lending_replayed",
+                    f"Faux marché de prêt #7 rejoué sur anvil ({label.lower()}) : emprunt "
+                    "légitime puis emprunt contre du Ghost suspect, garantie suspecte détruite.",
+                    {"attacker_borrowed": reading.attacker_borrowed,
+                     "bad_debt": reading.bad_debt})
+        checks = []
+        if name == "with_beacon":
+            checks = [
+                ScenarioCheck(label="moins de créances douteuses avec la balise",
+                              expected="créances douteuses avec balise < sans balise",
+                              passed=reading.bad_debt < readings["without_beacon"].bad_debt),
+                ScenarioCheck(label="emprunt légitime accepté",
+                              expected="0 emprunt légitime refusé avec la balise",
+                              passed=reading.legit_loans_refused == 0),
+            ]
+        variants.append(ScenarioVariant(
+            name=name, label=label,
+            metrics=[
+                _metric("bad_debt", "Créances douteuses (garantie détruite)", reading.bad_debt,
+                        unit, source),
+                _metric("loans_accepted", "Emprunts acceptés", reading.loans_accepted,
+                        "emprunts", source),
+                _metric("legit_loans_refused", "Emprunts légitimes refusés",
+                        reading.legit_loans_refused, "emprunts", source),
+            ],
+            checks=checks, dataset=build_dataset(builder, seed), end_time=at,
+        ))
+    return _result("C", seed, variants, replace_by=_C_ANVIL_REPLACE_BY,
+                   message=f"Rejoué avec la seed {seed} sur une chaîne anvil locale : balise de "
+                           "risque et faux marché de prêt #7 réels, M-Ghost simulé par "
+                           "MockGhostRisk (#8 non livré). Comptages sur chaîne locale, pas des "
+                           "mesures du contrat déployé.")
+
+
+def run_c(seed: int, params: SimulationParams,
+          chain_factory: Callable[[], real_contracts.AnvilChain] | None = None) -> ScenarioResult:
+    """C sur les vrais contrats #7 si `SH_DEMO_CONTRACTS_BACKEND=anvil`, sinon simulation.
+
+    Repli automatique sur la simulation (bandeau conserve) si Foundry est absent ou si le
+    rejeu echoue, comme le scenario A.
+    """
+    if real_contracts.selected_backend() != real_contracts.BACKEND_ANVIL:
+        return _run_c_sim(seed, params)
+    reason = real_contracts.unavailable_reason() if chain_factory is None else None
+    if reason is None:
+        try:
+            return _run_c_anvil(seed, params, chain_factory or real_contracts.AnvilChain)
+        except real_contracts.ContractsBackendError as exc:
+            reason = str(exc)
+    fallback = _run_c_sim(seed, params)
+    return fallback.model_copy(update={
+        "message": f"Backend anvil demandé mais indisponible ({reason}) : repli sur la "
+                   f"{SIMULATION_LABEL}. " + fallback.message,
+    })
+
+
+def _run_c_sim(seed: int, params: SimulationParams) -> ScenarioResult:
     """Memes emprunts sur un faux marche de pret, sans / avec lecture de la balise."""
     rng = random.Random(seed)
     builder = _Builder(rng, DEMO_REFERENCE_TIME)

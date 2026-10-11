@@ -279,3 +279,85 @@ def replay_scenario_a(chain: Chain, deposit: int, multiplier: int) -> dict[str, 
             "completeSwap(uint256)")
     readings["protected"] = _reading(chain, usdc, protected, signed, protected_ok)
     return readings
+
+
+# --- Scenario C : balise de risque + faux marche de pret (#7) ----------------------------
+
+# Garantie deposee (M-Ghost fictif, 18 dec.) et liquidite du marche (MockUSDC, 6 dec.), memes
+# ordres de grandeur que `contracts/test/RiskBeacon.t.sol` (`_scenarioC`). Valeurs de demo.
+C_ATTACK_COLLATERAL = 100_000 * 10**18
+C_LEGIT_COLLATERAL = 50_000 * 10**18
+C_MARKET_LIQUIDITY = 10_000_000 * 10**6
+C_BASE_HAIRCUT_BPS = 500  # PROVISOIRE, comme le test de #7
+C_SLOPE_HAIRCUT_BPS = 9_500  # PROVISOIRE, comme le test de #7
+C_MAX_BORROW_SUSPECT = 1_000 * 10**18  # PROVISOIRE, comme le test de #7
+C_INCIDENT_ID = 1
+
+
+@dataclass(frozen=True)
+class MarketReading:
+    """Etat lu on-chain d'un faux marche de pret apres le rejeu du scenario C."""
+
+    bad_debt: int  # dette non couverte par la garantie restante, base units du pret (6 dec.)
+    loans_accepted: int
+    legit_loans_refused: int
+    attacker_borrowed: int
+
+
+def _market_config(use_beacon: bool, ltv: float, ratio_threshold: float) -> str:
+    """Tuple `MarketConfig` pour `--constructor-args`."""
+    return (f"({str(use_beacon).lower()},{round(ltv * 10_000)},{C_BASE_HAIRCUT_BPS},"
+            f"{C_SLOPE_HAIRCUT_BPS},{round(ratio_threshold * 10**18)},{C_MAX_BORROW_SUSPECT})")
+
+
+def _deposit_and_borrow(chain: Chain, ghost: str, market: str, who: str, amount: int) -> int:
+    """Depot de garantie puis emprunt de toute la capacite ; renvoie le montant emprunte."""
+    _expect(chain.send(who, ghost, "approve(address,uint256)", market, str(amount)), "approve")
+    _expect(chain.send(who, market, "deposit(uint256)", str(amount)), "deposit")
+    capacity = parse_uint(chain.call(market, "capacityOf(address)(uint256)", who))
+    if capacity == 0:
+        return 0
+    return capacity if chain.send(who, market, "borrow(uint256)", str(capacity)) else 0
+
+
+def replay_scenario_c(chain: Chain, ltv: float, ratio_threshold: float) -> dict[str, MarketReading]:
+    """Scenario C sur les vrais `RiskBeacon` et `MockLendingMarket` (#7).
+
+    Le M-Ghost est `MockGhostRisk` (#7, `contracts/test/utils/`) tant que le contrat Ghost (#8)
+    n'est pas livre. Meme sequence sur deux marches (sans / avec lecture de la balise) : un
+    emprunteur legitime (Ghost propre) et l'attaquant (Ghost 100 % suspect) deposent et
+    empruntent ; puis la part suspecte de la garantie detenue par le marche est detruite
+    (multisig 2/3 simule par `MockGhostRisk.destroy`). Mauvaise creance = dette totale moins
+    la garantie restante, au prix 1:1 PROVISOIRE de #7.
+    """
+    if len(chain.accounts) < 3:
+        raise ContractsBackendError("anvil doit exposer au moins 3 comptes")
+    admin, attacker, legit = chain.accounts[:3]
+    ghost = chain.deploy("test/utils/MockGhostRisk.sol:MockGhostRisk", admin)
+    beacon = chain.deploy("src/RiskBeacon.sol:RiskBeacon", admin, ghost)
+    usdc = chain.deploy("src/MockUSDC.sol:MockUSDC", admin)
+    readings: dict[str, MarketReading] = {}
+    for name, use_beacon in (("without_beacon", False), ("with_beacon", True)):
+        market = chain.deploy("src/MockLendingMarket.sol:MockLendingMarket", admin, ghost, usdc,
+                              ghost, beacon, str(DECIMALS_SCALE),
+                              _market_config(use_beacon, ltv, ratio_threshold))
+        _expect(chain.send(admin, usdc, "mint(address,uint256)", market,
+                           str(C_MARKET_LIQUIDITY)), "liquidite MockUSDC")
+        _expect(chain.send(admin, ghost, "mint(address,uint256,uint256)", legit,
+                           str(C_LEGIT_COLLATERAL), "0"), "Ghost propre")
+        _expect(chain.send(admin, ghost, "mint(address,uint256,uint256)", attacker,
+                           str(C_ATTACK_COLLATERAL), str(C_ATTACK_COLLATERAL)), "Ghost suspect")
+        legit_borrowed = _deposit_and_borrow(chain, ghost, market, legit, C_LEGIT_COLLATERAL)
+        attacker_borrowed = _deposit_and_borrow(chain, ghost, market, attacker,
+                                                C_ATTACK_COLLATERAL)
+        _expect(chain.send(admin, ghost, "destroy(address,uint256)", market, str(C_INCIDENT_ID)),
+                "destruction 2/3 (simulee)")
+        debt = parse_uint(chain.call(market, "totalDebt()(uint256)"))
+        remaining = parse_uint(chain.call(ghost, "balanceOf(address)(uint256)", market))
+        readings[name] = MarketReading(
+            bad_debt=max(0, debt - remaining // DECIMALS_SCALE),
+            loans_accepted=int(legit_borrowed > 0) + int(attacker_borrowed > 0),
+            legit_loans_refused=int(legit_borrowed == 0),
+            attacker_borrowed=attacker_borrowed,
+        )
+    return readings

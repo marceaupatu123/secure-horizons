@@ -161,3 +161,34 @@ def test_run_detectors_on_generated_normal_traffic() -> None:
     run = run_detectors(builder, scenario.events, scenario.manifest, DEFAULT_PARAMS)
     assert run.slots, "le surveillant #12 doit cloturer des tranches"
     assert run.alerts == []  # profil « petits transferts » : 0 faux positif (seed 20)
+
+
+def test_run_c_falls_back_to_simulation_when_anvil_fails(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(real_contracts.CONTRACTS_BACKEND_ENV, real_contracts.BACKEND_ANVIL)
+
+    def broken() -> FakeChain:
+        raise ContractsBackendError("anvil n'a pas démarré")
+
+    result = catalog.run_c(20, DEFAULT_PARAMS, chain_factory=broken)
+    assert result.simulated is True and "repli" in result.message
+    assert {m.source for v in result.variants for m in v.metrics} == {SIMULATION_LABEL}
+
+
+def test_market_config_tuple_matches_contract_struct() -> None:
+    assert real_contracts._market_config(True, 0.5, 0.5) == (
+        "(true,5000,500,9500,500000000000000000,1000000000000000000000)")
+
+
+@pytest.mark.skipif(real_contracts.unavailable_reason() is not None,
+                    reason="Foundry (forge/anvil/cast) ou contracts/lib absents")
+def test_run_c_on_real_anvil(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(real_contracts.CONTRACTS_BACKEND_ENV, real_contracts.BACKEND_ANVIL)
+    result = catalog.run_c(20, DEFAULT_PARAMS)
+    assert result.replace_by == [8], result.message  # seul le M-Ghost (#8) reste simule
+    without = result.metric("without_beacon", "bad_debt").value
+    with_beacon = result.metric("with_beacon", "bad_debt").value
+    assert without is not None and without > 0
+    assert with_beacon == 0
+    assert result.metric("with_beacon", "legit_loans_refused").value == 0
+    assert all(c.passed for v in result.variants for c in v.checks)
