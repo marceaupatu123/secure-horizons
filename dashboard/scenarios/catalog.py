@@ -49,6 +49,7 @@ from dashboard.scenarios.real_pipeline import (
     TRAFFIC_REFS,
     alert_addresses,
     daily_volumes,
+    delayed_supply_share,
     generation_params,
     respond,
     run_detectors,
@@ -143,6 +144,14 @@ def _result(scenario_id: str, seed: int, variants: list[ScenarioVariant],
 
 def _bucket(params: SimulationParams) -> timedelta:
     return timedelta(minutes=params.bucket_minutes)
+
+
+def _delayed_share_metric(events: list, actions: list[ResponseAction], initial_supply: int,
+                          label: str) -> MeasuredMetric:
+    """Pic de la part de l'offre en fenetre allongee, en % (friction locale, #70)."""
+    share = delayed_supply_share(events, actions, initial_supply)
+    return _metric("delayed_supply_share", label, None if share is None else 100 * share,
+                   "% de l'offre", _RESPONSE_SOURCE)
 
 
 def _log_traffic(builder: _Builder, at: datetime, legit: int, attack: int = 0) -> None:
@@ -504,6 +513,9 @@ def run_b(seed: int, params: SimulationParams) -> ScenarioResult:
             _metric("suspect_ghost_destroyed", "Ghost suspect détruit", destroyed, "base units"),
             _metric("protocol_loss", "Perte protocole (Ghost suspect converti)",
                     ledger.total_converted_suspect(), "base units"),
+            _delayed_share_metric(scenario.events, actions,
+                                  int(scenario.manifest["initial_supply"]),
+                                  "Part de l'offre en fenêtre allongée (pic, friction locale)"),
         ],
         checks=[
             ScenarioCheck(label="détecté par les surveillants",
@@ -763,6 +775,8 @@ def run_n3(seed: int, params: SimulationParams) -> ScenarioResult:
             _metric("ghost_redeemed", "Ghost converti 1:1 après expiration",
                     sum(response.redeemed.values()), "base units"),
             _metric("destroy_count", "Destructions", destroys, "actions", _RESPONSE_SOURCE),
+            _delayed_share_metric(events, actions, int(scenario.manifest["initial_supply"]),
+                                  "Part de l'offre inutilement retardée (pic, borne basse)"),
         ],
         checks=[
             ScenarioCheck(label="fenêtre allongée déclenchée",
