@@ -2,7 +2,44 @@
 
 - **Rôle** : un ou plusieurs **surveillants** indépendants (règles, ML, signaux de transferts anormaux) qui détectent une anomalie sur les **mints**/**transferts**, produisent des `Alert` et peuvent **demander un gel**. L'IA n'est qu'un surveillant parmi d'autres, jamais le décideur _(proposé, à valider)_.
 - **Propriétaire** : @Yannis1307 (voir `docs/TEAM.md`).
-- **Lancer** : `python -m detection` ; tests : `python -m pytest detection/`.
+- **Lancer** : `python -m detection` (écoute LIVE) ou
+  `python -m detection --replay FICHIER.jsonl --profile demo` (voir ci-dessous) ;
+  tests : `python -m pytest detection/`.
+
+## Branchement monitor → detection (#86)
+
+`detection/pipeline.py` alimente `RuleBasedMonitor` et écrit chaque `Alert` en **JSON lines**
+sur la sortie standard (journaux sur la sortie d'erreur). Aucune intégration avec `response/`.
+
+- **LIVE** (défaut) : flux `ChainListener.stream_event_batches` du monitor (mints + transferts).
+  Sans `MONITOR_TOKEN_ADDRESS` / `FUJI_RPC_URL` (aucun contrat déployé), message et sortie
+  propre (code 0).
+- **REPLAY** : `--replay` rejoue un JSONL de `data/generate.py` ; seules les lignes `MintEvent`
+  et `TransferEvent` sont consommées. Exemple (fichiers générés HORS du dépôt) :
+
+  ```bash
+  python -m data.generate --scenario B --seed 42 --out-dir /tmp/sh-data
+  python -m detection --replay /tmp/sh-data/scenario_b.jsonl --profile demo \
+    --exit-point 0xe1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1
+  ```
+
+- **Horloge** : les tranches sont clôturées à l'heure même sans transfert (LIVE : à chaque poll ;
+  REPLAY : à l'horodatage de chaque événement, puis une fois après le dernier).
+- **Offre en circulation** (_PROVISOIRE, à valider_) : LIVE = `totalSupply()` relu à chaque
+  poll (offre **totale**, aucune définition de « en circulation » n'est actée) ; REPLAY =
+  `--initial-supply` (défaut 0) + somme des `MintEvent` rejoués, car les soldes pré-existants du
+  générateur n'ont pas d'événement. Le ratio volume/offre du replay est donc surestimé.
+- **Tranches sautées** : un `WARNING` explicite est journalisé (offre inconnue, historique
+  insuffisant) au lieu d'un `None` silencieux. Idem, une fois, pour les mints vérifiés sans
+  `MintContext` (GAP : ni dépôt ni taux dans les événements, donc aucune règle de mint vérifiée).
+- **Profils de chauffe** (`detection/params.py`) : `default` (valeurs PROVISOIRES ci-dessous,
+  5 jours d'historique du même créneau) et `demo` — **DEMO, ne pas utiliser en production,
+  PROVISOIRE** : chaque tranche est comparée aux 24 tranches précédentes, alerte possible après
+  12 tranches (1 h). Sélection : `--profile`, sinon `DETECTION_PROFILE`, sinon `default`.
+- **Points de sortie** : `--exit-point ADRESSE` (répétable, PROVISOIRE).
+- **GAP pour `shared/` (@marceaupatu123, #79)** : aucun modèle partagé pour l'offre en
+  circulation ni pour le contexte d'un mint (dépôt, taux) ; le pipeline les adapte dans
+  `detection/`.
 
 ## Surveillant de mint à règles (#11)
 
