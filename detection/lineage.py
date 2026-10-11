@@ -50,6 +50,11 @@ from shared.models import AlertSeed, TransferEvent
 #: Nombre maximal de graines (`AlertSeed`) livrees par semis (#106, §11).
 MAX_SEEDS_PER_BATCH = 64
 
+#: Adresse zero EVM : destination canonique d'une conversion/burn Ghost. Un
+#: transfert *vers* un sink (conversion Ghost -> vrai token, burn) sort la valeur
+#: du lignage et ne produit jamais de graine (B1 de la review #112, §9).
+ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
+
 
 def ceil_div(numerator: int, denominator: int) -> int:
     """Division entiere plafond (`Math.ceilDiv` du design #8, OpenZeppelin).
@@ -108,27 +113,77 @@ def _normalise(address: str) -> str:
     return address.lower()
 
 
+def _merge_normalised(mapping: dict[str, int]) -> dict[str, int]:
+    """Normalise les clefs d'adresse (casse) en cumulant les montants doublons.
+
+    Deux clefs qui ne different que par la casse (`0xAB...` et `0xab...`)
+    designent la meme adresse EVM : on les fusionne pour qu'elles ne produisent
+    pas deux feuilles distinctes (mineur de la review #112).
+    """
+    merged: defaultdict[str, int] = defaultdict(int)
+    for address, value in mapping.items():
+        merged[_normalise(address)] += value
+    return dict(merged)
+
+
+def _replay_order_key(event: TransferEvent) -> tuple[int, int, datetime]:
+    """Clef de tri du rejeu : `(block_number, log_index)` puis `observed_at`.
+
+    `observed_at` seul ne departage pas deux transferts du meme bloc ou de la
+    meme transaction (mineur de la review #112). `TransferEvent` porte toujours
+    `block_number`/`log_index` (on-chain), donc on trie d'abord dessus — ordre
+    canonique de la chaine — et on garde `observed_at` en depart final stable.
+    """
+    return (event.block_number, event.log_index, event.observed_at)
+
+
 def retroactive_seeds(
     transfers: list[TransferEvent],
     origin_address: str,
     origin_amount: int,
     now: datetime,
+    *,
+    sinks: frozenset[str] = frozenset({ZERO_ADDRESS}),
+    initial_balances: dict[str, int] | None = None,
 ) -> list[AlertSeed]:
     """Recalcule le soupcon retroactif de chaque detenteur actuel du lot frauduleux.
 
-    Rejoue `transfers` (dans l'ordre chronologique de `observed_at`, les plus
-    anciens d'abord) **comme si** `origin_address` avait porte `origin_amount`
-    de soupcon des `t0` (entree de la valeur dans le Ghost). A chaque transfert
-    Ghost, le montant envoye porte le ratio courant de l'expediteur (§9) et le
-    destinataire accumule ce soupcon ; le soupcon derive est arrondi en `ceilDiv`
-    (design #8). Le soupcon final de chaque adresse est **plafonne par son solde
-    Ghost non converti** reconstruit depuis le rejeu (§9 : un Ghost deja converti
-    est hors d'atteinte).
+    Rejoue `transfers` (par ordre on-chain `(block_number, log_index)`, les plus
+    anciens d'abord, `observed_at` en depart final) **comme si** `origin_address`
+    avait porte `origin_amount` de soupcon des `t0` (entree de la valeur dans le
+    Ghost). A chaque transfert Ghost, le montant envoye porte le ratio courant de
+    l'expediteur (§9) et le destinataire accumule ce soupcon ; le soupcon derive
+    est arrondi en `ceilDiv` (design #8). Le soupcon final de chaque adresse est
+    **plafonne par son solde Ghost non converti** reconstruit depuis le rejeu
+    (§9 : un Ghost deja converti est hors d'atteinte).
 
     Les transferts sont supposes **publics et complets** (§11, hypothese
     explicite). Seuls les transferts Ghost (`is_ghost=True`) propagent le
     soupcon : un transfert de vrai token (`is_ghost=False`) ne porte pas de
     Ghost et n'est donc pas rejoue dans le lignage.
+
+    Sinks (B1, review #112). Une conversion Ghost -> vrai token (ou un burn)
+    apparait comme un transfert Ghost **vers un sink** (`ZERO_ADDRESS` par
+    defaut, ou le contrat de conversion). La valeur et le soupcon envoyes vers
+    un sink **sortent du lignage** : ils ne restent pas atteignables et un sink
+    ne produit **jamais** d'`AlertSeed`. Sinon un Ghost deja converti produirait
+    quand meme une graine (sur `0x0...0`), ce qui contredirait §9.
+
+    Conservation du soupcon (B2, review #112, §9). Le rejeu ne connait que le
+    lot frauduleux. Si un expediteur detient aussi du Ghost **non suivi** (recu
+    avant `t0` ou hors rejeu), son solde reconstruit deviendrait negatif
+    (`amount > held`) et le soupcon serait silencieusement perdu, ou le ratio
+    surestime. Deux issues, selon `initial_balances` :
+
+    - `initial_balances` **fourni** (hypothese §11, soldes de depart connus) :
+      les soldes de depart des adresses sont pre-charges, donc le solde
+      reconstruit ne devient pas negatif et la conservation est respectee ;
+    - `initial_balances` **absent ou incomplet** et un solde reconstruit
+      deviendrait negatif : on leve `ValueError` explicite plutot que de fausser
+      silencieusement le resultat. **Jamais de resultat silencieusement faux.**
+
+    La feuille Merkle (#84) s'appuie sur `suspect_amount` (entier, exact) et non
+    sur `contamination_ratio` (flottant, affichage seulement).
 
     Args:
         transfers: evenements de transfert publics observes (Ghost ou non).
@@ -137,30 +192,47 @@ def retroactive_seeds(
             units, > 0).
         now: horodatage courant (UTC) ; borne le rejeu aux transferts
             `observed_at <= now`.
+        sinks: adresses de sortie (conversion/burn) ; un transfert vers l'une
+            d'elles sort du lignage et ne produit jamais de graine. Defaut :
+            `{ZERO_ADDRESS}`. Casse normalisee comme le reste du module.
+        initial_balances: soldes Ghost de depart connus par adresse (base
+            units). S'il est fourni, les expediteurs ne deviennent pas negatifs
+            (hypothese §11). Casse normalisee a l'entree.
 
     Returns:
         La liste des `AlertSeed` des detenteurs actuels dont le soupcon
-        retroactif est > 0, chacun porte par son solde Ghost non converti.
-        Triee par montant suspect decroissant puis par adresse (deterministe).
+        retroactif est > 0, chacun porte par son solde Ghost non converti,
+        **sinks exclus**. Triee par montant suspect decroissant puis par adresse
+        (deterministe).
 
     Raises:
-        ValueError: si `origin_amount <= 0`.
+        ValueError: si `origin_amount <= 0`, ou si un solde reconstruit devient
+            negatif (`amount > held`) sans `initial_balances` suffisant (B2).
     """
     if origin_amount <= 0:
         raise ValueError("origin_amount doit etre > 0")
 
     origin = _normalise(origin_address)
+    normalised_sinks = frozenset(_normalise(s) for s in sinks)
     # Soldes Ghost et soupcon absolu par adresse, reconstruits par le rejeu.
     ghost: defaultdict[str, int] = defaultdict(int)
     suspect: defaultdict[str, int] = defaultdict(int)
 
+    # Soldes de depart connus (B2, hypothese §11) : pre-charges avant t0 pour
+    # qu'un expediteur a solde preexistant non suivi ne devienne pas negatif.
+    if initial_balances is not None:
+        for address, balance in initial_balances.items():
+            if balance < 0:
+                raise ValueError("initial_balances : soldes >= 0 requis")
+            ghost[_normalise(address)] += balance
+
     # t0 : l'origine detient `origin_amount` de Ghost, entierement suspect.
-    ghost[origin] = origin_amount
-    suspect[origin] = origin_amount
+    ghost[origin] += origin_amount
+    suspect[origin] += origin_amount
 
     ordered = sorted(
         (t for t in transfers if t.observed_at <= now),
-        key=lambda t: t.observed_at,
+        key=_replay_order_key,
     )
     for event in ordered:
         if not event.is_ghost:
@@ -170,14 +242,20 @@ def retroactive_seeds(
         recipient = _normalise(event.recipient)
         amount = event.amount
         held = ghost[sender]
+        if amount > held:
+            # B2 (§9) : le solde reconstruit deviendrait negatif. Sans solde de
+            # depart connu couvrant ce transfert, on refuse plutot que de perdre
+            # le soupcon ou de surestimer le ratio. Jamais de resultat faux.
+            raise ValueError(
+                "solde Ghost reconstruit negatif pour "
+                f"{sender} (amount={amount} > held={held}) : fournir "
+                "initial_balances (hypothese §11) ou corriger le rejeu"
+            )
         if held <= 0:
-            # L'expediteur ne detient aucun Ghost connu de ce rejeu : le
-            # transfert ne provient pas du lot frauduleux reconstruit. On
-            # deplace le Ghost sans soupcon (ratio 0).
-            ghost[sender] = held - amount
-            ghost[recipient] += amount
+            # L'expediteur ne detient aucun Ghost : amount vaut 0 ici (sinon la
+            # garde B2 au-dessus aurait leve). Rien a deplacer.
             continue
-        moved = min(amount, held)
+        moved = amount
         # Ratio courant de l'expediteur, applique en ceilDiv (design #8) : part
         # suspecte du montant deplace, bornee par le soupcon detenu.
         sent_suspect = min(
@@ -185,11 +263,19 @@ def retroactive_seeds(
         )
         ghost[sender] = held - amount
         suspect[sender] = max(0, suspect[sender] - sent_suspect)
+        if recipient in normalised_sinks:
+            # B1 : la valeur sort du lignage (conversion/burn). Le soupcon
+            # envoye vers un sink n'est plus atteignable : on ne le propage pas
+            # et le sink ne portera jamais de graine.
+            continue
         ghost[recipient] += amount
         suspect[recipient] += sent_suspect
 
     seeds: list[AlertSeed] = []
     for address, balance in ghost.items():
+        if address in normalised_sinks:
+            # B1 : un sink ne produit jamais de graine, quel que soit son solde.
+            continue
         if balance <= 0:
             continue
         # Plafond par solde Ghost non converti (§9) : le soupcon ne peut depasser
@@ -253,9 +339,10 @@ def restitutions_for_burn(
 
     Args:
         burned_by_address: montant de M' brule par adresse dans ce lot (base
-            units) ; typiquement derive des `AlertSeed` graines detruites.
+            units) ; typiquement derive des `AlertSeed` graines detruites. Clefs
+            normalisees a l'entree (casse insensible, comme `payer_of_thief`).
         paid_by_address: montant que chaque adresse avait **paye** on-chain
-            (plafond de sa restitution).
+            (plafond de sa restitution). Clefs normalisees a l'entree.
         thief_payment_ghost: argent bloque derriere le Ghost de paiement du
             voleur, disponible a la restitution (base units, >= 0).
         payer_of_thief: adresse ayant paye le voleur, destinataire du reliquat.
@@ -274,6 +361,12 @@ def restitutions_for_burn(
     for name, mapping in (("burned", burned_by_address), ("paid", paid_by_address)):
         if any(v < 0 for v in mapping.values()):
             raise ValueError(f"{name}_by_address : montants >= 0 requis")
+
+    # Normalisation de casse a l'entree (meme regle que `payer_of_thief`) : une
+    # meme adresse en casse differente ne doit pas donner deux feuilles. Les
+    # montants d'une meme adresse normalisee sont cumules.
+    burned_by_address = _merge_normalised(burned_by_address)
+    paid_by_address = _merge_normalised(paid_by_address)
 
     total_burned = sum(burned_by_address.values())
     remaining = thief_payment_ghost

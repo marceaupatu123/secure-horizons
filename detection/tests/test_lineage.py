@@ -16,9 +16,12 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from data.late_marking import ChainParams, simulate_chain
 from detection.lineage import (
     MAX_SEEDS_PER_BATCH,
+    ZERO_ADDRESS,
     Restitution,
     ceil_div,
     restitutions_for_burn,
@@ -137,13 +140,16 @@ def test_dispersion_large_conserve_le_soupcon() -> None:
 def test_dispersion_dilue_un_porteur_de_bonne_foi() -> None:
     """Une goutte de suspect dans un gros solde legitime -> ratio minuscule (§9)."""
     # L'origine envoie 10 de suspect a une grosse adresse qui detient deja 990
-    # de Ghost legitime (credite par un transfert hors lot, ratio 0).
+    # de Ghost legitime (credite par un transfert hors lot, ratio 0). Le solde
+    # de depart de cet expediteur legitime est connu (hypothese §11), fourni via
+    # `initial_balances` pour que la conservation tienne (B2).
     legit_holder = _addr(200)
+    legit_source = _addr(500)
     transfers = [
         # Ghost legitime prealable chez le gros porteur (expediteur inconnu du
         # lot : ratio 0).
         _ghost_transfer(
-            sender=_addr(500),
+            sender=legit_source,
             recipient=legit_holder,
             amount=990,
             at=_T0 + timedelta(seconds=1),
@@ -161,7 +167,11 @@ def test_dispersion_dilue_un_porteur_de_bonne_foi() -> None:
     now = _T0 + timedelta(minutes=1)
 
     seeds = retroactive_seeds(
-        transfers, origin_address=_addr(0), origin_amount=10, now=now
+        transfers,
+        origin_address=_addr(0),
+        origin_amount=10,
+        now=now,
+        initial_balances={legit_source: 990},
     )
 
     (seed,) = seeds
@@ -177,9 +187,9 @@ def test_dispersion_dilue_un_porteur_de_bonne_foi() -> None:
 def test_ghost_deja_converti_non_atteint() -> None:
     """Un Ghost deja converti avant le gel n'est pas atteint (plafond par solde)."""
     # L'origine detient 100 de Ghost suspect, puis convertit (sort du Ghost).
-    # On modelise la conversion comme un transfert Ghost vers une adresse de
-    # "sortie" (burn/redemption) qui ne fait plus partie des detenteurs vises :
-    # apres coup, l'origine ne detient plus rien en Ghost.
+    # On modelise la conversion comme un transfert Ghost vers un SINK explicite
+    # (burn/redemption) : la valeur et le soupcon sortent du lignage (B1), donc
+    # ni l'origine ni le sink ne portent de graine apres coup.
     redemption_sink = _addr(999)
     transfers = [
         _ghost_transfer(
@@ -193,20 +203,27 @@ def test_ghost_deja_converti_non_atteint() -> None:
     now = _T0 + timedelta(minutes=1)
 
     seeds = retroactive_seeds(
-        transfers, origin_address=_addr(0), origin_amount=100, now=now
+        transfers,
+        origin_address=_addr(0),
+        origin_amount=100,
+        now=now,
+        sinks=frozenset({redemption_sink}),
     )
 
-    # Tout le soupcon a suivi la valeur vers le sink ; l'origine ne porte plus
-    # rien. Le sink porte 100 (il detient encore ce Ghost). Si en revanche la
-    # valeur avait ete convertie *hors* Ghost (sortie du lignage), elle serait
-    # hors d'atteinte. On verifie ici le plafond par solde non converti :
-    # l'origine, a 0 de Ghost, n'apparait pas.
+    # Tout le soupcon est sorti du lignage via le sink : aucune graine, et en
+    # particulier rien sur l'origine ni sur le sink (B1).
+    assert seeds == []
     assert all(seed.address != _addr(0) for seed in seeds)
+    assert all(seed.address != redemption_sink for seed in seeds)
     # Un transfert au-dela de `now` n'est pas rejoue : le soupcon reste a
-    # l'origine (deja converti du point de vue du gel = non deplace ici).
+    # l'origine (conversion pas encore observee du point de vue du gel).
     now_before = _T0  # avant le transfert
     seeds_before = retroactive_seeds(
-        transfers, origin_address=_addr(0), origin_amount=100, now=now_before
+        transfers,
+        origin_address=_addr(0),
+        origin_amount=100,
+        now=now_before,
+        sinks=frozenset({redemption_sink}),
     )
     assert len(seeds_before) == 1
     assert seeds_before[0].address == _addr(0)
@@ -321,6 +338,229 @@ def test_meme_recuperation_que_late_marking() -> None:
     ] == 1.0
 
 
+# ------------------------------------------------- B1 (sinks) / B2 (conserv.)
+
+
+def test_sink_zero_address_ne_produit_aucune_graine() -> None:
+    """B1 : origine -> 0x0 ⇒ aucune graine (ni sur l'origine, ni sur le sink)."""
+    # Conversion/burn : l'origine envoie tout son Ghost vers l'adresse zero.
+    transfers = [
+        _ghost_transfer(
+            sender=_addr(0),
+            recipient=ZERO_ADDRESS,
+            amount=100,
+            at=_T0 + timedelta(seconds=1),
+            nonce=1,
+        ),
+    ]
+    now = _T0 + timedelta(minutes=1)
+
+    seeds = retroactive_seeds(
+        transfers, origin_address=_addr(0), origin_amount=100, now=now
+    )
+
+    # La valeur et le soupcon sont sortis du lignage : aucune graine, et surtout
+    # aucune graine sur 0x0.
+    assert seeds == []
+    assert all(seed.address != ZERO_ADDRESS for seed in seeds)
+
+
+def test_sink_personnalise_ne_produit_aucune_graine() -> None:
+    """B1 : un contrat de conversion passe en `sinks` ne porte jamais de graine."""
+    redemption_contract = _addr(0xC0FFEE)
+    transfers = [
+        # Un saut legitime puis conversion : A1 convertit tout.
+        _ghost_transfer(
+            sender=_addr(0),
+            recipient=_addr(1),
+            amount=100,
+            at=_T0 + timedelta(seconds=1),
+            nonce=1,
+        ),
+        _ghost_transfer(
+            sender=_addr(1),
+            recipient=redemption_contract,
+            amount=100,
+            at=_T0 + timedelta(seconds=2),
+            nonce=2,
+        ),
+    ]
+    now = _T0 + timedelta(minutes=1)
+
+    seeds = retroactive_seeds(
+        transfers,
+        origin_address=_addr(0),
+        origin_amount=100,
+        now=now,
+        sinks=frozenset({ZERO_ADDRESS, redemption_contract}),
+    )
+
+    # Tout est converti : plus personne ne detient de Ghost suspect atteignable.
+    assert seeds == []
+    assert all(seed.address != redemption_contract for seed in seeds)
+
+
+def test_sink_casse_mixte_normalisee() -> None:
+    """B1 : un sink est reconnu quelle que soit la casse de l'adresse."""
+    mixed_sink = "0xAbCdEf0000000000000000000000000000000000"
+    transfers = [
+        _ghost_transfer(
+            sender=_addr(0),
+            recipient=mixed_sink.lower(),
+            amount=50,
+            at=_T0 + timedelta(seconds=1),
+            nonce=1,
+        ),
+    ]
+    now = _T0 + timedelta(minutes=1)
+
+    seeds = retroactive_seeds(
+        transfers,
+        origin_address=_addr(0),
+        origin_amount=50,
+        now=now,
+        sinks=frozenset({mixed_sink}),  # casse mixte, normalisee en interne
+    )
+    assert seeds == []
+
+
+def test_conservation_avec_initial_balances() -> None:
+    """B2 (i) : solde preexistant non suivi + initial_balances ⇒ conservation, ratio correct."""
+    # L'origine detient 100 (suspect). L'expediteur legitime A1 detient deja 300
+    # de Ghost non suivi (recu avant t0) ; on le declare via initial_balances.
+    # A1 recoit 100 de l'origine puis renvoie 200 a A2 : sans initial_balances,
+    # son solde reconstruit (100 recu - 200 envoye) serait negatif.
+    legit = _addr(1)
+    transfers = [
+        _ghost_transfer(
+            sender=_addr(0),
+            recipient=legit,
+            amount=100,
+            at=_T0 + timedelta(seconds=1),
+            nonce=1,
+        ),
+        _ghost_transfer(
+            sender=legit,
+            recipient=_addr(2),
+            amount=200,
+            at=_T0 + timedelta(seconds=2),
+            nonce=2,
+        ),
+    ]
+    now = _T0 + timedelta(minutes=1)
+
+    seeds = retroactive_seeds(
+        transfers,
+        origin_address=_addr(0),
+        origin_amount=100,
+        now=now,
+        initial_balances={legit: 300},
+    )
+
+    # Soupcon conserve : le total reste 100 (rien n'est jete).
+    assert retroactive_recovery_total(seeds) == 100
+    by_addr = {s.address: s for s in seeds}
+    # A1 a recu 100 suspect dans un pot de 400 (300 + 100), ratio courant 100/400.
+    # Il envoie 200 vers A2 : part suspecte ceilDiv(100*200/400) = 50.
+    # A1 garde 400 - 200 = 200 Ghost, 100 - 50 = 50 suspect. A2 recoit 50.
+    assert by_addr[legit].suspect_amount == 50
+    assert by_addr[_addr(2)].suspect_amount == 50
+    assert by_addr[legit].contamination_ratio == 50 / 200
+    assert by_addr[_addr(2)].contamination_ratio == 50 / 200
+
+
+def test_conservation_sans_initial_balances_leve_valueerror() -> None:
+    """B2 (ii) : meme cas SANS initial_balances ⇒ ValueError explicite (jamais faux silencieux)."""
+    legit = _addr(1)
+    transfers = [
+        _ghost_transfer(
+            sender=_addr(0),
+            recipient=legit,
+            amount=100,
+            at=_T0 + timedelta(seconds=1),
+            nonce=1,
+        ),
+        # A1 renvoie 200 alors qu'il n'a (de ce rejeu) que 100 : solde negatif.
+        _ghost_transfer(
+            sender=legit,
+            recipient=_addr(2),
+            amount=200,
+            at=_T0 + timedelta(seconds=2),
+            nonce=2,
+        ),
+    ]
+    now = _T0 + timedelta(minutes=1)
+
+    with pytest.raises(ValueError, match="negatif"):
+        retroactive_seeds(
+            transfers, origin_address=_addr(0), origin_amount=100, now=now
+        )
+
+
+def test_expediteur_inconnu_sans_initial_balances_leve_valueerror() -> None:
+    """B2 : un expediteur a solde 0 reconstruit (hors lot) ⇒ ValueError sans soldes de depart."""
+    # Un transfert dont l'expediteur n'a aucun Ghost du rejeu : amount > held=0.
+    transfers = [
+        _ghost_transfer(
+            sender=_addr(500),
+            recipient=_addr(200),
+            amount=990,
+            at=_T0 + timedelta(seconds=1),
+            nonce=1,
+        ),
+    ]
+    now = _T0 + timedelta(minutes=1)
+
+    with pytest.raises(ValueError, match="negatif"):
+        retroactive_seeds(
+            transfers, origin_address=_addr(0), origin_amount=10, now=now
+        )
+
+
+def test_ordre_rejeu_par_block_puis_log_index() -> None:
+    """Mineur : deux transferts du meme horodatage sont departages par (block, log_index)."""
+    # Deux evenements au MEME observed_at : l'ordre doit suivre (block, log_index).
+    # L'origine envoie d'abord 100 a A1 (block 1, log 0), puis A1 envoie 100 a A2
+    # (block 1, log 1). Si on triait par observed_at seul, l'ordre d'entree
+    # inverse casserait le rejeu (A1 enverrait avant d'avoir recu).
+    same_time = _T0 + timedelta(seconds=5)
+    ev_a1_to_a2 = TransferEvent(
+        tx_hash=_tx(2),
+        log_index=1,
+        block_number=1,
+        chain_id=43113,
+        observed_at=same_time,
+        sender=_addr(1),
+        recipient=_addr(2),
+        amount=100,
+        is_ghost=True,
+    )
+    ev_origin_to_a1 = TransferEvent(
+        tx_hash=_tx(1),
+        log_index=0,
+        block_number=1,
+        chain_id=43113,
+        observed_at=same_time,
+        sender=_addr(0),
+        recipient=_addr(1),
+        amount=100,
+        is_ghost=True,
+    )
+    # Entree volontairement dans le mauvais ordre : A1->A2 avant origin->A1.
+    transfers = [ev_a1_to_a2, ev_origin_to_a1]
+    now = _T0 + timedelta(minutes=1)
+
+    seeds = retroactive_seeds(
+        transfers, origin_address=_addr(0), origin_amount=100, now=now
+    )
+
+    # Grace au tri (block, log_index), origin->A1 (log 0) est rejoue avant
+    # A1->A2 (log 1) : le soupcon arrive jusqu'a A2.
+    (seed,) = seeds
+    assert seed.address == _addr(2)
+    assert seed.suspect_amount == 100
+
+
 # ---------------------------------------------------- restitutions & ceil_div
 
 
@@ -356,6 +596,26 @@ def test_restitutions_sans_payeur_laisse_le_reliquat_au_coffre() -> None:
     )
     # A1 recupere 1 (plafond paye) ; les 9 restants restent dans le coffre.
     assert res == [Restitution(address=_addr(1), amount=1)]
+
+
+def test_restitutions_normalise_les_clefs() -> None:
+    """Mineur : burned/paid en casse differente d'une meme adresse ⇒ une seule feuille."""
+    addr_lower = "0x00000000000000000000000000000000000000a1"
+    addr_upper = "0x00000000000000000000000000000000000000A1"
+    # La meme adresse apparait en deux casses dans burned et paid : les montants
+    # doivent se cumuler (brule 3+3=6, paye 2+2=4), pas donner deux feuilles.
+    res = restitutions_for_burn(
+        burned_by_address={addr_lower: 3, addr_upper: 3},
+        paid_by_address={addr_lower: 2, addr_upper: 2},
+        thief_payment_ghost=10,
+        payer_of_thief=_addr(0),
+    )
+    by_addr = {r.address: r.amount for r in res}
+    # Une seule feuille pour l'adresse normalisee, plafonnee par le paye cumule.
+    assert by_addr[addr_lower] == 4
+    assert addr_upper not in by_addr
+    # Reliquat 10 - 4 = 6 au payeur du voleur.
+    assert by_addr[_addr(0)] == 6
 
 
 def test_ceil_div() -> None:
