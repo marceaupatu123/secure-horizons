@@ -187,7 +187,17 @@ def test_cli_writes_all_files(tmp_path: Path, capsys) -> None:  # type: ignore[n
     names = sorted(p.name for p in tmp_path.iterdir())
     assert names == sorted(
         f"{base}{ext}"
-        for base in ("normal", "scenario_a_vulnerable", "scenario_a_protected", "scenario_b")
+        for base in (
+            "normal",
+            "scenario_a_vulnerable",
+            "scenario_a_protected",
+            "scenario_b",
+            "scenario_c_with_beacon",
+            "scenario_c_without_beacon",
+            "scenario_d_otc",
+            "scenario_d_pool",
+            "scenario_d_no_ghost",
+        )
         for ext in (".jsonl", ".manifest.json")
     )
     assert "evenements" in capsys.readouterr().out

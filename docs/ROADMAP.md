@@ -18,7 +18,7 @@ collision). Les deux goulots (#2, #4) sont pris en priorité pour débloquer la 
 |--------|----------------|---------|-------|
 | **marceaupatu123** | #2 champs des modèles | `shared/` | 1 (`blocker`) |
 | **denybs** | #4 Foundry + contrat vulnérable | `contracts/` | 2 |
-| **EnzoFB06** | #26 onboarding | — | 0 |
+| **EnzoFB06** | #26 onboarding (fait) | — | 0 |
 | **Yannis1307** | #9 monitor : écoute des mints | `monitor/` | 2 |
 
 > Dès que #2 est mergée, monitor/detection/response/llm se débloquent : prochaine vague de
@@ -105,7 +105,7 @@ flowchart TD
 | Fait | Issue | Tâche | Pourquoi d'abord |
 |------|-------|-------|------------------|
 | [x] | #28 | setup RPC Fuji + faucet AVAX + BEDROCK_MODEL_ID | `blocker` : sans ça, ni chaîne ni LLM. (fermée via PR #32) |
-| [ ] | #26 | onboarding (clone, venv, make install, .env, branche) | chacun doit être opérationnel. _(EnzoFB06, en cours)_ |
+| [x] | #26 | onboarding (clone, venv, make install, .env, branche) | chacun doit être opérationnel. _(EnzoFB06, fait)_ |
 | [ ] | #27 | CODEOWNERS + tableau TEAM.md | fige « qui possède quoi » avant de coder. |
 | [x] | #31 | contracts : registre des déploiements Fuji (`DEPLOYMENTS.md`) | consigne staff : tracer les adresses déployées. |
 
@@ -116,6 +116,7 @@ flowchart TD
 | [x] | #1 | sécurité dans le contrat vs seulement autour | oriente contracts + response. **Tranché** (OPEN_ANSWERS §0), issue fermée. |
 | [ ] | #3 | plafonds / fenêtre quarantaine / mode Token Ghost | #5, #8, #18. Mécanismes tranchés ; recentrée sur les **valeurs à mesurer** (`module:data`). |
 | [x] | #2 | champs des modèles (CONTRACTS.md + shared/models.py) | presque tout le code (monitor, detection, response, llm). **Mergé** (PR #53), issue fermée — débloque la vague 2+. |
+| [ ] | #85 | contracts : contamination posée après coup (graine marquée après propagation) | **bloque #84**, touche #8. Pistes dans `OPEN_QUESTIONS.md` §11. |
 
 ## Vague 2 — Fondations de code (après #2)
 
@@ -132,7 +133,7 @@ flowchart TD
 |------|-------|-------|-----------|
 | [ ] | #11 | detection : surveillant règles (mint) | #2, #9 |
 | [ ] | #12 | detection : surveillant transferts anormaux | #2, #10 |
-| [ ] | #14 | llm : client Bedrock Converse (rate limiter) | #28 |
+| [x] | #14 | llm : client Bedrock Converse (rate limiter) | #28 |
 | [x] | #17 | response : orchestration de la réponse graduée | #2, detection _(PR #56, mergée)_ |
 | [x] | #6 | contracts : invariants/fuzzing (perte max bornée) — volet 2 | #5 _(PR #71)_ |
 
@@ -142,7 +143,7 @@ flowchart TD
 |------|-------|-------|-----------|
 | [x] | #18 | response : gel / levée (veto asymétrique, multisig) | #3, #17 _(PR #56, mergée)_ |
 | [x] | #19 | response : journal d'audit DORA | #2, #17 _(PR #56, mergée)_ |
-| [ ] | #15 | llm : rapport d'incident DORA | #14 |
+| [x] | #15 | llm : rapport d'incident DORA | #14 |
 | [x] | #24 | data : générateur scénarios A et B | #4, #5 _(générateur JSONL, PR #57 ; + trafic normal #59)_ |
 
 ## Vague 5 — Démo + options (si le temps le permet)
@@ -153,9 +154,10 @@ flowchart TD
 | [x] | #47 | dashboard : outil de génération et rejeu des scénarios de démo (CLI + page Streamlit) | `optional` ; simulation hors chaîne, forme à valider en équipe |
 | [ ] | #8 | contracts : ERC20 Token Ghost + burn guardian | dépend de #5. Spec tranchée : §0bis-b (tranches d'échéance, #35), §0bis-c (réserve de restitution, #36), §9 (ratio) ; tests d'invariants de #33 inclus. |
 | [ ] | #7 | contracts : balise de risque + faux marché — volet 3 | **cœur du projet** (§0, §4), plus optionnel ; dépend de #8 (lit le ratio). |
-| [ ] | #65 | contracts : pool simulé M-Ghost/USDC, règlement différé `swap-id` (§10, #43) | dépend de #8 ; sert le scénario D (#25). |
+| [ ] | #65 | contracts : pool simulé M-Ghost/USDC, règlement différé `swap-id` (§10, #43) | dépend de #8 ; sert le scénario D (#25). Devient un cas particulier du routeur §10bis (#84). |
+| [ ] | #84 | contracts : M' protégé / pur / chèque, routeur + Ghost de paiement par actif, restitution (§10bis) | dépend de #8, étend #65 ; bloqué en conception par #85. |
 | [ ] | #13 | detection : surveillant ML / prédiction conforme | `optional` |
-| [ ] | #25 | data : scénarios C et D (contagion + Token Ghost) | `optional`, dépend de #7/#8 |
+| [x] | #25 | data : scénarios C et D (contagion + Token Ghost) | `optional`, dépend de #7/#8 _(simulation hors chaîne, PR #82)_ |
 
 ---
 

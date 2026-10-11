@@ -325,3 +325,37 @@ Garder le bénéfice (reverter les deux jambes) **sans** émettre ni custodier d
 
 > **Statut** : l'option « token Z » est écartée ; la variante « lignage transactionnel » est
 > **proposée, non actée**. À trancher en équipe. Aucun chiffre, aucune promesse non mesurée.
+
+> → **Étendu, voir `docs/OPEN_ANSWERS.md` §10bis (#84)** : le voleur ne reçoit jamais que du Ghost
+> (paiement bloqué dans le coffre de l'actif, vendeur payé en Ghost de cet actif via un routeur) ;
+> M' **protégé** (acheté contre du vrai M), **pur** (acheté avant échéance, à risque) ou **chèque**
+> (reçu sans paiement) ; l'argent bloqué du voleur est **restitué aux victimes**, le protocole ne
+> garde rien (ni fonds, ni frais). Le stablecoin pivot Z permanent reste écarté.
+
+## 11. Contamination posée après coup (#85) — _ouvert, bloque §10bis_
+
+Le ratio de contamination (§9) se transmet **au moment de chaque transfert**. Si le voleur n'est
+marqué suspect (`AlertSeed`) qu'**après** avoir fait circuler son M', son ratio valait 0 au moment
+des ventes : le soupçon n'a pas suivi. Exemple : 10 M' frauduleux passés par 40 personnes en
+8 minutes, alerte à la 9e minute. Comment atteindre le M' chez le 40e détenteur ?
+
+Pistes (aucune tranchée) :
+
+- **(a) Lignage d'origine sur la tranche** : chaque tranche (§0bis-b) garde l'identifiant de son
+  entrée dans le Ghost (mint, transfert de vrai M). L'alerte vise une **origine**, pas une adresse.
+  Coût : stockage par tranche ; que faire quand deux origines se mélangent dans une même tranche ?
+- **(b) Recalcul hors chaîne + preuve** : le surveillant rejoue les événements, calcule les ratios
+  rétroactifs, et le multisig soumet la liste des destructions (racine de Merkle). Coût : confiance
+  dans le calcul, contestabilité par les porteurs.
+- **(c) Contamination prospective seulement** : on n'atteint que ce que le voleur détient encore et
+  ses Ghost de paiement. Simple, mais le M' déjà propagé n'est pas rattrapé (le dernier acheteur de
+  M' pur garde alors un M' frauduleux qui se convertit).
+
+**Proposition (2026-10-10, Marceau) — _à valider en équipe_ : piste (b) pour le hackathon.** Les
+événements de transfert sont publics : le surveillant les rejoue, calcule qui détient quoi dans le
+lot frauduleux (y compris les Ghost de paiement des graines), et le multisig 2/3 soumet le résultat
+sous forme de racine de Merkle. Chaque porteur peut refaire le calcul et contester. C'est cohérent
+avec « l'IA ne décide jamais seule d'une destruction » (§3, §9). Le calcul doit aussi produire la
+liste des restitutions de la §10bis (point 4).
+
+À décider en équipe, avec tests d'invariants dans #8 / #84. Aucun chiffre inventé.
