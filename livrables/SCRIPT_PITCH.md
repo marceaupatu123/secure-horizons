@@ -1,4 +1,4 @@
-# Script du pitch — Équipe 20, Secure Horizons
+# Script du pitch — Équipe 20, Crypto-Secure
 
 **Format round 1** : 5 min de pitch + 2 min de questions, jury d'au moins 3 experts.
 **Deck** : 8 slides max. **Finale** : 3 min + 3 min (version courte en bas de page).
@@ -21,7 +21,7 @@ Règles de parole : aucun chiffre non mesuré ; « vérifié par tests », jamai
 
 ## Slide 1 — Titre et accroche (0:20)
 
-**À l'écran** : « Secure Horizons — une clé volée ne doit presque rien valoir ». Équipe 20,
+**À l'écran** : « Crypto-Secure — une clé volée ne doit presque rien valoir ». Équipe 20,
 Track 1.
 
 **À dire** : « Protocole Resolv. Un attaquant dépose environ 200 000 dollars et minte

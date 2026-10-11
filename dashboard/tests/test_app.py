@@ -27,7 +27,7 @@ def _metric_value(at: AppTest, label: str) -> str:
 def test_app_renders() -> None:
     at = _run()
     assert not at.exception
-    assert "Secure Horizons" in at.title[0].value
+    assert "Crypto-Secure" in at.title[0].value
     assert any("synthétiques" in i.value for i in at.info)
     assert len(at.metric) >= 4
     assert len(at.dataframe) >= 4

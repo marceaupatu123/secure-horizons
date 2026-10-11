@@ -1,6 +1,6 @@
 # docs-site — documentation novice illustrée (Mintlify)
 
-Doc pédagogique **de A à Z** de Secure Horizons, pour des **novices en crypto et en dev** :
+Doc pédagogique **de A à Z** de Crypto-Secure, pour des **novices en crypto et en dev** :
 analogies, schémas Mermaid, exemples chiffrés fictifs (Alice, Bob, Mallory, Spéculos), extraits
 de code commentés ligne à ligne et tutoriels pas à pas.
 

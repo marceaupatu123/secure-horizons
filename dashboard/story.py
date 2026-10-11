@@ -243,7 +243,7 @@ border:1px solid var(--border);overflow:hidden;margin:14px 0}
  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
   <div class="switch" role="group" aria-label="Type de contrat">
    <button id="sw-v" aria-pressed="true">🔓 Contrat classique</button>
-   <button id="sw-p" aria-pressed="false">🛡️ Secure Horizons</button>
+   <button id="sw-p" aria-pressed="false">🛡️ Crypto-Secure</button>
   </div>
   <button class="btn" id="run-a">▶ Lancer l'attaque</button>
  </div>
@@ -303,9 +303,9 @@ border:1px solid var(--border);overflow:hidden;margin:14px 0}
   <div class="card kpi"><div class="big warn" id="k-share">—</div><div class="lbl">de l'offre ralentie au pic : le prix de la sécurité</div></div>
  </div>
  <div class="card" style="margin-top:14px">
-  <div class="lbl">Contrat classique vs Secure Horizons — part des jetons émis sans argent derrière</div>
+  <div class="lbl">Contrat classique vs Crypto-Secure — part des jetons émis sans argent derrière</div>
   <div style="margin-top:8px">🔓 Classique <span class="bad" id="k-vpct"></span><div class="meter"><i id="k-vbar" style="background:var(--bad)"></i></div></div>
-  <div style="margin-top:8px">🛡️ Secure Horizons <span class="ok" id="k-ppct"></span><div class="meter"><i id="k-pbar" style="background:var(--ok)"></i></div></div>
+  <div style="margin-top:8px">🛡️ Crypto-Secure <span class="ok" id="k-ppct"></span><div class="meter"><i id="k-pbar" style="background:var(--ok)"></i></div></div>
  </div>
  <p class="foot" id="foot-c"></p>
 </section>

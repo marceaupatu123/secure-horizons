@@ -1,4 +1,4 @@
-# Defense sheet — Équipe 20, Secure Horizons
+# Defense sheet — Équipe 20, Crypto-Secure
 
 **Track 1 — Fintech Security : Guardians of Value** · axe 4 (détection et réponse à incident DeFi / DORA)
 

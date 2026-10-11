@@ -68,11 +68,11 @@ def load_dataset() -> DemoDataset:
 
 def main() -> None:
     """Rend la page de demo."""
-    st.set_page_config(page_title="Secure Horizons — Guardians of Value", page_icon="🛡️",
+    st.set_page_config(page_title="Crypto-Secure — Guardians of Value", page_icon="🛡️",
                        layout="wide")
     dataset = load_dataset()
 
-    st.title("Secure Horizons — démo")
+    st.title("Crypto-Secure — démo")
     st.info(
         f"Données synthétiques et fictives (seed {dataset.seed}) : aucune vraie adresse ni clé. "
         "Les chiffres affichés sont des comptages calculés sur ce jeu, pas des mesures de "
