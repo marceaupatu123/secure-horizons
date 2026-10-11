@@ -32,7 +32,7 @@ Règles :
 | 9 | Volet 2 : surveillance adaptative, allongement de fenêtre ciblé, contamination par ratio | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | PR #38 |
 | 10 | Lignage d'un swap : `swap-id` sur notre pool, jambe sortante en règlement différé (#43) | 2026-10-10 | denybs | Validée en session, à relire par l'équipe | Issue #43 |
 | 10bis | Qui porte le risque : M' protégé / pur / chèque, routeur + Ghost de paiement, restitution sans fonds ni frais (#84) | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | Issue #84 |
-| 10bis-router | Enforcement « le M' ne bouge que via le routeur » : seules les **ventes payées** passent par le routeur, le transfert direct de M' reste libre (option b) (#84) | 2026-10-11 | Équipe 20 (vote — choix délégué à l'agent) | Tranché | Issue #84 |
+| 10bis-router | Enforcement du routeur : le M' non échu ne bouge que par des contrats autorisés (routeur, marché de prêt #7), liste modifiable en 2/3 (option b′) (#84) | 2026-10-11 | Marceau | Tranché | PR #146 |
 | 11 | Contamination posée après coup : recalcul hors chaîne + racine de Merkle contestable (#85) | 2026-10-11 | denybs | Validée en session, à relire par l'équipe | PR #95 |
 | 79 | Champs manquants monitor/detection : `request_id` optionnel (fix collision), `is_ghost` et données I1/I5/I6 gardés en contexte jusqu'aux événements du contrat (#79) | 2026-10-11 | denybs | Validée en session, à relire par l'équipe | Issue #79 |
 | 14 | Lignage et conversions Ghost : plafonnement du soupçon par `balanceOf` du Ghost lu au semis (option (c)) (#104/#106) | 2026-10-11 | marceaupatu123 | Tranché | PR #132 |
@@ -1061,60 +1061,56 @@ M' contre N' entre deux tokens du standard : chaque émetteur règle sa jambe. P
   - rejeu des cas 1, 2, 2bis et 3.
 - Friction à **mesurer** (attente de l'actif final, exclusion des protocoles hors standard).
 
-### DÉCISION §10bis-router (2026-10-11, Équipe 20 — choix délégué à l'agent par vote) — option (b) : seules les ventes payées passent par le routeur
+### DÉCISION §10bis-router (2026-10-11, Marceau) — option b′ : le M' non échu ne bouge que par des contrats autorisés
 
-_Tranché. L'équipe (dont @denybs, propriétaire de `contracts/`) a voté pour déléguer ce choix à
-l'agent ; décision prise par Kiro, EnzoFB06 mandaté pour clore #84._
+_Tranché par le propriétaire de §10bis. Implémenté dans `GhostToken` (#145, PR #146)._
 
 **Point ouvert levé.** La §10bis point 2 dit « pendant la fenêtre, le M' ne bouge **que** via le
-routeur », ce qui est en tension frontale avec §0bis (« le Ghost circule **librement** », marché
-secondaire spéculatif). Deux lectures étaient possibles (relevées par l'assistant de @denybs sur
-#84, et en `OPEN_QUESTIONS.md` §17) :
+routeur ». Trois lectures étaient sur la table (#84, `OPEN_QUESTIONS.md` §17, PR #139) :
 
-- **(a)** interdire **tout** transfert direct de M' avant l'échéance — ce qui **tue le marché
-  secondaire du Ghost** ;
-- **(b)** seules les **ventes avec paiement on-chain** passent par le routeur (qui attribue le
-  statut `PROTEGE`/`PUR` et émet le Ghost de paiement) ; le **transfert direct** de M' reste permis
-  et donne un statut `PUR` (revente) ou `CHEQUE` (don / paiement hors routeur).
+- **(a)** routeur seul : tout autre déplacement de M' non échu est refusé ;
+- **(b)** seules les ventes payées via le routeur sont encadrées, le transfert direct reste libre ;
+- **(b′)** le M' non échu ne bouge que si l'**appelant** du token est un contrat d'une liste
+  blanche (routeur §10bis, marché de prêt #7).
 
-**Décision : option (b).**
+**Décision : option b′.**
 
 **Raisons :**
 
-1. **Cohérence avec le cœur du projet (§0, §0bis).** Le marché secondaire spéculatif du Ghost
-   **est** le mécanisme qui price le risque (la décote). (a) le supprimerait et viderait de son
-   sens la thèse « pricer le risque » (§0) et le scénario D (§4, §5). (b) préserve §0bis.
-2. **Les invariants §10bis tiennent déjà sous (b).** Ce qui garantit « le voleur n'encaisse jamais
-   de vrai actif avant l'échéance » n'est pas l'interdiction du transfert de M', mais le fait que
-   **tout paiement** est bloqué dans le coffre et rendu en Ghost de paiement (point 2-3), et que le
-   coffre n'a que deux sorties (point 3). Un transfert direct de M' **sans paiement** ne sort aucun
-   actif du coffre : il déplace seulement un M' dont la valeur reste suspendue jusqu'à l'échéance.
-   Le statut `CHEQUE` couvre exactement ce cas (le receveur n'a rien payé on-chain, §10bis point 1).
-3. **Anti-blanchiment préservé.** Un transfert direct ne confère jamais `PROTEGE` ; il donne `PUR`
-   ou `CHEQUE`. Le voleur ne peut donc pas « blanchir » un M' en le transférant : le receveur porte
-   le risque (`PUR`) ou n'a aucun recours on-chain (`CHEQUE`).
-4. **Sans régression.** La couche de règlement mergée (PR #130) implémente **déjà (b) de fait** :
-   le statut est porté par le routeur, et l'enforcement « M' uniquement via le routeur » dans le
-   `GhostToken` (design-84 point 6.5, différé après le merge de #123) n'est **pas** requis sous (b).
-   Clore #84 sous (b) ne demande donc aucune modification de contrat supplémentaire.
+1. **(b) rouvre le problème de départ de §10bis.** Un voleur transfère son M' à une paire DEX qui,
+   **dans la même transaction**, lui verse du vrai USDC : le paiement a bien lieu sur la chaîne,
+   mais hors du coffre. Le voleur garde l'argent, le dernier acheteur perd son M'. L'argument « un
+   transfert direct sans paiement ne sort rien du coffre » ne couvre pas un paiement fait par un
+   tiers dans la même transaction.
+2. **Le marché secondaire reste en place sous b′.** Le prix est libre dans `buyWithAsset` et
+   `sellPure`, et le Ghost de paiement circule librement : c'est lui qui porte la décote (§0bis).
+3. **(a) strict casserait le faux marché de prêt (#7)**, qui reçoit du M' en garantie
+   (`transferFrom(user, market)`), donc le scénario C.
+4. **Anti-blanchiment.** Un don passe par `sellPure` avec un paiement nul, donc par le routeur :
+   statut `CHEQUE`, jamais `PROTEGE`.
 
-**Conséquence sur le reste à faire de #84 :** le point 6.5 du plan d'implémentation (« enforcement
-M' uniquement via le routeur dans `GhostToken` ») est **sans objet** sous (b) et retiré du reste à
-faire. #84 est clos : les six invariants §10bis sont couverts par la couche de règlement mergée
-(PR #130, CI verte), les quatre cas de référence (1, 2, 2bis, 3) sont rejoués.
+**Règles d'implémentation (PR #146) :**
 
-**Limite assumée (à dire au jury, pas à cacher).** Sous (b), rien n'empêche un voleur de **donner**
-son M' pour tenter de diluer la détection ; mais le don ne confère aucune protection (`CHEQUE`), le
-soupçon est conservé par le ratio (§9), et la destruction/restitution par racine de Merkle (§11)
-atteint le détenteur final par recalcul rétroactif. Le risque résiduel est le **paiement à côté**
-(hors chaîne), déjà listé comme limite en §10bis.
+- le contrôle porte sur l'**appelant** du token (`msg.sender`), pas sur le destinataire : le
+  routeur livre le M' au wallet de l'acheteur ;
+- le M' **déjà échu** reste libre (règlement virtuel des tranches, comme `nextOutgoingMaturity`) ;
+- `initRouting(movers)` : admin, **une seule fois**, irréversible, au déploiement juste après le
+  routeur. Avant cet appel, aucun contrôle (rétrocompatibilité des tests et des rejeux) ;
+- ensuite, ajout ou retrait d'un appelant **seulement par les guardians 2/3**
+  (`proposeAllowedMover`) : une clé volée seule ne peut pas autoriser un DEX.
+
+**Coût assumé, à mesurer (`docs/CLAIMS.md`)** : pendant la fenêtre, le M' n'est pas utilisable dans
+la DeFi hors liste.
+
+**Limite (à dire au jury).** Le paiement à côté, hors chaîne, reste possible : limite déjà listée
+en §10bis.
 
 ### Reste ouvert
 
-- Relecture par l'équipe (la délégation du choix à l'agent a été votée ; la décision reste
-  relisable et amendable).
-- Si l'équipe veut un jour **forcer** tout transfert de M' par le routeur (option a), ce serait une
-  **nouvelle** décision qui assumerait la perte du marché secondaire — non retenue ici.
+- Relecture par l'équipe.
+- Brancher `initRouting` dans le déploiement anvil du dashboard et faire passer la propagation B/N3
+  par le routeur (`dashboard/`).
+- Mesurer la friction.
 
 ## §79. Champs manquants repérés par monitor/detection (#79)
 

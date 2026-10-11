@@ -519,9 +519,8 @@ sans trancher aucune règle de cette décision. Design détaillé : `contracts/.
   PR #123 n'est pas mergée, pour ne pas déstabiliser une PR en relecture. Conséquence : le statut
   de tranche (`PROTEGE`/`PUR`/`CHEQUE`) est porté par le **routeur** (`statusOf`), pas par le
   Ghost. La règle « le M' ne bouge que par le routeur » → **Tranchée, voir `docs/OPEN_ANSWERS.md`
-  §10bis-router** : option (b), seules les ventes **payées** passent par le routeur, le transfert
-  direct de M' reste libre (statut `PUR`/`CHEQUE`) ; l'enforcement d'un verrou de transfert dans le
-  `GhostToken` est **sans objet** et retiré du reste à faire de #84.
+  §10bis-router** : option b′, le M' non échu ne bouge que par des contrats autorisés (routeur,
+  marché de prêt #7), liste modifiable en 2/3 ; implémenté dans `GhostToken` (#145, PR #146).
 - **Restitution par racine de Merkle, pas de prorata on-chain.** Le calcul des parts (point 4 :
   prorata plafonné par le prix payé, reste au payeur du voleur) est fait **hors chaîne** et publié
   en racine de Merkle contestable (cohérent avec #85 piste b). Le coffre vérifie une feuille et

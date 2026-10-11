@@ -165,7 +165,8 @@ flowchart TD
 | [x] | #7 | contracts : balise de risque + faux marché — volet 3 | **cœur du projet** (§0, §4), plus optionnel ; dépend de #8 (lit le ratio). _(PR #111)_ |
 | [x] | #65 | contracts : pool simulé M-Ghost/USDC, règlement différé `swap-id` (§10, #43) | dépend de #8 ; sert le scénario D (#25). Devient un cas particulier du routeur §10bis (#84). _(issue fermée)_ |
 | [x] | #124 | contracts : Ghost — parité registre, scénario de récupération, mesures de gas | suite de #8 _(PR #126)_ |
-| [x] | #84 | contracts : M' protégé / pur / chèque, routeur + Ghost de paiement par actif, restitution (§10bis) | **Fait** : couche de règlement mergée (#130) ; enforcement routeur tranché option (b), OPEN_ANSWERS §10bis-router (#139). |
+| [x] | #84 | contracts : M' protégé / pur / chèque, routeur + Ghost de paiement par actif, restitution (§10bis) | **Fait** : couche de règlement mergée (#130) ; enforcement du routeur tranché option b′ (OPEN_ANSWERS §10bis-router) et implémenté (#146). |
+| [x] | #145 | contracts : le M' non échu ne bouge que par des contrats autorisés (§10bis b′) | suite de #84 _(PR #146)_ |
 | [x] | #13 | detection : surveillant ML / prédiction conforme | `optional` |
 | [x] | #25 | data : scénarios C et D (contagion + Token Ghost) | `optional`, dépend de #7/#8 _(simulation hors chaîne, PR #82)_ |
 | [x] | #106 | detection : recalcul rétroactif du lignage hors chaîne → `Alert.seeds` | suite de #85 (OPEN_ANSWERS §11, piste b) _(PR #112)_ |
