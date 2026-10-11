@@ -41,7 +41,7 @@ Pas d'effet de bord, typage complet, aucune dependance nouvelle : on ne lit que
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -145,6 +145,7 @@ def retroactive_seeds(
     *,
     sinks: frozenset[str] = frozenset({ZERO_ADDRESS}),
     initial_balances: dict[str, int] | None = None,
+    ghost_balance_of: Callable[[str], int] | None = None,
 ) -> list[AlertSeed]:
     """Recalcule le soupcon retroactif de chaque detenteur actuel du lot frauduleux.
 
@@ -156,6 +157,21 @@ def retroactive_seeds(
     est arrondi en `ceilDiv` (design #8). Le soupcon final de chaque adresse est
     **plafonne par son solde Ghost non converti** reconstruit depuis le rejeu
     (§9 : un Ghost deja converti est hors d'atteinte).
+
+    Plafond par la verite on-chain (§14, option (c), decision 2026-10-11). Le
+    rejeu seul **peut surestimer** le solde d'un detenteur : le monitor n'emet
+    pas les burns/conversions Ghost (`Ghost -> 0x0`), donc un porteur qui a deja
+    converti garde dans le rejeu un **solde fictif** et recevrait une graine pour
+    du Ghost qu'il ne detient plus (c'est exactement le trou §14). Quand
+    `ghost_balance_of` est fourni, le solde final de chaque detenteur est
+    **plafonne par son vrai solde on-chain** `min(solde_reconstruit,
+    ghost_balance_of(addr))` : c'est la verite de la chaine au moment du semis,
+    et c'est l'option (c) retenue (§14). L'appelant branche `ghost_balance_of`
+    sur un vrai `balanceOf` du contrat Ghost — **une lecture RPC par graine** ;
+    le module ne lit lui-meme aucune chaine (callback injectable, deterministe
+    et testable hors ligne). Quand `ghost_balance_of` est `None`, le
+    comportement est **inchange** (retrocompatibilite) : seul le rejeu borne le
+    solde, qui peut donc surestimer (le trou §14 reste ouvert dans ce mode).
 
     Les transferts sont supposes **publics et complets** (§11, hypothese
     explicite). Seuls les transferts Ghost (`is_ghost=True`) propagent le
@@ -207,6 +223,17 @@ def retroactive_seeds(
         initial_balances: soldes Ghost de depart connus par adresse (base
             units). S'il est fourni, les expediteurs ne deviennent pas negatifs
             (hypothese §11). Casse normalisee a l'entree.
+        ghost_balance_of: callback optionnel `addr -> solde Ghost on-chain`
+            (base units) lu au moment du semis (§14, option (c)). S'il est
+            fourni, le solde final de chaque detenteur est plafonne par
+            `min(solde_reconstruit, ghost_balance_of(addr))` — la verite de la
+            chaine, qui ferme le trou §14 (un porteur ayant converti, dont le
+            vrai solde vaut 0, ne recoit aucune graine). L'appelant le branche
+            sur un vrai `balanceOf` du contrat Ghost (**une lecture RPC par
+            graine**) ; `None` conserve le comportement actuel (rejeu seul,
+            retrocompatible), qui peut surestimer. Appele avec l'adresse
+            normalisee (casse minuscule), uniquement pour les detenteurs
+            candidats a une graine (sinks exclus).
 
     Returns:
         La liste des `AlertSeed` des detenteurs actuels dont le soupcon
@@ -215,8 +242,9 @@ def retroactive_seeds(
         (deterministe).
 
     Raises:
-        ValueError: si `origin_amount <= 0`, ou si un solde reconstruit devient
-            negatif (`amount > held`) sans `initial_balances` suffisant (B2).
+        ValueError: si `origin_amount <= 0`, si un solde reconstruit devient
+            negatif (`amount > held`) sans `initial_balances` suffisant (B2), ou
+            si `ghost_balance_of` renvoie un solde negatif.
     """
     if origin_amount <= 0:
         raise ValueError("origin_amount doit etre > 0")
@@ -299,8 +327,24 @@ def retroactive_seeds(
             continue
         if balance <= 0:
             continue
+        # Plafond par la verite on-chain (§14, option (c)). Le solde reconstruit
+        # par le rejeu peut surestimer (une conversion Ghost -> 0x0 n'est pas
+        # emise par le monitor, cf. §14). Quand `ghost_balance_of` est fourni, on
+        # borne le solde par le vrai solde on-chain lu au semis : un porteur qui
+        # a deja converti (balanceOf == 0) ne produit alors AUCUNE graine. Sans
+        # callback, seul le rejeu borne (comportement historique, retrocompat).
+        if ghost_balance_of is not None:
+            onchain = ghost_balance_of(address)
+            if onchain < 0:
+                raise ValueError(
+                    f"ghost_balance_of({address}) doit etre >= 0, recu {onchain}"
+                )
+            balance = min(balance, onchain)
+            if balance <= 0:
+                continue
         # Plafond par solde Ghost non converti (§9) : le soupcon ne peut depasser
-        # ce que l'adresse detient encore.
+        # ce que l'adresse detient encore (deja borne par la verite on-chain
+        # ci-dessus quand `ghost_balance_of` est fourni).
         capped = min(suspect[address], balance)
         if capped <= 0:
             continue

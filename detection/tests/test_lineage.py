@@ -264,6 +264,151 @@ def test_plafond_par_solde_ghost_non_converti() -> None:
         assert 0.0 <= seed.contamination_ratio <= 1.0
 
 
+# ---------------------------------------- §14 : plafond par balanceOf au semis
+
+
+def test_balanceof_zero_porteur_converti_aucune_graine() -> None:
+    """§14 (c) : un porteur dont balanceOf reel = 0 (converti) ne recoit AUCUNE graine.
+
+    Le monitor n'emet pas la conversion Ghost -> M, donc le rejeu laisse au
+    porteur un solde FICTIF et lui attribuerait une graine. Avec
+    `ghost_balance_of` branche sur le vrai `balanceOf` (0 ici car il a converti),
+    le plafond on-chain (option c) supprime la graine.
+    """
+    holder = _addr(1)
+    transfers = [
+        _ghost_transfer(
+            sender=_addr(0),
+            recipient=holder,
+            amount=100,
+            at=_T0 + timedelta(seconds=1),
+            nonce=1,
+        ),
+    ]
+    now = _T0 + timedelta(minutes=1)
+
+    # Rejeu seul : le porteur garde 100 fictif et recoit une graine.
+    seeds_replay_only = retroactive_seeds(
+        transfers, origin_address=_addr(0), origin_amount=100, now=now
+    )
+    assert len(seeds_replay_only) == 1
+    assert seeds_replay_only[0].address == holder
+    assert seeds_replay_only[0].suspect_amount == 100
+
+    # Verite on-chain : il a tout converti, balanceOf == 0 -> aucune graine.
+    balances = {holder: 0}
+    seeds = retroactive_seeds(
+        transfers,
+        origin_address=_addr(0),
+        origin_amount=100,
+        now=now,
+        ghost_balance_of=lambda a: balances.get(a, 0),
+    )
+    assert seeds == []
+    assert retroactive_recovery_total(seeds) == 0
+
+
+def test_balanceof_reel_inferieur_plafonne_le_soupcon() -> None:
+    """§14 (c) : balanceOf reel < solde reconstruit ⇒ soupcon plafonne, ratio recalcule.
+
+    Le porteur a converti une PARTIE de son Ghost (vu par personne) : le rejeu
+    lui laisse 100 mais son vrai solde on-chain n'est que 40. Le soupcon est
+    plafonne a 40 et le ratio recalcule sur ce solde reel (40/40 = 1.0).
+    """
+    holder = _addr(1)
+    transfers = [
+        _ghost_transfer(
+            sender=_addr(0),
+            recipient=holder,
+            amount=100,
+            at=_T0 + timedelta(seconds=1),
+            nonce=1,
+        ),
+    ]
+    now = _T0 + timedelta(minutes=1)
+
+    balances = {holder: 40}
+    seeds = retroactive_seeds(
+        transfers,
+        origin_address=_addr(0),
+        origin_amount=100,
+        now=now,
+        ghost_balance_of=lambda a: balances.get(a, 0),
+    )
+    (seed,) = seeds
+    assert seed.address == holder
+    # Soupcon plafonne par le solde reel (40), pas le solde fictif (100).
+    assert seed.suspect_amount == 40
+    # Ratio recalcule sur le solde reel : 40 suspect / 40 Ghost reel = 1.0.
+    assert seed.contamination_ratio == 1.0
+    assert retroactive_recovery_total(seeds) == 40
+
+
+def test_balanceof_none_retrocompat_comportement_inchange() -> None:
+    """§14 : `ghost_balance_of=None` ⇒ comportement STRICTEMENT identique a avant.
+
+    Retrocompatibilite : la sortie sans callback doit etre bit-a-bit la meme que
+    l'appel historique a cinq arguments positionnels, sur un flux reel (fan-out).
+    """
+    amount = 1000
+    fan_out = 8
+    per = amount // fan_out
+    transfers = [
+        _ghost_transfer(
+            sender=_addr(0),
+            recipient=_addr(100 + k),
+            amount=per,
+            at=_T0 + timedelta(seconds=k + 1),
+            nonce=k + 1,
+        )
+        for k in range(fan_out)
+    ]
+    now = _T0 + timedelta(minutes=1)
+
+    seeds_legacy = retroactive_seeds(
+        transfers, origin_address=_addr(0), origin_amount=amount, now=now
+    )
+    seeds_none = retroactive_seeds(
+        transfers,
+        origin_address=_addr(0),
+        origin_amount=amount,
+        now=now,
+        ghost_balance_of=None,
+    )
+
+    # Identique : memes adresses, memes montants, memes ratios, meme ordre.
+    assert [
+        (s.address, s.suspect_amount, s.contamination_ratio) for s in seeds_none
+    ] == [
+        (s.address, s.suspect_amount, s.contamination_ratio) for s in seeds_legacy
+    ]
+    assert retroactive_recovery_total(seeds_none) == amount
+
+
+def test_balanceof_negatif_leve_valueerror() -> None:
+    """§14 : un balanceOf negatif renvoye par le callback ⇒ ValueError explicite."""
+    holder = _addr(1)
+    transfers = [
+        _ghost_transfer(
+            sender=_addr(0),
+            recipient=holder,
+            amount=100,
+            at=_T0 + timedelta(seconds=1),
+            nonce=1,
+        ),
+    ]
+    now = _T0 + timedelta(minutes=1)
+
+    with pytest.raises(ValueError, match=">= 0"):
+        retroactive_seeds(
+            transfers,
+            origin_address=_addr(0),
+            origin_amount=100,
+            now=now,
+            ghost_balance_of=lambda a: -1,
+        )
+
+
 # --------------------------------------------------------------------------- 4
 
 
