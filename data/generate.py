@@ -108,9 +108,13 @@ class GenerationParams:
         users: taille de la population legitime.
         mints_per_slot: nombre moyen de mints par creneau (avant saisonnalite).
         transfers_per_slot: nombre moyen de transferts par creneau.
+        transfer_fraction: part du solde disponible envoyee par un transfert legitime
+            (tirage uniforme entre les deux bornes). Pese fortement sur la detection (#3).
         seasonality: amplitude de la variation jour/nuit (0 = plate).
         growth: croissance progressive du volume sur la periode (0.1 = +10 %).
         mean_deposit_tokens: depot moyen d'un utilisateur legitime (tokens).
+        initial_balance_factor: solde initial d'un utilisateur, en multiples d'un depot
+            tire (fixe l'offre initiale, donc la croissance relative due aux mints).
         ghost_window_minutes: fenetre Ghost normale (§0bis : ex. 10 min).
         block_time_seconds: temps de bloc approximatif (Fuji ~2 s).
         attack_at_fraction: position de l'attaque dans la periode (historique
@@ -127,9 +131,11 @@ class GenerationParams:
     users: int = 200
     mints_per_slot: float = 1.0
     transfers_per_slot: float = 12.0
+    transfer_fraction: tuple[float, float] = (0.05, 0.5)
     seasonality: float = 0.5
     growth: float = 0.1
     mean_deposit_tokens: float = 1_000.0
+    initial_balance_factor: int = 50
     ghost_window_minutes: int = 10
     block_time_seconds: float = 2.0
     attack_at_fraction: float = 0.75
@@ -144,6 +150,7 @@ class GenerationParams:
             "hours",
             "slot_minutes",
             "mean_deposit_tokens",
+            "initial_balance_factor",
             "ghost_window_minutes",
             "block_time_seconds",
             "attack_deposit_tokens",
@@ -156,6 +163,9 @@ class GenerationParams:
         for name in ("mints_per_slot", "transfers_per_slot", "seasonality", "growth"):
             if getattr(self, name) < 0:
                 raise ValueError(f"{name} doit etre >= 0.")
+        low, high = self.transfer_fraction
+        if not 0 < low <= high <= 1:
+            raise ValueError("transfer_fraction doit verifier 0 < min <= max <= 1.")
         if self.users < 2:
             raise ValueError("users doit etre >= 2.")
         if not 0 < self.attack_at_fraction < 1:
@@ -203,7 +213,11 @@ def event_time(event: Event) -> datetime:
 
 
 class _Ledger:
-    """Soldes par adresse : vrai token + lots Ghost en fenetre (§0bis : tout transfert)."""
+    """Soldes par adresse : vrai token + lots Ghost en fenetre (§0bis : tout transfert).
+
+    §0bis-b : un Ghost transfere garde son echeance d'origine ; seul un transfert de vrai
+    token ouvre une fenetre neuve.
+    """
 
     def __init__(self, window: timedelta) -> None:
         self._window = window
@@ -221,23 +235,43 @@ class _Ledger:
         self.mature(address, now)
         return self.real.get(address, 0), sum(a for a, _ in self.ghost.get(address, []))
 
-    def credit_ghost(self, address: str, amount: int, now: datetime) -> None:
-        self.ghost.setdefault(address, []).append((amount, now + self._window))
+    def credit_ghost(
+        self,
+        address: str,
+        amount: int,
+        now: datetime,
+        lots: list[tuple[int, datetime]] | None = None,
+    ) -> None:
+        """Credite du Ghost : lots transmis (echeance gardee) ou fenetre neuve."""
+        self.ghost.setdefault(address, []).extend(lots or [(amount, now + self._window)])
 
-    def debit(self, address: str, amount: int, from_ghost: bool) -> None:
+    def debit(self, address: str, amount: int, from_ghost: bool) -> list[tuple[int, datetime]]:
+        """Debite ; renvoie les lots Ghost preleves (vide pour du vrai token)."""
         if not from_ghost:
             self.real[address] -= amount
-            return
+            return []
         remaining = amount
-        lots: list[tuple[int, datetime]] = []
-        for lot_amount, at in self.ghost[address]:  # FIFO : les plus anciens d'abord
-            used = min(lot_amount, remaining)
+        kept: list[tuple[int, datetime]] = []
+        taken: list[tuple[int, datetime]] = []
+        for lot_amount, at in sorted(self.ghost[address], key=lambda lot: lot[1]):
+            used = min(lot_amount, remaining)  # les plus anciens d'abord
             remaining -= used
+            if used:
+                taken.append((used, at))
             if lot_amount > used:
-                lots.append((lot_amount - used, at))
+                kept.append((lot_amount - used, at))
         if remaining:
             raise ValueError("debit Ghost superieur au solde")
-        self.ghost[address] = lots
+        self.ghost[address] = kept
+        return taken
+
+    def ghost_share(self, now: datetime) -> float:
+        """Part de l'offre encore en Ghost (non convertible) a `now`."""
+        for address in list(self.ghost):
+            self.mature(address, now)
+        ghost = sum(a for lots in self.ghost.values() for a, _ in lots)
+        total = ghost + sum(self.real.values())
+        return ghost / total if total else 0.0
 
 
 class _Simulation:
@@ -253,7 +287,9 @@ class _Simulation:
         self._request_ids = itertools.count()
         self.users = [self.new_address() for _ in range(params.users)]
         for user in self.users:  # soldes pre-existants (pas d'evenement emis)
-            self.ledger.real[user] = self.deposit_amount()
+            self.ledger.real[user] = self.deposit_amount() * params.initial_balance_factor
+        self.initial_supply = sum(self.ledger.real.values())
+        self.ghost_shares: list[float] = []
 
     # --- identites fictives
     def new_address(self) -> str:
@@ -349,7 +385,7 @@ class _Simulation:
     def transfer(
         self, sender: str, recipient: str, amount: int, at: datetime, *, from_ghost: bool
     ) -> TransferEvent:
-        self.ledger.debit(sender, amount, from_ghost)
+        lots = self.ledger.debit(sender, amount, from_ghost)
         event = TransferEvent(
             tx_hash=self.new_tx(),
             log_index=0,
@@ -362,7 +398,7 @@ class _Simulation:
             is_ghost=from_ghost,
         )
         self.events.append(event)
-        self.ledger.credit_ghost(recipient, amount, at)
+        self.ledger.credit_ghost(recipient, amount, at, lots)
         return event
 
     def random_transfer(self, at: datetime) -> None:
@@ -374,7 +410,7 @@ class _Simulation:
                 continue
             from_ghost = real == 0 or (ghost > 0 and self.rng.random() >= real / (real + ghost))
             available = ghost if from_ghost else real
-            amount = max(1, int(available * self.rng.uniform(0.05, 0.5)))
+            amount = max(1, int(available * self.rng.uniform(*self.p.transfer_fraction)))
             recipient = self.rng.choice(self.users)
             while recipient == sender:
                 recipient = self.rng.choice(self.users)
@@ -393,6 +429,7 @@ class _Simulation:
             for _ in range(self.poisson(self.p.transfers_per_slot * factor)):
                 when = at + timedelta(seconds=self.rng.uniform(0, span))
                 self.schedule(when, self.random_transfer)
+            self.schedule(at, lambda now: self.ghost_shares.append(self.ledger.ghost_share(now)))
             at += slot
 
     def _legit_mint(self, at: datetime) -> None:
@@ -406,7 +443,13 @@ def _counts(events: list[Event]) -> dict[str, int]:
     return dict(Counter(type(e).__name__ for e in events))
 
 
-def _manifest(name: str, params: GenerationParams, events: list[Event]) -> dict[str, Any]:
+def _quantile(values: list[float], q: float) -> float:
+    ordered = sorted(values)
+    return ordered[min(len(ordered) - 1, int(q * len(ordered)))] if ordered else 0.0
+
+
+def _manifest(name: str, params: GenerationParams, sim: _Simulation) -> dict[str, Any]:
+    events = sim.events
     return {
         "scenario": name,
         "fictive_data": True,
@@ -415,6 +458,14 @@ def _manifest(name: str, params: GenerationParams, events: list[Event]) -> dict[
         "chain_id": FUJI_CHAIN_ID,
         "period": {"start": params.start.isoformat(), "end": params.end.isoformat()},
         "counts": _counts(events),
+        "initial_supply": sim.initial_supply,
+        "known_addresses": list(sim.users),
+        "exit_points": [EXIT_POINT],
+        "ghost_share_of_supply": {
+            "median": _quantile(sim.ghost_shares, 0.5),
+            "p95": _quantile(sim.ghost_shares, 0.95),
+            "note": "part de l'offre en Ghost non convertible, echantillonnee par creneau",
+        },
         "attack": None,
     }
 
@@ -425,7 +476,7 @@ def generate_normal(params: GenerationParams | None = None) -> GeneratedScenario
     sim = _Simulation(params)
     sim.plan_normal_traffic()
     events = sim.run()
-    return GeneratedScenario("normal", events, _manifest("normal", params, events))
+    return GeneratedScenario("normal", events, _manifest("normal", params, sim))
 
 
 def _scenario_a_variant(params: GenerationParams, variant: str) -> GeneratedScenario:
@@ -447,7 +498,7 @@ def _scenario_a_variant(params: GenerationParams, variant: str) -> GeneratedScen
             lambda at, d=deposit, m=minted: sim.mint(attacker, d, at, minted=m, on_done=record),
         )
     events = sim.run()
-    manifest = _manifest(f"A_{variant}", params, events)
+    manifest = _manifest(f"A_{variant}", params, sim)
     manifest["attack"] = {
         "kind": "inflated_mint",
         "contract": variant,
@@ -482,14 +533,16 @@ def generate_scenario_b(params: GenerationParams | None = None) -> GeneratedScen
     request_ids: list[int] = []
 
     def drain(sender: str, recipients: list[str], at: datetime) -> None:
-        """Vide le solde Ghost de `sender` en parts egales vers `recipients`."""
-        _, ghost = sim.ledger.balances(sender, at)
-        share = ghost // len(recipients)
-        for i, recipient in enumerate(recipients):
-            amount = share if i < len(recipients) - 1 else ghost - share * (len(recipients) - 1)
-            if amount > 0:
-                event = sim.transfer(sender, recipient, amount, at, from_ghost=True)
-                attack_txs.append(event.tx_hash)
+        """Vide le solde de `sender` (Ghost puis vrai token si deja converti) en parts egales."""
+        real, ghost = sim.ledger.balances(sender, at)
+        for balance, from_ghost in ((ghost, True), (real, False)):
+            share = balance // len(recipients)
+            for i, recipient in enumerate(recipients):
+                last = i == len(recipients) - 1
+                amount = balance - share * (len(recipients) - 1) if last else share
+                if amount > 0:
+                    event = sim.transfer(sender, recipient, amount, at, from_ghost=from_ghost)
+                    attack_txs.append(event.tx_hash)
 
     def after_mint(request: MintRequest, event: MintEvent) -> None:
         request_ids.append(request.request_id)
@@ -506,7 +559,7 @@ def generate_scenario_b(params: GenerationParams | None = None) -> GeneratedScen
         lambda at: sim.mint(victim, deposit, at, recipient=attacker, on_done=after_mint),
     )
     events = sim.run()
-    manifest = _manifest("B", params, events)
+    manifest = _manifest("B", params, sim)
     manifest["attack"] = {
         "kind": "recipient_hijack_1to1",
         "broken_invariant": "I3",
