@@ -438,7 +438,7 @@ pas citer comme chiffres de production (`docs/CLAIMS.md`) :
   jusqu'à l'expiration de l'incident ; seuils > 0 : seule la part suspecte reste bloquée. Choisir
   des seuils > 0 pour la démo ? **Ouvert** (lié à #3, valeurs à mesurer).
 
-## 16. Règlement §10bis (#84) — architecture — _choix de l'agent (2026-10-11, provisoire, à valider en équipe)_
+## 17. Règlement §10bis (#84) — architecture — _choix de l'agent (2026-10-11, provisoire, à valider en équipe)_
 
 Choix faits par l'assistant de @denybs pour implémenter la décision §10bis (`OPEN_ANSWERS.md`),
 sans trancher aucune règle de cette décision. Design détaillé : `contracts/.plan/design-84.md`.
