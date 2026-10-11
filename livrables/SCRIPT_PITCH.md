@@ -113,18 +113,26 @@ Le rapport DORA est un brouillon que l'humain relit, pas une déclaration automa
 ## Slide 7 — Pour qui, et quel modèle (0:25)
 
 **À l'écran** : cibles — émetteurs de stablecoins et d'actifs tokenisés, prestataires crypto
-soumis à MiCA et DORA, protocoles de prêt en aval. Modèle : **standard ouvert**, chaque
-émetteur déploie sa propre instance.
+soumis à MiCA et DORA, protocoles de prêt en aval. Modèle : **commission à la sortie de
+quarantaine** (conversion Ghost → vrai jeton) = **petit plancher fixe + supplément indexé sur le
+ratio de contamination**. Le plancher rémunère l'opérateur, le supplément alimente un **fonds
+d'assurance**. Les transferts et les swaps restent gratuits.
 
 **À dire** : « Nos utilisateurs sont les émetteurs de jetons adossés et les protocoles qui
-acceptent ces jetons en garantie. On propose un standard ouvert et une bibliothèque de
-référence : chaque émetteur déploie sa propre instance, sans registre central, sans frais de
-protocole. »
+acceptent ces jetons en garantie. Nous opérons le protocole, et nous prenons une commission à
+un seul moment : quand un Ghost sort de quarantaine et devient du vrai jeton. Un petit montant
+fixe, plus un supplément qui monte avec le risque. Un utilisateur propre paie presque rien, un
+Ghost suspect paie plus, et cette part va dans un fonds d'assurance qui couvre les
+destructions. On fait payer le risque, pas l'usage. »
 
-> **À trancher en équipe avant de monter la slide** : la source de revenu. Le dépôt acte
-> « standard, pas service » et « aucun frais de protocole » ; la marge de conversion est
-> remise en cause (§10bis). Pistes possibles, non décidées : intégration et audit pour les
-> émetteurs, surveillance opérée pour leur compte. Ne rien annoncer qui ne soit pas décidé.
+> **Proposé (2026-10-11, Yannis), à valider en équipe avant de monter la slide.** Précise la
+> marge de conversion décidée en §0 (`docs/OPEN_ANSWERS.md`) : barème **plancher + indexé sur le
+> ratio**, affectation **plancher → revenu, supplément → fonds d'assurance**. Choix du modèle
+> **opérateur** (on opère le protocole et on encaisse la commission) plutôt que « standard
+> ouvert, chaque émetteur déploie son instance », qui ferait revenir la commission à
+> l'émetteur. Reste compatible avec la §10bis : rien n'est prélevé sur l'argent saisi et
+> restitué aux victimes. **Aucun taux n'est annoncé** tant qu'il n'est pas mesuré
+> (`docs/CLAIMS.md`).
 
 ## Slide 8 — Équipe, limites, suite (0:20)
 
@@ -152,6 +160,9 @@ Merci. »
 | Et si la détection dépasse 10 min ? | Tout est converti. La marge est bornée par la tranche d'agrégation de 5 min ; la latence réseau réelle n'est pas mesurée. |
 | Dix minutes d'attente, c'est acceptable ? | C'est le coût assumé : environ 3 % de l'offre immobilisée en médiane. Le Ghost reste échangeable pendant ce temps. |
 | Le multisig est réel ? | Simulé dans la maquette, présenté comme tel. |
+| Votre commission taxe les honnêtes ? | Presque pas : on ne prélève qu'à la sortie de quarantaine, jamais sur les transferts ni les swaps. Le plancher est petit ; le supplément suit le ratio de contamination, donc un Ghost propre ne paie que le plancher. |
+| Vous gagnez de l'argent sur la fraude ? | Non. Le supplément lié au risque va au fonds d'assurance, pas en revenu, et rien n'est prélevé sur l'argent saisi et restitué aux victimes. |
+| Quel taux ? | Pas encore fixé : il dépend du trafic réel, et on n'annonce pas de chiffre non mesuré. |
 
 ## Version finale (3 min)
 
