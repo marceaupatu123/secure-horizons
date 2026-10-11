@@ -44,7 +44,9 @@ sur la sortie standard (journaux sur la sortie d'erreur). Aucune intégration av
 ## Surveillant de mint à règles (#11)
 
 `RuleBasedMonitor.check_mint(event, context)` suit `docs/OPEN_ANSWERS.md` §1 : **aucun seuil sur
-la taille d'un mint**. Il vérifie I1 (`minted = dépôt × taux` à ε près), I5
+la taille d'un mint**. Il vérifie I1 (`minted = dépôt × taux` à ε près), I3 (destinataire du
+mint = déposant de la demande, #91 : détournement à 1:1 du scénario B, entrée
+`MintContext.requester`), I5
 (`Δ totalSupply = Σ Mint − Σ Burn`), I6 (`totalSupply ≤ collatéral × facteur`), les événements
 d'administration non annoncés et l'écart du taux au-delà de δ vs une référence. Une `Alert`
 signifie seulement **retarder** le périmètre (§3) ; détruire / pause globale = multisig.
@@ -98,3 +100,19 @@ propositions **non actées** de `docs/OPEN_QUESTIONS.md` §2 et sont **PROVISOIR
   (passée via `circulating_supply` / `update_circulating_supply`) ; `Alert` n'a pas de champ pour
   le HHI brut ni pour le nombre de destinataires distincts (d'où 1/HHI dans `dispersion_score` et
   le détail dans `reason`).
+
+## Surveillant ML + prédiction conforme (#13, optionnel, NON branché)
+
+`detection/conformal.py` : `ConformalSlotMonitor` = `IsolationForest` (scikit-learn) entraîné sur des
+tranches **normales**, puis p-valeur conforme « split » sur une calibration disjointe :
+`p = (1 + #{scores calib ≥ s}) / (n + 1)`, signal si `p ≤ alpha`. Caractéristiques : ratios de
+`TransferSlotStats` uniquement (volume/offre, HHI, part neuve, part sortie, log fan-out).
+
+- **Garantie** : taux de faux positifs par tranche ≤ `alpha` **si** le trafic testé est échangeable
+  avec la calibration. Elle tombe dès que le trafic change (croissance, usage nouveau), elle est
+  marginale (pas une borne par journée) et ne dit **rien** sur la détection.
+- **Ne déclenche rien** : renvoie un `ConformalVerdict`, pas d'`Alert` (OPEN_ANSWERS §1 a écarté la
+  prédiction conforme pour la démo). Mesure : `python -m detection.conformal_eval` (~1 min).
+- **Mesure (seed 42, simulation)** : FP mesuré ≈ alpha (0,7–1,0 % à α = 1 %, 3,8–4,5 % à α = 5 %),
+  mais pas mieux que les règles : B 0,5 % non détecté sur `gros_transferts`. Détail et décision
+  proposée : `docs/OPEN_QUESTIONS.md` §13.

@@ -133,7 +133,7 @@ flowchart TD
 | Fait | Issue | Tâche | Dépend de |
 |------|-------|-------|-----------|
 | [ ] | #11 | detection : surveillant règles (mint) | #2, #9 |
-| [ ] | #12 | detection : surveillant transferts anormaux | #2, #10 |
+| [x] | #12 | detection : surveillant transferts anormaux | #2, #10 |
 | [x] | #14 | llm : client Bedrock Converse (rate limiter) | #28 |
 | [x] | #17 | response : orchestration de la réponse graduée | #2, detection _(PR #56, mergée)_ |
 | [x] | #6 | contracts : invariants/fuzzing (perte max bornée) — volet 2 | #5 _(PR #71)_ |
@@ -157,7 +157,7 @@ flowchart TD
 | [ ] | #7 | contracts : balise de risque + faux marché — volet 3 | **cœur du projet** (§0, §4), plus optionnel ; dépend de #8 (lit le ratio). |
 | [ ] | #65 | contracts : pool simulé M-Ghost/USDC, règlement différé `swap-id` (§10, #43) | dépend de #8 ; sert le scénario D (#25). Devient un cas particulier du routeur §10bis (#84). |
 | [ ] | #84 | contracts : M' protégé / pur / chèque, routeur + Ghost de paiement par actif, restitution (§10bis) | dépend de #8, étend #65 ; bloqué en conception par #85. |
-| [ ] | #13 | detection : surveillant ML / prédiction conforme | `optional` |
+| [x] | #13 | detection : surveillant ML / prédiction conforme | `optional` |
 | [x] | #25 | data : scénarios C et D (contagion + Token Ghost) | `optional`, dépend de #7/#8 _(simulation hors chaîne, PR #82)_ |
 
 ---

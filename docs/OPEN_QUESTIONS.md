@@ -393,3 +393,28 @@ silence (fail-open). Tous configurables dans `monitor/config.py`, aucun chiffre 
 - **Log mal formé** : ignoré + log ERROR (au lieu de couper tout le flux).
 - **Checkpoint fichier local**, sémantique « au moins une fois », **désactivé par défaut** (un
   fichier par process). À revoir si le monitor tourne en plusieurs instances.
+
+## 13. Surveillant ML / prédiction conforme (#13) — _mesuré, proposition à valider en équipe_
+
+Implémenté en piste de recherche, **non branché** (`detection/conformal.py`,
+`python -m detection.conformal_eval`). Choix de l'assistant (2026-10-11, pour Yannis) :
+`IsolationForest` sur les ratios de tranche, partage 50/50 entraînement/calibration aléatoire
+(graine fixe), 7 jours d'apprentissage, test sur le 8e jour (jamais vu), W = 10 min.
+
+Mesure (seed 42, données fictives, après #87) :
+
+| profil | α | FP mesuré (288 tranches) | B 0,5 % | B 2 % | B 5 % | B 10 % |
+|---|---|---|---|---|---|---|
+| gros_transferts | 1 % | 1,0 % | non | oui | oui | oui |
+| gros_transferts | 5 % | 4,5 % | non | oui | oui | oui |
+| petits_transferts | 1 % | 0,7 % | oui | oui | oui | oui |
+| petits_transferts | 5 % | 3,8 % | oui | oui | oui | oui |
+
+Lecture : la borne de faux positifs **tient** sur ce trafic (FP ≈ α), mais les règles actuelles
+font mieux (z volume = z HHI = 3 : 2/864 tranches en FP, B 0,5 % détecté avant conversion). La
+garantie suppose que le trafic testé ressemble au trafic de calibration (pas de croissance, pas
+d'usage nouveau) — hypothèse qu'un vrai protocole ne vérifie pas.
+
+**Proposition** : garder les seuils simples pour la démo (confirme OPEN_ANSWERS §1) ; citer la
+prédiction conforme au jury comme piste mesurée, avec sa limite. Une seule graine mesurée : à
+répéter avant toute affirmation chiffrée (`docs/CLAIMS.md`).
