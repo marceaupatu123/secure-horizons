@@ -36,7 +36,8 @@ contracts/
     ├── ScenarioA.t.sol         # même attaque rejouée sur les deux contrats
     ├── StolenServiceKey.fuzz.t.sol
     ├── ghost/                  # une règle du design -> au moins un test (Buckets, Suspicion,
-    │                           #   Convert, Watcher, Guardian, Events)
+    │                           #   Convert, Watcher, Guardian, Events, LedgerParity)
+    ├── gas/GhostGas.t.sol      # mesures de gas (--isolate), recopiées plus bas
     └── invariant/
         ├── ProtectedMinterHandler.sol
         ├── ProtectedMinter.invariant.t.sol
@@ -324,10 +325,45 @@ d'incident, séries d'extension) et classe chaque action « doit réussir » / �
   avant l'expiration fige le soupçon (`Sc`), qui reste verrouillé.
 - Le M obtenu **avant** le gel n'est jamais repris (voulu) : seul du Ghost sans soupçon valide
   sort.
-- **Pas encore écrits** (suivis en issue) : parité avec `data/ghost_ledger.py`
-  (`LedgerParity.t.sol`), scénario de récupération après fragmentation, mesures de gas
-  (`GhostGas.t.sol`). Tailles mesurées (`forge build --sizes`) : `GhostToken` 21 173 o
-  (limite 24 576), initcode `ProtectedMinter` 33 546 o (limite 49 152).
+- Tailles mesurées (`forge build --sizes`) : `GhostToken` 21 173 o (limite 24 576), initcode
+  `ProtectedMinter` 33 546 o (limite 49 152).
+- **Parité avec le registre hors chaîne** `data/ghost_ledger.py` : `test/ghost/LedgerParity.t.sol`
+  rejoue une chaîne courte (mints, transferts, conversions, transfert de M) et compare soldes,
+  tranches et montants convertis aux valeurs du registre, recopiées en dur.
+- **Récupération après fragmentation** : `test/ScenarioRecovery.t.sol` (fuzz chaîne + fan-out)
+  mesure la part récupérée. Détection complète : 100 % du soupçon semé est récupéré par la
+  destruction (rien de suspect n'a pu être converti). Détection partielle (⅓ des détenteurs non
+  ciblés) : part récupérée affichée (≈ 73 % sur la graine testée), le soupçon confirmé restant
+  reste verrouillé chez les non-ciblés. Confirmation après `expiresAt` : récupération 0 (silence =
+  retour à la normale, limite honnête).
+
+### Gas mesuré (`test/gas/GhostGas.t.sol`)
+
+Commande : `forge test --match-path test/gas/GhostGas.t.sol --isolate -vv` (chaque appel est une
+transaction séparée, stockage froid). Fixtures N = 10 (anneau de 11). Chiffres d'une exécution
+locale (forge 1.5.1), à refaire après tout changement du contrat ; ce ne sont pas des promesses.
+
+| Opération | Gas |
+|---|---|
+| _référence : transfert ERC-20 OpenZeppelin (MockUSDC), destinataire vide_ | _55 276_ |
+| _référence : transfert ERC-20, destinataire déjà crédité_ | _44 679_ |
+| transfert de Ghost, 1 tranche, destinataire vide | 131 011 |
+| transfert de Ghost, 1 tranche, tranche déjà présente chez le destinataire | 82 413 |
+| transfert de Ghost avec soupçon, 2 comptes dans l'incident | 135 022 |
+| transfert de Ghost, **pire cas** (11 tranches vers destinataire vide) | 425 786 |
+| transfert de Ghost, 11 tranches vers 11 tranches échues à régler | 247 571 |
+| transfert de M (burn + Ghost frais) | 124 449 |
+| `convert` (11 tranches échues à régler) | 172 651 |
+| `delay`, 1 compte (ouvre l'incident) | 251 553 |
+| `delay`, 64 comptes (rejoint l'incident) | 7 779 806 |
+| destruction 2/3, 64 cibles (approbation qui exécute) | 5 501 318 |
+
+Lecture, rapportée à la référence mesurée ci-dessus : un transfert de Ghost courant coûte de
+1,8× (destinataire déjà crédité, 82 413 / 44 679) à 2,4× (destinataire vide, 131 011 / 55 276)
+un transfert ERC-20 simple, et le pire cas 7,7× (425 786 / 55 276). Les lots de 64 (`delay`,
+destruction) font plusieurs millions de gas : la taille de lot utilisable dépend de la limite de
+gas par bloc du réseau visé (à vérifier sur Fuji avant la démo). Si c'est trop cher, seul N
+change (§0bis-b), pas l'algorithme.
 
 ## À produire plus tard — _proposé, à valider en équipe_
 
@@ -336,3 +372,15 @@ d'incident, séries d'extension) et classe chaque action « doit réussir » / �
 - **Routeur de règlement et M' protégé / pur** (#84, §10bis), au-dessus du Ghost.
 
 Détails et arbitrages ouverts : voir `docs/OPEN_QUESTIONS.md` et `docs/CLAIMS.md`.
+
+## Balise de risque + faux marché de prêt (#7, volet 3)
+
+- `src/RiskBeacon.sol` : façade de **lecture** de `IGhostRisk` (aucune écriture de risque).
+  `riskOf(a)` → ratio, montant suspect, fin de fenêtre, état (`PAUSE_GLOBALE` > `DETRUIT` >
+  `RETARDE` > `NORMAL`), incident. `publish(address[])` permissionless, borné à 64, émet
+  `RiskPublished` pour le monitor.
+- `src/MockLendingMarket.sol` : prêt FICTIF de MockUSDC contre M / M-Ghost. Avec balise : décote
+  `base + slope × ratio` du soupçon **importé au dépôt** (mesuré sur le solde réel du marché),
+  emprunt refusé hors état NORMAL ou au-delà des seuils. Verrou de position `window + slot`.
+- Tests : `test/RiskBeacon.t.sol` contre `test/utils/MockGhostRisk.sol` (en attendant #8), dont le
+  scénario C. Choix provisoires : `docs/OPEN_QUESTIONS.md` §14.
