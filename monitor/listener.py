@@ -6,13 +6,15 @@ Mints (issue #9) : ecouteur ERC-20 GENERIQUE, faute de contrat deploye
 contrat token configure, avec `from == 0x000...000`. Les logs sont lus par
 polling `eth_getLogs` sur des plages de blocs.
 
-GAP connu — `MintEvent.request_id` : un `Transfer` ERC-20 ne porte pas
-l'identifiant de la `MintRequest` (« demande n°X », OPEN_ANSWERS §0). Le
-decodeur ERC-20 renseigne donc `UNKNOWN_REQUEST_ID` (sentinelle PROVISOIRE).
-Quand le contrat protege (#5) emettra un evenement dedie (ex. `Minted` avec
-l'id de demande), on branche un nouveau `MintLogDecoder` a la place du decodeur
-ERC-20 (`ChainListener(..., mint_decoders=(MINTED_DECODER,))`), sans toucher a
-la boucle de polling. Meme mecanisme envisage pour les evenements
+GAP résolu (#79, OPEN_ANSWERS §79) — `MintEvent.request_id` : un `Transfer`
+ERC-20 ne porte pas l'identifiant de la `MintRequest` (« demande n°X »,
+OPEN_ANSWERS §0). `MintEvent.request_id` est desormais `int | None` et le
+decodeur ERC-20 renseigne `UNKNOWN_REQUEST_ID = None` (plus `0`, qui entrait en
+collision avec la vraie demande n°0). Quand le contrat protege (#5) emettra un
+evenement dedie (ex. `Minted` avec l'id de demande), on branche un nouveau
+`MintLogDecoder` a la place du decodeur ERC-20
+(`ChainListener(..., mint_decoders=(MINTED_DECODER,))`), sans toucher a la
+boucle de polling. Meme mecanisme envisage pour les evenements
 d'administration (`Upgraded`, `RoleGranted`, OPEN_ANSWERS §1), non implementes
 ici : leur liste exacte reste ouverte.
 
@@ -70,9 +72,13 @@ ZERO_ADDRESS = "0x" + "00" * 20
 # Adresse nulle encodee en topic indexe (32 octets).
 ZERO_ADDRESS_TOPIC = "0x" + "00" * 32
 
-# PROVISOIRE — sentinelle tant que l'evenement de mint ne porte pas l'id de
-# demande (voir GAP en tete de module). Ne PAS l'interpreter comme « demande 0 ».
-UNKNOWN_REQUEST_ID = 0
+# Sentinelle « id de demande inconnu » : un Transfer ERC-20 nu ne porte pas
+# l'id de demande. Depuis la decision #79 (OPEN_ANSWERS §79), c'est `None` et
+# non plus `0` — `0` entrait en collision avec la vraie demande n°0
+# (`data/generate.py` numerote a partir de 0). `MintEvent.request_id` est
+# desormais `int | None`. Un evenement dedie futur (`Minted` cote contrat #5)
+# renseignera un vrai id.
+UNKNOWN_REQUEST_ID: int | None = None
 
 # Selecteur ERC-20 `totalSupply()` = 4 premiers octets de keccak256("totalSupply()").
 TOTAL_SUPPLY_SELECTOR = "0x18160ddd"
@@ -106,7 +112,7 @@ class DecodedMint:
 
     recipient: str
     amount: int
-    request_id: int
+    request_id: int | None
 
 
 @dataclass(frozen=True)

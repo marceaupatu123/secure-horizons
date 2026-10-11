@@ -97,7 +97,7 @@ décidable par un surveillant/IA seul ; `destroy` et `global_pause` exigent le m
 | `observed_at` | `datetime` | UTC, ISO 8601 | horodatage d'observation par le monitor |
 | `recipient` | `Address` | regex adresse | adresse créditée par le mint |
 | `amount` | `int` | `gt=0` | montant minté en base units (dérivé on-chain) |
-| `request_id` | `int` | `ge=0` | identifiant de la `MintRequest` traitée (« demande n°X ») |
+| `request_id` | `int \| None` | `ge=0`, défaut `None` | id de la `MintRequest` traitée (« demande n°X »), ou `None` si l'observation ne le porte pas (Transfer ERC-20 nu). `None` = INCONNU, jamais la demande n°0 — voir OPEN_ANSWERS §79 (#79) |
 
 ### Exemple JSON
 

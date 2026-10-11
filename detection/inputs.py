@@ -15,9 +15,10 @@ GAP a remonter au proprietaire de `shared/` (@marceaupatu123) :
   une annonce prealable d'un tel changement.
 
 Le depot correspondant a un mint n'est PAS retrouve via `MintEvent.request_id` :
-tant que le monitor (#9) renseigne la sentinelle PROVISOIRE
-`UNKNOWN_REQUEST_ID = 0` (qui entre en collision avec une vraie demande n°0),
-correler par `request_id` serait faux. L'appelant fournit lui-meme le depot.
+depuis la decision #79 (OPEN_ANSWERS §79), `MintEvent.request_id` est
+`int | None` et le monitor met `None` (plus `0`) quand l'id n'est pas porte par
+l'observation ERC-20 — ce qui leve la collision avec la vraie demande n°0, mais
+ne fournit toujours pas le depot. L'appelant fournit donc lui-meme le depot.
 """
 
 from __future__ import annotations
