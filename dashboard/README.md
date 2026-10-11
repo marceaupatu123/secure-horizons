@@ -41,12 +41,12 @@ brique n'est pas disponible afficherait « non disponible (dépend de #X) ».
 | Scénario | Attendu (issue #47) | Branché sur le vrai code (#70) | Encore simulé |
 |----------|---------------------|--------------------------------|---------------|
 | A | Le vulnérable se fait vider, le protégé borne la perte. | contrats Foundry #4/#5 sur anvil local, **opt-in** (`SH_DEMO_CONTRACTS_BACKEND=anvil`) | tout, par défaut (repli automatique si Foundry absent) |
-| B | Détection + alerte + allongement de fenêtre Ghost. | trafic #24, surveillants #11/#12, réponse #17 | Ghost (#8) |
+| B | Détection + alerte + allongement de fenêtre Ghost. | trafic #24, surveillants #11/#12, réponse #17 ; Ghost #8 sur anvil local, **opt-in** (`SH_DEMO_CONTRACTS_BACKEND=anvil`) | Ghost (#8), par défaut (repli automatique) |
 | C (optionnel) | Moins de pertes en aval quand la balise est lue. | — | tout (#7, #25) |
 | D (optionnel) | Pertes côté protocole ≈ zéro (à vérifier) vs pertes côté spéculateurs. | — | tout (#8, #25) |
 | N1 | Zéro alerte, zéro gel. | trafic #24, surveillants #11/#12, réponse #17 | rien |
 | N2 | Pas de déclenchement (volume élevé sans dispersion effondrée). | trafic #24, surveillants #11/#12, réponse #17 | rien |
-| N3 | La fenêtre revient seule à la normale, aucun gel définitif. | trafic #24 (+ burst injecté), #11/#12, #17 | Ghost (#8) |
+| N3 | La fenêtre revient seule à la normale, aucun gel définitif. | trafic #24 (+ burst injecté), #11/#12, #17 ; Ghost #8 sur anvil local, **opt-in** (`SH_DEMO_CONTRACTS_BACKEND=anvil`) | Ghost (#8), par défaut (repli automatique) |
 
 ### Rejouer A sur les vrais contrats (anvil)
 
@@ -63,6 +63,51 @@ avec les comptes **déverrouillés** d'anvil (aucune clé privée manipulée). S
 le rejeu échoue, A retombe sur la simulation et le message le dit. Le job CI `scenario A (anvil)`
 rejoue ce chemin sur chaque PR.
 
+### Rejouer la partie Ghost de B et N3 sur les vrais contrats (anvil, #110)
+
+Même principe que A, pour la **partie Ghost** (#8) des scénarios B et N3 : par défaut elle reste
+**simulée** (`GhostLedger`, bandeau « simulation hors chaîne ») ; avec le même opt-in que A, elle
+est **rejouée sur les vrais contrats Token Ghost** `GhostToken` / `ProtectedMinter` /
+`GuardianActions` / `GhostedStable` (#8) sur une chaîne anvil locale et jetable
+(`scenarios/real_ghost.py`) :
+
+```bash
+# Foundry v1.8.5 dans le PATH ou ~/.foundry/bin + contracts/lib installé (voir ci-dessus), puis :
+SH_DEMO_CONTRACTS_BACKEND=anvil python -m dashboard.demo run B    # idem N3
+```
+
+Le trafic, les surveillants (#11/#12) et la réponse (#17) restent ceux de `real_pipeline.py` ; seule
+la partie Ghost bascule sur la chaîne. Si Foundry ou `contracts/lib` manquent, ou si le rejeu
+échoue, B/N3 retombent **automatiquement** sur la simulation (bandeau conservé) : la CI ne dépend
+jamais d'anvil. Les grandeurs lues on-chain (Ghost détruit, M converti, `supplyValue`, réserve)
+sont des **comptages** sur une chaîne locale, pas des mesures du contrat déployé.
+
+**Correspondance simulé → réel** (ce que `GhostLedger` modélise ↔ l'appel réel sur le `GhostToken`) :
+
+| Simulé (`sim_contracts.GhostLedger`)                     | Réel (contrats #8 sur anvil)                                             |
+|----------------------------------------------------------|--------------------------------------------------------------------------|
+| `credit(addr, montant, ratio)` d'un lot de Ghost         | `ProtectedMinter.requestSwap` + `completeSwap(id)` → `issueFromMinter`   |
+| ratio de soupçon par lot (1,0 attaque / 0,0 légitime)    | `delay(accounts, suspectAmounts, W)` du surveillant (`WATCHER_ROLE`) : sème `Sp` |
+| `transfer(...)` : saut de contagion, ratio conservé      | `ghost.transfer(from, to, montant)` (ERC-20) : le soupçon suit la valeur |
+| `hold(addr, until)` : retard de la conversion            | fenêtre allongée posée par `delay` (`extendedUntil`)                     |
+| audit humain confirme → `burn(addr, ratio)`              | `proposeDestroy(incidentId, targets)` (guardian1) + `approveAction` (guardian2) : **2/3** |
+| avance du temps au-delà de `window`                      | `evm_increaseTime` + `evm_mine`                                          |
+| `convert_after_window(...)` : conversion 1:1             | `ghost.convert(montant)` par les légitimes                              |
+
+- **B** : le minter protégé émet du Ghost à l'attaquant et à des légitimes ; l'attaquant fait
+  circuler son Ghost (un saut de contagion) ; le surveillant retarde les suspects ; les guardians
+  confirment la destruction 2/3 ; on passe `W` ; les légitimes convertissent. Lectures : Ghost
+  détruit > 0, M converti par l'attaquant = 0 (soupçon détruit), M converti par les légitimes > 0.
+- **N3** : un légitime reçoit du Ghost ; le surveillant retarde **sans soupçon** (`delay(sink, 0, W)`,
+  conversion suspendue mais rien marqué suspect) ; aucune confirmation 2/3 ; la fenêtre revient
+  seule à la normale ; le légitime convertit. Lectures : aucune destruction, conversion après le
+  retour > 0.
+- Une **offre de fond** légitime (10 000 Ghost, comme `dave` dans `GhostWatcher.t.sol`) est émise
+  d'abord : sans elle, retarder le seul porteur dépasserait le budget de quarantaine (2000 bps).
+
+Le job CI `scenario A (anvil)` exécute aussi les tests anvil de B/N3
+(`dashboard/tests/test_scenarios_real_ghost.py`, sélectionnés par `-k "real_anvil"`).
+
 À garder en tête :
 
 - **Rapport d'incident DORA (#15, #113)** : sur l'alerte d'attaque confirmée par le multisig, le
@@ -74,9 +119,11 @@ rejoue ce chemin sur chaque PR.
 
 - B, N1, N2, N3 appellent le **vrai** code (`scenarios/real_pipeline.py`) : `data.generate`
   (#24), `detection.detector.RuleBasedMonitor` (#11, #12) aux seuils par défaut de
-  `detection/params.py`, `response.orchestrator.ResponseOrchestrator` (#17). Le Ghost (#8, non
-  livré) et l'audit humain qui confirme une destruction restent simulés (bandeau « à remplacer
-  par #8 »).
+  `detection/params.py`, `response.orchestrator.ResponseOrchestrator` (#17). Par défaut, le Ghost
+  (#8) et l'audit humain qui confirme une destruction restent simulés (bandeau « à remplacer par
+  #8 ») ; pour B et N3, la partie Ghost est **rejouable sur les vrais contrats Ghost (#8) via
+  `SH_DEMO_CONTRACTS_BACKEND=anvil`** (voir « Rejouer la partie Ghost de B et N3 sur les vrais
+  contrats » ci-dessus), avec repli automatique sur la simulation.
 - **Profil de trafic légitime** : la démo utilise le profil « petits transferts » (1–10 % du
   solde, `data/DECISION_SUPPORT_3.md` §2), à valider en équipe. Avec le profil « gros
   transferts » du générateur (5–50 %), le même surveillant lève 1 faux positif sur N1 (seed 20) :
