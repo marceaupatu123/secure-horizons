@@ -19,6 +19,12 @@
   des 7 scénarios (`catalog.py`) et mise en tableau pure (`view.py`).
 - `demo.py` : CLI `python -m dashboard.demo list|run`.
 - `pages/1_Scenarios_de_demo.py` : page Streamlit « Scénarios de démo » (rendu uniquement).
+- `story.py` + `pages/0_Demo_interactive.py` : **démo interactive animée pour le pitch** (#148).
+  La page rejoue réellement A et B à chaque lancement (même seed = même résultat), puis raconte
+  l'histoire en 3 onglets animés (clé volée, pirate discret, bilan) avec des analogies pour
+  novices. `story.py` extrait les grandeurs mesurées et produit un HTML autonome (sans ressource
+  externe, respecte `prefers-reduced-motion`). C'est la page à ouvrir devant un jury ou des
+  investisseurs : « Demo interactive » dans la barre latérale.
 
 Aucun chiffre affiché n'est écrit en dur : tout est calculé à partir du jeu synthétique. Ce sont
 des comptages, pas des mesures de performance.
