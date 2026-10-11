@@ -1,7 +1,7 @@
 {
   "chain_id": 43113,
-  "started_at": "2026-10-11T09:16:15.155725Z",
-  "finished_at": "2026-10-11T09:17:25.497467Z",
+  "started_at": "2026-10-11T09:31:50.412714Z",
+  "finished_at": "2026-10-11T09:33:19.790494Z",
   "accounts": {
     "admin": "0x6d1F263c9B5D09c5FfcD8e954652Eb042d0332fD",
     "attacker": "0xb7Bb1c57Ec03138037352b8f06cbe6875a938617",
@@ -13,329 +13,386 @@
     "whale": "0x0781718957FB80561BE4BA9a5a6007BdF57C455F"
   },
   "contracts": {
-    "MockUSDC": "0x2114a5D319c084b53f3089A222C4552089058cF0",
-    "VulnerableMinter": "0x42c88620e131DD37A3196A2dC82F1238b8Ac3020",
-    "ProtectedMinter": "0x41887ce9E04c3894242044668cFC5c7ADd116E7a",
-    "GhostToken": "0xd240Afa51ee09d22589c0f94df60Cd7d27699115",
-    "SettlementRouter": "0x67444206749EAf926D4c0A8AC8d49362D0Ea095c",
-    "AssetVault": "0xAf5a5afbd334725c99fC533976fC4758e7F52a32",
-    "AssetGhost": "0x00E3833e9a9545A492DfF6E7bCE4328F2f942438"
+    "MockUSDC": "0xc4A5BDE5c238421aC54527f9D1302DC8e7ed76C4",
+    "VulnerableMinter": "0x83DF8A39D747991E32bDb37843A0b65302cbbe35",
+    "ProtectedMinter": "0x724eC347Fe69e342806AD8671B46C9096853a902",
+    "GhostToken": "0x245e1E3b3Be49BE370169f36d37A8764FC047f88",
+    "ProtectedMinter (reprise)": "0x0Dacd7604F7CaB82A4f21C42AAf7C4C12749B3a2",
+    "GhostToken (reprise)": "0x7307dc0EAbe9FE347019BA6759F37ee762148741",
+    "M-Coin (GhostedStable)": "0x9D5efBcbC7aD6fB5c1FEf759e771aC7002BDb17c",
+    "SettlementRouter": "0xF4986FEd58DE10C9B350Da5e9d5A3B5f3f7b8C7E",
+    "AssetVault": "0xc2FE47C0aeb30f8De288d0eE5B9F780d0DF1F6ef",
+    "AssetGhost": "0xf96933b28F1F63F9BD39a9E86a705716540032eC"
   },
   "transactions": [
     {
       "step": "Préparation des comptes de test",
       "actor": "admin",
       "label": "Déploiement du faux USDC de test",
-      "tx_hash": "0x824d46a4d7bb0e3f21b666710e3b82d8f49a31772ed466890c06fae7eb021a0f",
-      "block_number": 59300041,
+      "tx_hash": "0x15b356181a7796fa9bfa681fd23c83aa159ba8cfb58d3e4e5cb8b67326cf1f5a",
+      "block_number": 59300468,
       "success": true,
-      "timestamp": "2026-10-11T09:16:15Z"
+      "timestamp": "2026-10-11T09:31:50Z"
     },
     {
       "step": "Cas 1 — le mint passe (contrat classique)",
       "actor": "admin",
       "label": "Déploiement du contrat classique",
-      "tx_hash": "0xa3c837688658750df10c4d471decd1a111548f1b80c6a7bddafb0b02b3f8cf9b",
-      "block_number": 59300043,
+      "tx_hash": "0xeb05a2f5b0ea0fa214c8f41bf1768332bbf405e96aa83d38e884dbf391815eeb",
+      "block_number": 59300469,
       "success": true,
-      "timestamp": "2026-10-11T09:16:17Z"
+      "timestamp": "2026-10-11T09:31:52Z"
     },
     {
       "step": "Cas 1 — le mint passe (contrat classique)",
       "actor": "attacker",
       "label": "faucet USDC attacker",
-      "tx_hash": "0x7aaf6f40909e19b8e8d686148dc2cb3395f6f48ffb96d8e97d23de5ab0a8a6be",
-      "block_number": 59300045,
+      "tx_hash": "0x157feee2b085a1efb31c537d49bdc7ae6f1c5c0ee0e50d12e73698e80075c2fa",
+      "block_number": 59300472,
       "success": true,
-      "timestamp": "2026-10-11T09:16:19Z"
+      "timestamp": "2026-10-11T09:31:54Z"
     },
     {
       "step": "Cas 1 — le mint passe (contrat classique)",
       "actor": "attacker",
       "label": "approve attacker",
-      "tx_hash": "0x4842dc18ad81b3d1d5403723f19342bb810592413723ac6d5861988c5aee9a58",
-      "block_number": 59300046,
+      "tx_hash": "0x078816d291bf7bfbca0fa610aad93c4c3d9eef830c82731045469fd9cdeb9e46",
+      "block_number": 59300473,
       "success": true,
-      "timestamp": "2026-10-11T09:16:20Z"
+      "timestamp": "2026-10-11T09:31:56Z"
     },
     {
       "step": "Cas 1 — le mint passe (contrat classique)",
       "actor": "attacker",
       "label": "requestSwap attacker",
-      "tx_hash": "0x8cf9520075257a2450201476f15ec52a46babfb35e5cdd0a01e601b0b49506af",
-      "block_number": 59300049,
+      "tx_hash": "0x9ac209a349c3446278b8e9cca16f4789db61e9fb2cdceed73668d634ba54f58e",
+      "block_number": 59300475,
       "success": true,
-      "timestamp": "2026-10-11T09:16:23Z"
+      "timestamp": "2026-10-11T09:31:58Z"
     },
     {
       "step": "Cas 1 — le mint passe (contrat classique)",
       "actor": "attacker",
       "label": "mint gonflé accepté",
-      "tx_hash": "0xf00c8fca7a6be459162dad4982549eb1f428605082401764912fbb93c402c4fb",
-      "block_number": 59300051,
+      "tx_hash": "0x64582de4fb57ed8ccc7b3a765b8d8682ee4b582947f4f8feacca8395248b1bc1",
+      "block_number": 59300476,
       "success": true,
-      "timestamp": "2026-10-11T09:16:25Z"
+      "timestamp": "2026-10-11T09:32:00Z"
     },
     {
       "step": "Cas 2 — le mint est bloqué (Secure Horizons)",
       "actor": "admin",
       "label": "Déploiement du contrat Secure Horizons",
-      "tx_hash": "0xada906c3a4a195d5cc2f9e9bba00d6b9a0927e41860de0eeb4f7a0fea126535c",
-      "block_number": 59300054,
+      "tx_hash": "0x1e4995eb4fb0cf35c8dfc4c1b3c3dafbd34334de10f5f22b6200d40e1a328152",
+      "block_number": 59300479,
       "success": true,
-      "timestamp": "2026-10-11T09:16:28Z"
+      "timestamp": "2026-10-11T09:32:03Z"
     },
     {
       "step": "Cas 2 — le mint est bloqué (Secure Horizons)",
       "actor": "attacker",
       "label": "faucet USDC attacker",
-      "tx_hash": "0x28a1808c36bcc94ba58777ebd57dea2476a6f39d608cc12270f1f390c49a3f99",
-      "block_number": 59300055,
+      "tx_hash": "0xa69a180703a1d22bbd3208a12ac6d2cd582b0b41292b0546f5eab88d44993ee8",
+      "block_number": 59300480,
       "success": true,
-      "timestamp": "2026-10-11T09:16:30Z"
+      "timestamp": "2026-10-11T09:32:05Z"
     },
     {
       "step": "Cas 2 — le mint est bloqué (Secure Horizons)",
       "actor": "attacker",
       "label": "approve attacker",
-      "tx_hash": "0xc2c04264a21d9a93d6317c39c2bf32c6dd7eeb944f8ffdb9da5a30abc07a3922",
-      "block_number": 59300057,
+      "tx_hash": "0x6f14130ca0cc9a67e6a28e4f30977b348967eb793edf13ad1f862a677b57c0ad",
+      "block_number": 59300481,
       "success": true,
-      "timestamp": "2026-10-11T09:16:32Z"
+      "timestamp": "2026-10-11T09:32:07Z"
     },
     {
       "step": "Cas 2 — le mint est bloqué (Secure Horizons)",
       "actor": "attacker",
       "label": "requestSwap attacker",
-      "tx_hash": "0x6ba0eb651ef35b24aa3e3d79cf03565e80bd238f947702e3c47cdcb0a78d0dca",
-      "block_number": 59300058,
+      "tx_hash": "0x57062dde2da7663e30546c60be138d766b76325e5c40a6f20316ee5015a47c76",
+      "block_number": 59300483,
       "success": true,
-      "timestamp": "2026-10-11T09:16:34Z"
+      "timestamp": "2026-10-11T09:32:08Z"
     },
     {
       "step": "Cas 2 — le mint est bloqué (Secure Horizons)",
       "actor": "attacker",
       "label": "mint gonflé rejeté",
-      "tx_hash": "0x2ebf8b30671ed8135fc227b734af6160cf68dfeb2e991c7cb67d3e22eea8099e",
-      "block_number": 59300059,
+      "tx_hash": "0x1282e4fc6069d4a5bcbff88ba52240162f88002c46fbac64edf9a1513de33c7d",
+      "block_number": 59300485,
       "success": false,
-      "timestamp": "2026-10-11T09:16:36Z"
+      "timestamp": "2026-10-11T09:32:10Z"
     },
     {
       "step": "Cas 2 — le mint est bloqué (Secure Horizons)",
       "actor": "attacker",
       "label": "traiter la demande (montant lu au coffre)",
-      "tx_hash": "0x3ed70340aba82bf0c99b87f5f0e523697a9c92d4dae6ccc39538a0de5bdf2f87",
-      "block_number": 59300060,
+      "tx_hash": "0x9ce56d5ef417474c86712a0cf164347685dccacfe60eaca6d2c60a2e6a35ea5c",
+      "block_number": 59300487,
       "success": true,
-      "timestamp": "2026-10-11T09:16:37Z"
+      "timestamp": "2026-10-11T09:32:12Z"
+    },
+    {
+      "step": "Cas « fenêtre de reprise » — M-Ghost → M-Coin",
+      "actor": "admin",
+      "label": "Déploiement du minter (fenêtre de reprise)",
+      "tx_hash": "0x653437eb5d0208bd98c47b19eb77507b318049b4c6dffaf4ac6ad24cf8336279",
+      "block_number": 59300489,
+      "success": true,
+      "timestamp": "2026-10-11T09:32:14Z"
+    },
+    {
+      "step": "Cas « fenêtre de reprise » — M-Ghost → M-Coin",
+      "actor": "buyer",
+      "label": "faucet USDC honnête",
+      "tx_hash": "0xe5e4a772cf3abbbb3853963a6f2e62743f686e6b41304e38a1695d760b6973ec",
+      "block_number": 59300490,
+      "success": true,
+      "timestamp": "2026-10-11T09:32:16Z"
+    },
+    {
+      "step": "Cas « fenêtre de reprise » — M-Ghost → M-Coin",
+      "actor": "buyer",
+      "label": "approve honnête",
+      "tx_hash": "0x96693946f6302cc04f0025cf12ef81b14635bce7ac0e6aa1cffa37db4fe3a4cb",
+      "block_number": 59300492,
+      "success": true,
+      "timestamp": "2026-10-11T09:32:18Z"
+    },
+    {
+      "step": "Cas « fenêtre de reprise » — M-Ghost → M-Coin",
+      "actor": "buyer",
+      "label": "dépôt honnête",
+      "tx_hash": "0xf35c84708265719fa14ff2db6e19ded58798fa0aa636656635ea130710999a98",
+      "block_number": 59300493,
+      "success": true,
+      "timestamp": "2026-10-11T09:32:20Z"
+    },
+    {
+      "step": "Cas « fenêtre de reprise » — M-Ghost → M-Coin",
+      "actor": "whale",
+      "label": "émission M-Ghost",
+      "tx_hash": "0xfa21702d16efe7efa14c0315fff237234a13638af8c5702752427e8afa88267a",
+      "block_number": 59300495,
+      "success": true,
+      "timestamp": "2026-10-11T09:32:22Z"
+    },
+    {
+      "step": "Cas « fenêtre de reprise » — M-Ghost → M-Coin",
+      "actor": "buyer",
+      "label": "conversion M-Ghost → M-Coin",
+      "tx_hash": "0x371471775e11f62bba17842cb864b99ed7338269d3f2972c9854970801c95abc",
+      "block_number": 59300500,
+      "success": true,
+      "timestamp": "2026-10-11T09:32:27Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "admin",
       "label": "Déploiement du minter du cas 3",
-      "tx_hash": "0x162a9f638a8297c5aff15020bf3a03ffa7c952e4d37f465a41c661eb296e1265",
-      "block_number": 59300061,
+      "tx_hash": "0xbfc12e8ce722f365ab0f5d5bec102317653896e7b2397697baf14671fd1c7b76",
+      "block_number": 59300503,
       "success": true,
-      "timestamp": "2026-10-11T09:16:39Z"
+      "timestamp": "2026-10-11T09:32:30Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "admin",
       "label": "Déploiement du routeur de règlement",
-      "tx_hash": "0x62cd96c038165dd23cc763f64ca6ff9aa6f167012e72b287a3d21558d8e6d044",
-      "block_number": 59300063,
+      "tx_hash": "0x162fc1972ec40a885c03ba0353caff0e9ebce5e5e907a3a841e36c4e609d7fdc",
+      "block_number": 59300505,
       "success": true,
-      "timestamp": "2026-10-11T09:16:42Z"
+      "timestamp": "2026-10-11T09:32:32Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "admin",
       "label": "rôle surveillant",
-      "tx_hash": "0xfc910477ef35c56dbe4f5489fb57600bb1f26287154bc7b54bffb657cd1006a5",
-      "block_number": 59300064,
+      "tx_hash": "0xce95dc3b13f465b5634b4b41b16fd9808800964fbd9091be10b277e4c8ea82cc",
+      "block_number": 59300507,
       "success": true,
-      "timestamp": "2026-10-11T09:16:43Z"
+      "timestamp": "2026-10-11T09:32:34Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "whale",
       "label": "faucet USDC whale",
-      "tx_hash": "0x6dae63e21666ba513e821415193ea64526f0df85255dfaf033bfcc65954573bf",
-      "block_number": 59300065,
+      "tx_hash": "0x3eb838f18afe9ddd327519023293870202d6ac4686c0f96616618d976d6bd040",
+      "block_number": 59300509,
       "success": true,
-      "timestamp": "2026-10-11T09:16:45Z"
+      "timestamp": "2026-10-11T09:32:36Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "whale",
       "label": "approve whale",
-      "tx_hash": "0x7ded4d4d93d1954055ca68233d2452e14116200a4e64aabb52efe4edf0b573b3",
-      "block_number": 59300066,
+      "tx_hash": "0xb15fdda7191219b8bbaab90ee1e400cbab46ac1617f94f4d4c6e01097d8a7a9d",
+      "block_number": 59300512,
       "success": true,
-      "timestamp": "2026-10-11T09:16:47Z"
+      "timestamp": "2026-10-11T09:32:39Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "whale",
       "label": "requestSwap whale",
-      "tx_hash": "0x3c8a03f43914a309dc3d7b21fcfedd857aacb805306b78c0368b90642c104be2",
-      "block_number": 59300067,
+      "tx_hash": "0x4494a1a05492a7935194eab4a58a13e063c3a453fe01578475e96a90196c7d8c",
+      "block_number": 59300514,
       "success": true,
-      "timestamp": "2026-10-11T09:16:49Z"
+      "timestamp": "2026-10-11T09:32:41Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "whale",
       "label": "completeSwap whale",
-      "tx_hash": "0xa4819103a405f7bacf692f0d57f37225d9b1aa9892dcf99b0757481b7739194b",
-      "block_number": 59300069,
+      "tx_hash": "0x6164f04509c2a5140afe5d5586af8e4108da04c0020b36bcc8630be8a3b75d01",
+      "block_number": 59300516,
       "success": true,
-      "timestamp": "2026-10-11T09:16:51Z"
+      "timestamp": "2026-10-11T09:32:43Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "attacker",
       "label": "faucet USDC attacker",
-      "tx_hash": "0xc90a00ce8a90be171ea022173c78de3781c75abc718418c7f09cd69c80e64ada",
-      "block_number": 59300071,
+      "tx_hash": "0xaab499ba7fdfd0062e6c2ee54591b1119a5237efb1b4e1095ab532e55872c3c7",
+      "block_number": 59300517,
       "success": true,
-      "timestamp": "2026-10-11T09:16:53Z"
+      "timestamp": "2026-10-11T09:32:45Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "attacker",
       "label": "approve attacker",
-      "tx_hash": "0xc0216501be67f686f65571e5b00769b9ed15149bc4d022b4c6ce0d91deeeec24",
-      "block_number": 59300073,
+      "tx_hash": "0x6d0fa41720740c0bb64d0f2a56f96cc1728085ad36ead331b3a5b506cb7e53e2",
+      "block_number": 59300518,
       "success": true,
-      "timestamp": "2026-10-11T09:16:55Z"
+      "timestamp": "2026-10-11T09:32:47Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "attacker",
       "label": "requestSwap attacker",
-      "tx_hash": "0x3816f3f09c1f85bd3df2126ccc1a37654755e3120827805f6b1ad1bf2ff7dd8e",
-      "block_number": 59300075,
+      "tx_hash": "0x4fd4c706562a2eb982a495231049cacbbc0722bc3d08f83c6171f0f75a2caa9e",
+      "block_number": 59300520,
       "success": true,
-      "timestamp": "2026-10-11T09:16:56Z"
+      "timestamp": "2026-10-11T09:32:49Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "whale",
       "label": "completeSwap attacker",
-      "tx_hash": "0xfbf908c7c20d12545436dda63455dc3571b901dfaf69b6e2a4e7fb259397c0bb",
-      "block_number": 59300076,
+      "tx_hash": "0x4feb4fe732c9ae62551044287dc58c4c2e35f2c5a3556a79f29f3906efc8cf3f",
+      "block_number": 59300522,
       "success": true,
-      "timestamp": "2026-10-11T09:16:58Z"
+      "timestamp": "2026-10-11T09:32:51Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "attacker",
       "label": "approve M' vendeur",
-      "tx_hash": "0xc74aa8512f087a5b26069556dce72d3008543be859d985d79892e23d5a1b39f0",
-      "block_number": 59300077,
+      "tx_hash": "0x5f801eeea72a5ca64d85b3ae5063cbad0d70a198922f125eec74a297e2013f9c",
+      "block_number": 59300524,
       "success": true,
-      "timestamp": "2026-10-11T09:17:00Z"
+      "timestamp": "2026-10-11T09:32:53Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "buyer",
       "label": "faucet USDC acheteur",
-      "tx_hash": "0x0ad796785afe16ec72a8cbd2c2fc20ed339fa713287eeb062af04035e37268d1",
-      "block_number": 59300079,
+      "tx_hash": "0x0d8baa6fc7b59f4b62ca2e78a78386dca260d657cdcd6070dfaf56b422299518",
+      "block_number": 59300527,
       "success": true,
-      "timestamp": "2026-10-11T09:17:02Z"
+      "timestamp": "2026-10-11T09:32:55Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "buyer",
       "label": "approve USDC acheteur",
-      "tx_hash": "0x687537ebe0f63ae5a99fbbccb6d1447712a2d622dfa324542e3b35492a0a5898",
-      "block_number": 59300080,
+      "tx_hash": "0xb3123e8e94eec608456c4656c8a079e8adb4e2941588367bd774e4a06bbf342c",
+      "block_number": 59300528,
       "success": true,
-      "timestamp": "2026-10-11T09:17:04Z"
+      "timestamp": "2026-10-11T09:32:57Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "buyer",
       "label": "achat de Ghost (USDC bloqué)",
-      "tx_hash": "0x88326934c00951c6f02b4ab9b803897c34d8340a74060afcf9d36e8a58efb5a0",
-      "block_number": 59300082,
+      "tx_hash": "0x776d0c8f805cbbebb6ea9a28510807fc719d52a3a3bc1c01b48aa7b7c1aaae9c",
+      "block_number": 59300529,
       "success": true,
-      "timestamp": "2026-10-11T09:17:06Z"
+      "timestamp": "2026-10-11T09:32:59Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "watcher",
       "label": "signalement + gel",
-      "tx_hash": "0x0b0ddef71d59e6f976478d04e5f02e45e35ea39c2cca808b87ac79f153fedbe3",
-      "block_number": 59300084,
+      "tx_hash": "0x301e0d9fd2ce4286f0dde8d8b0b482c54dcb0ba461d964f706cc2b36ad828157",
+      "block_number": 59300532,
       "success": true,
-      "timestamp": "2026-10-11T09:17:08Z"
+      "timestamp": "2026-10-11T09:33:02Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "guardian1",
       "label": "proposition destruction",
-      "tx_hash": "0x84255d1d5b710a32b32b496e59cbc905c73c88e579db8e9745835245316de10f",
-      "block_number": 59300085,
+      "tx_hash": "0x8c9db0795ea029b304c507e9cf1cdbc3365d18dcb9a8a12d6b187e6136e874c3",
+      "block_number": 59300533,
       "success": true,
-      "timestamp": "2026-10-11T09:17:10Z"
+      "timestamp": "2026-10-11T09:33:04Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "guardian2",
       "label": "validation 2/3",
-      "tx_hash": "0x8cfdb344a3ea2e0c77f9c4bc00cde14d40bc1bf608c7d6d71d729dbb1e3b36ca",
-      "block_number": 59300088,
+      "tx_hash": "0x13e3f05d44f6f1d117602e751fe067361cc667691664bd8249935af5cb502a36",
+      "block_number": 59300535,
       "success": true,
-      "timestamp": "2026-10-11T09:17:12Z"
+      "timestamp": "2026-10-11T09:33:06Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "guardian1",
       "label": "burn paiement 1/2",
-      "tx_hash": "0x0e38d23c83283ec31897d0faaec3ecc52e193d88e052c0ef90c8b280ff2afc62",
-      "block_number": 59300089,
+      "tx_hash": "0xd2d183a50a2b28e2cc7652dc58276251007cb82aadfc82c9e59d3fa050def256",
+      "block_number": 59300536,
       "success": true,
-      "timestamp": "2026-10-11T09:17:14Z"
+      "timestamp": "2026-10-11T09:33:08Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "guardian2",
       "label": "burn paiement 2/2",
-      "tx_hash": "0xcc807fcad8e377167a0ce91df7cc96a2db50635c0c4f1c1e595e01122d084090",
-      "block_number": 59300091,
+      "tx_hash": "0xeee6b4c43810e837e1077927a6b536815e013311a560c50f15338c6bd336a865",
+      "block_number": 59300537,
       "success": true,
-      "timestamp": "2026-10-11T09:17:16Z"
+      "timestamp": "2026-10-11T09:33:10Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "guardian1",
       "label": "racine 1/2",
-      "tx_hash": "0x06865bb856f2afed273ff18e5e3062db1399a4807d4257ef42f0c927ffd8b86d",
-      "block_number": 59300092,
+      "tx_hash": "0xda858e4d2035376c12e1c68f4b75f1c11758314bab072c4d0d911bb75916ed10",
+      "block_number": 59300539,
       "success": true,
-      "timestamp": "2026-10-11T09:17:18Z"
+      "timestamp": "2026-10-11T09:33:12Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "guardian2",
       "label": "racine 2/2",
-      "tx_hash": "0x5b618717028e8473369db172c493775feeac55b525cdf0ab1284962019fd97fc",
-      "block_number": 59300094,
+      "tx_hash": "0x6a048652de985c6b47a18fcf07bab7342053ed7a9d3a5d231412a5dca5b4c70b",
+      "block_number": 59300540,
       "success": true,
-      "timestamp": "2026-10-11T09:17:20Z"
+      "timestamp": "2026-10-11T09:33:14Z"
     },
     {
       "step": "Cas 3 — un vendeur de Ghost pose problème",
       "actor": "buyer",
       "label": "restitution acheteur",
-      "tx_hash": "0xa2dcffb8599d3619f6468e297d8e67c60ab01da46e47e22d69f74485291c6e17",
-      "block_number": 59300096,
+      "tx_hash": "0xa2c0aa8e5b1bcb03fb75f98ba27eac3e53ee48368dd31d90caf6bdf25d2ae396",
+      "block_number": 59300541,
       "success": true,
-      "timestamp": "2026-10-11T09:17:22Z"
+      "timestamp": "2026-10-11T09:33:16Z"
     }
   ],
   "steps": [
@@ -345,12 +402,12 @@
       "actor": "attacker",
       "actor_label": "Le pirate (clé volée)",
       "contract": "VulnerableMinter",
-      "contract_url": "https://testnet.snowtrace.io/address/0x42c88620e131DD37A3196A2dC82F1238b8Ac3020",
+      "contract_url": "https://testnet.snowtrace.io/address/0x83DF8A39D747991E32bDb37843A0b65302cbbe35",
       "narration": "La clé volée signe la création de 1 000 fois le dépôt réel. Le contrat classique croit la signature.",
       "effect": "✗ ACCEPTÉ. 1 000 000 jetons créés pour seulement 1 000 USDC déposés : 999 000 jetons n'ont AUCUNE réserve derrière eux.",
       "outcome": "accepted",
       "tx_urls": [
-        "https://testnet.snowtrace.io/tx/0xf00c8fca7a6be459162dad4982549eb1f428605082401764912fbb93c402c4fb"
+        "https://testnet.snowtrace.io/tx/0x64582de4fb57ed8ccc7b3a765b8d8682ee4b582947f4f8feacca8395248b1bc1"
       ],
       "success": true
     },
@@ -360,12 +417,12 @@
       "actor": "attacker",
       "actor_label": "Le pirate (clé volée)",
       "contract": "ProtectedMinter",
-      "contract_url": "https://testnet.snowtrace.io/address/0x1bcba41Ca5F72DFd5A8177fF43C8B6a7A23ad999",
+      "contract_url": "https://testnet.snowtrace.io/address/0xbdAEE72bC57465e9Ce43cf9f183BDb993559f931",
       "narration": "La clé volée tente EXACTEMENT le même mint gonflé que sur le contrat classique.",
       "effect": "✓ REJETÉ par la blockchain. Ce contrat n'a pas d'appel « crois mon montant » : le montant signé est ignoré.",
       "outcome": "rejected",
       "tx_urls": [
-        "https://testnet.snowtrace.io/tx/0x2ebf8b30671ed8135fc227b734af6160cf68dfeb2e991c7cb67d3e22eea8099e"
+        "https://testnet.snowtrace.io/tx/0x1282e4fc6069d4a5bcbff88ba52240162f88002c46fbac64edf9a1513de33c7d"
       ],
       "success": true
     },
@@ -375,12 +432,43 @@
       "actor": "attacker",
       "actor_label": "Le pirate (clé volée)",
       "contract": "ProtectedMinter",
-      "contract_url": "https://testnet.snowtrace.io/address/0x1bcba41Ca5F72DFd5A8177fF43C8B6a7A23ad999",
+      "contract_url": "https://testnet.snowtrace.io/address/0xbdAEE72bC57465e9Ce43cf9f183BDb993559f931",
       "narration": "Seul appel possible : « traite la demande n°X ». Le contrat lit lui-même le dépôt dans le coffre.",
       "effect": "✓ 1 000 Ghost émis, adossés 1:1 au dépôt réel. Pas un jeton de plus. Une clé volée ne rapporte rien.",
       "outcome": "defended",
       "tx_urls": [
-        "https://testnet.snowtrace.io/tx/0x3ed70340aba82bf0c99b87f5f0e523697a9c92d4dae6ccc39538a0de5bdf2f87"
+        "https://testnet.snowtrace.io/tx/0x9ce56d5ef417474c86712a0cf164347685dccacfe60eaca6d2c60a2e6a35ea5c"
+      ],
+      "success": true
+    },
+    {
+      "case": "fenetre-reprise",
+      "command": "honnete > echanger --depot 1 000USDC",
+      "actor": "buyer",
+      "actor_label": "Un acheteur honnête",
+      "contract": "ProtectedMinter (reprise)",
+      "contract_url": "https://testnet.snowtrace.io/address/0x0Dacd7604F7CaB82A4f21C42AAf7C4C12749B3a2",
+      "narration": "Un utilisateur honnête échange 1 000 USDC. Que reçoit-il tout de suite ?",
+      "effect": "✓ Il reçoit 1 000 M-Ghost — PAS encore du M-Coin. Convertible en M-Coin seulement après la fenêtre de sécurité : c'est CETTE fenêtre qui permet de tout reprendre si un problème surgit (voir le cas suivant).",
+      "outcome": "defended",
+      "tx_urls": [
+        "https://testnet.snowtrace.io/tx/0xf35c84708265719fa14ff2db6e19ded58798fa0aa636656635ea130710999a98",
+        "https://testnet.snowtrace.io/tx/0xfa21702d16efe7efa14c0315fff237234a13638af8c5702752427e8afa88267a"
+      ],
+      "success": true
+    },
+    {
+      "case": "fenetre-reprise",
+      "command": "honnete > convertir --montant 1 000",
+      "actor": "buyer",
+      "actor_label": "Un acheteur honnête",
+      "contract": "GhostToken (reprise)",
+      "contract_url": "https://testnet.snowtrace.io/address/0x7307dc0EAbe9FE347019BA6759F37ee762148741",
+      "narration": "La fenêtre de sécurité s'est écoulée sans anomalie. L'utilisateur convertit son M-Ghost.",
+      "effect": "✓ 1 000 M-Coin définitifs émis, adossés 1:1 à l'USDC déposé. Après conversion, c'est irréversible — mais aucune reprise n'était nécessaire : tout était clean.",
+      "outcome": "defended",
+      "tx_urls": [
+        "https://testnet.snowtrace.io/tx/0x371471775e11f62bba17842cb864b99ed7338269d3f2972c9854970801c95abc"
       ],
       "success": true
     },
@@ -390,12 +478,12 @@
       "actor": "buyer",
       "actor_label": "Un acheteur honnête",
       "contract": "SettlementRouter",
-      "contract_url": "https://testnet.snowtrace.io/address/0x67444206749EAf926D4c0A8AC8d49362D0Ea095c",
+      "contract_url": "https://testnet.snowtrace.io/address/0xF4986FEd58DE10C9B350Da5e9d5A3B5f3f7b8C7E",
       "narration": "Un acheteur honnête achète le Ghost que le vendeur met en vente.",
       "effect": "✓ 1 000 USDC de l'acheteur sont BLOQUÉS au coffre. Le vendeur reçoit 1 000 Ghost de paiement — non encaissables tant qu'ils ne sont pas convertis en USDC.",
       "outcome": "accepted",
       "tx_urls": [
-        "https://testnet.snowtrace.io/tx/0x88326934c00951c6f02b4ab9b803897c34d8340a74060afcf9d36e8a58efb5a0"
+        "https://testnet.snowtrace.io/tx/0x776d0c8f805cbbebb6ea9a28510807fc719d52a3a3bc1c01b48aa7b7c1aaae9c"
       ],
       "success": true
     },
@@ -405,12 +493,12 @@
       "actor": "watcher",
       "actor_label": "Le surveillant",
       "contract": "GhostToken",
-      "contract_url": "https://testnet.snowtrace.io/address/0xd240Afa51ee09d22589c0f94df60Cd7d27699115",
+      "contract_url": "https://testnet.snowtrace.io/address/0x245e1E3b3Be49BE370169f36d37A8764FC047f88",
       "narration": "On découvre un problème avec ce vendeur (comment : non divulgué). Le surveillant ne peut que GELER, jamais détruire.",
       "effect": "⚠ Vendeur signalé. Tout le Ghost suspect encore en circulation est gelé : plus personne ne peut l'encaisser le temps de l'enquête.",
       "outcome": "defended",
       "tx_urls": [
-        "https://testnet.snowtrace.io/tx/0x0b0ddef71d59e6f976478d04e5f02e45e35ea39c2cca808b87ac79f153fedbe3"
+        "https://testnet.snowtrace.io/tx/0x301e0d9fd2ce4286f0dde8d8b0b482c54dcb0ba461d964f706cc2b36ad828157"
       ],
       "success": true
     },
@@ -420,13 +508,13 @@
       "actor": "guardian2",
       "actor_label": "Gardien 2",
       "contract": "GhostToken",
-      "contract_url": "https://testnet.snowtrace.io/address/0xd240Afa51ee09d22589c0f94df60Cd7d27699115",
+      "contract_url": "https://testnet.snowtrace.io/address/0x245e1E3b3Be49BE370169f36d37A8764FC047f88",
       "narration": "Deux gardiens sur trois décident : on détruit tout le Ghost suspect qui existe.",
       "effect": "✓ 2 sur 3. Tout le Ghost suspect est détruit (il en reste 0). Le Ghost frauduleux cesse d'exister.",
       "outcome": "defended",
       "tx_urls": [
-        "https://testnet.snowtrace.io/tx/0x84255d1d5b710a32b32b496e59cbc905c73c88e579db8e9745835245316de10f",
-        "https://testnet.snowtrace.io/tx/0x8cfdb344a3ea2e0c77f9c4bc00cde14d40bc1bf608c7d6d71d729dbb1e3b36ca"
+        "https://testnet.snowtrace.io/tx/0x8c9db0795ea029b304c507e9cf1cdbc3365d18dcb9a8a12d6b187e6136e874c3",
+        "https://testnet.snowtrace.io/tx/0x13e3f05d44f6f1d117602e751fe067361cc667691664bd8249935af5cb502a36"
       ],
       "success": true
     },
@@ -436,12 +524,12 @@
       "actor": "guardian2",
       "actor_label": "Gardien 2",
       "contract": "AssetVault",
-      "contract_url": "https://testnet.snowtrace.io/address/0xAf5a5afbd334725c99fC533976fC4758e7F52a32",
+      "contract_url": "https://testnet.snowtrace.io/address/0xc2FE47C0aeb30f8De288d0eE5B9F780d0DF1F6ef",
       "narration": "On brûle le Ghost de paiement que le vendeur avait reçu.",
       "effect": "✓ Ghost de paiement du vendeur : 0. Son USDC était gelé au coffre faute de conversion : il n'a JAMAIS pu l'encaisser.",
       "outcome": "defended",
       "tx_urls": [
-        "https://testnet.snowtrace.io/tx/0xcc807fcad8e377167a0ce91df7cc96a2db50635c0c4f1c1e595e01122d084090"
+        "https://testnet.snowtrace.io/tx/0xeee6b4c43810e837e1077927a6b536815e013311a560c50f15338c6bd336a865"
       ],
       "success": true
     },
@@ -451,12 +539,12 @@
       "actor": "guardian2",
       "actor_label": "Gardien 2",
       "contract": "AssetVault",
-      "contract_url": "https://testnet.snowtrace.io/address/0xAf5a5afbd334725c99fC533976fC4758e7F52a32",
+      "contract_url": "https://testnet.snowtrace.io/address/0xc2FE47C0aeb30f8De288d0eE5B9F780d0DF1F6ef",
       "narration": "On rend à l'acheteur honnête l'argent qui était gelé.",
       "effect": "✓ 1 000 USDC rendus à l'acheteur. Coffre vidé (0 USDC restant). Le vendeur malhonnête finit à 0 USDC : il n'a rien gagné.",
       "outcome": "defended",
       "tx_urls": [
-        "https://testnet.snowtrace.io/tx/0xa2dcffb8599d3619f6468e297d8e67c60ab01da46e47e22d69f74485291c6e17"
+        "https://testnet.snowtrace.io/tx/0xa2c0aa8e5b1bcb03fb75f98ba27eac3e53ee48368dd31d90caf6bdf25d2ae396"
       ],
       "success": true
     }
@@ -478,10 +566,10 @@
   "seller_usdc_final": 0,
   "observed_mints": [
     {
-      "token": "0xF7f69e202724ed42aF2f40EFf1Df2F8646565A0e",
+      "token": "0x59262cA466D9D0534090a952CC72c1BE21bc736e",
       "recipient": "0xb7Bb1c57Ec03138037352b8f06cbe6875a938617",
       "amount": 1000000000000000000000000,
-      "tx_hash": "0xf00c8fca7a6be459162dad4982549eb1f428605082401764912fbb93c402c4fb"
+      "tx_hash": "0x64582de4fb57ed8ccc7b3a765b8d8682ee4b582947f4f8feacca8395248b1bc1"
     }
   ]
 }

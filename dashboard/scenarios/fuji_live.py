@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -52,6 +53,12 @@ ATTACK_MULTIPLIER = 1_000  # il signe un mint de 1 000 × son dépôt
 SELL_AMOUNT_USDC = 1_000 * 10**6  # Ghost écoulé par le vendeur (cas 3), et prix payé par l'acheteur
 BACKGROUND_DEPOSIT = 10_000 * 10**6  # offre de fond légitime (marge du budget de quarantaine)
 GHOST_CONFIG = (600, 60, 6, 2000, 0, 0, 0, 0, 0, 86400)  # fixtures de contracts/test
+# Fenêtre RACCOURCIE (1 s) pour montrer une conversion M-Ghost -> M-Coin en direct sur Fuji
+# (la fenêtre de démo réelle est de 10 min, cf. demo_data.DEMO_NORMAL_WINDOW).
+GHOST_CONFIG_FAST = (1, 1, 6, 2000, 0, 0, 0, 0, 0, 86400)
+RECOVERY_DEPOSIT = 1_000 * 10**6  # dépôt d'un utilisateur honnête (cas « fenêtre de reprise »)
+CONVERT_POLL_SECONDS = 3.0
+CONVERT_POLL_TRIES = 8
 GHOST_W_SECONDS = 600
 SUB_ACCOUNT_FUNDING_WEI = 10**16  # 0,01 AVAX de test par rôle
 SUB_ACCOUNT_MIN_WEI = 5 * 10**15
@@ -62,6 +69,7 @@ INCIDENT_ACTORS = ("attacker", "buyer", "watcher", "guardian1", "guardian2", "gu
 
 CASE_MINT_PASSES = "mint-passe"
 CASE_MINT_BLOCKED = "mint-bloque"
+CASE_RECOVERY_WINDOW = "fenetre-reprise"
 CASE_GHOST_SELLER = "ghost-vendeur"
 
 ACTOR_LABELS = {
@@ -446,6 +454,60 @@ def _case_mint_blocked(runner: FujiRunner, usdc: Any) -> dict[str, int]:
     return {"minted": minted, "collateral": held, "rejected": not rej.success}
 
 
+def _case_recovery_window(runner: FujiRunner, usdc: Any) -> None:
+    """Cas « fenêtre de reprise » : un échange donne du M-Ghost, converti en M-Coin après la fenêtre.
+
+    C'est le levier de reprise : entre le M-Ghost (réversible) et le M-Coin (définitif) il y a la
+    fenêtre de sécurité ; pendant elle, on peut geler/détruire (cas suivant). Ici tout est clean,
+    donc la conversion aboutit. Fenêtre raccourcie à 1 s pour la jouer en direct sur Fuji.
+    """
+    runner.phase("Cas « fenêtre de reprise » — M-Ghost → M-Coin")
+    admin, honest = runner.address("admin"), runner.address("buyer")
+    guardians = [runner.address(f"guardian{i}") for i in (1, 2, 3)]
+    minter = runner.deploy("ProtectedMinter", "Déploiement du minter (fenêtre de reprise)",
+                           usdc.address, admin, runner.address("whale"), RATE_ONE, guardians,
+                           GHOST_CONFIG_FAST)
+    runner.contracts["ProtectedMinter (reprise)"] = minter.address
+    ghost = runner.at("GhostToken", minter.functions.ghost().call())
+    runner.contracts["GhostToken (reprise)"] = ghost.address
+    mcoin = runner.at("GhostedStable", ghost.functions.underlying().call())
+    runner.contracts["M-Coin (GhostedStable)"] = mcoin.address
+
+    # Intendance (non exposée) : faucet + approve de l'utilisateur honnête.
+    runner.transact("buyer", usdc.functions.mint(honest, RECOVERY_DEPOSIT), "faucet USDC honnête")
+    runner.transact("buyer", usdc.functions.approve(minter.address, RECOVERY_DEPOSIT),
+                    "approve honnête")
+    request_id = int(minter.functions.nextRequestId().call())
+    req = runner.transact("buyer", minter.functions.requestSwap(RECOVERY_DEPOSIT), "dépôt honnête")
+    comp = runner.transact("whale", minter.functions.completeSwap(request_id), "émission M-Ghost")
+    mghost = int(ghost.functions.balanceOf(honest).call())
+    runner.add_step(
+        CASE_RECOVERY_WINDOW,
+        f"honnete > echanger --depot {_usdc(RECOVERY_DEPOSIT)}USDC",
+        "buyer", "ProtectedMinter (reprise)",
+        "Un utilisateur honnête échange 1 000 USDC. Que reçoit-il tout de suite ?",
+        f"✓ Il reçoit {_tok(mghost)} M-Ghost — PAS encore du M-Coin. Convertible en M-Coin "
+        "seulement après la fenêtre de sécurité : c'est CETTE fenêtre qui permet de tout reprendre "
+        "si un problème surgit (voir le cas suivant).",
+        "defended", [req.url, comp.url], comp.success)
+
+    # Attendre la maturité (fenêtre raccourcie), puis convertir en M-Coin.
+    for _ in range(CONVERT_POLL_TRIES):
+        if int(ghost.functions.convertibleOf(honest).call()) >= mghost:
+            break
+        time.sleep(CONVERT_POLL_SECONDS)
+    conv = runner.transact("buyer", ghost.functions.convert(mghost),
+                           "conversion M-Ghost → M-Coin")
+    minted_mcoin = int(mcoin.functions.balanceOf(honest).call())
+    runner.add_step(
+        CASE_RECOVERY_WINDOW, f"honnete > convertir --montant {_tok(mghost)}",
+        "buyer", "GhostToken (reprise)",
+        "La fenêtre de sécurité s'est écoulée sans anomalie. L'utilisateur convertit son M-Ghost.",
+        f"✓ {_tok(minted_mcoin)} M-Coin définitifs émis, adossés 1:1 à l'USDC déposé. Après "
+        "conversion, c'est irréversible — mais aucune reprise n'était nécessaire : tout était clean.",
+        "defended", [conv.url], conv.success)
+
+
 def _case_ghost_seller(runner: FujiRunner, usdc: Any) -> dict[str, int]:
     """Cas 3 : un vendeur de Ghost est signalé -> destruction de tout le Ghost + USDC gelé rendu."""
     runner.phase("Cas 3 — un vendeur de Ghost pose problème")
@@ -569,6 +631,7 @@ def replay_on_fuji(web3: Any, master_key: str,
 
     case1 = _case_mint_passes(runner, usdc)
     case2 = _case_mint_blocked(runner, usdc)
+    _case_recovery_window(runner, usdc)
     case3 = _case_ghost_seller(runner, usdc)
 
     runner.phase("Le monitor relit la chaîne")

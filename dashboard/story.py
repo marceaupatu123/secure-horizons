@@ -104,7 +104,8 @@ class FujiCase(BaseModel):
     id: str
     title: str
     subtitle: str
-    outcome: str  # bad | good | resolved
+    outcome: str  # bad | good | window | resolved
+    verdict: str
     steps: list[FujiStep]
 
 
@@ -148,10 +149,23 @@ TOKEN_UNIT = 10**18
 FUJI_CASE_META: dict[str, tuple[str, str, str]] = {
     "mint-passe": ("Le mint passe", "Contrat classique : la clé volée gagne", "bad"),
     "mint-bloque": ("Le mint est bloqué", "Secure Horizons : la clé volée ne gagne rien", "good"),
+    "fenetre-reprise": ("La fenêtre de reprise", "Un échange donne du M-Ghost, pas du M-Coin",
+                        "window"),
     "ghost-vendeur": ("Un vendeur de Ghost pose problème",
                       "On gèle, on détruit, on rembourse l'honnête", "resolved"),
 }
-FUJI_CASE_ORDER = ("mint-passe", "mint-bloque", "ghost-vendeur")
+FUJI_CASE_VERDICT: dict[str, str] = {
+    "mint-passe": "✗ Sur un contrat classique, la clé volée a réussi : des jetons sans réserve ont "
+                  "été créés.",
+    "mint-bloque": "🛡️ Le mint gonflé est bloqué : la clé volée ne crée rien de plus que le dépôt "
+                   "réel.",
+    "fenetre-reprise": "⏳ Un échange donne d'abord du M-Ghost, PAS du M-Coin. Tant que la fenêtre "
+                       "de sécurité n'est pas écoulée, tout est réversible — c'est le levier de "
+                       "reprise. Ici, aucune anomalie, donc le M-Ghost devient du M-Coin définitif.",
+    "ghost-vendeur": "🛡️ Problème résolu on-chain : pendant la fenêtre, tout le Ghost suspect est "
+                     "détruit et l'argent gelé rendu à l'acheteur honnête ; le vendeur finit à zéro.",
+}
+FUJI_CASE_ORDER = ("mint-passe", "mint-bloque", "fenetre-reprise", "ghost-vendeur")
 
 
 def _tokens(amount: int) -> float:
@@ -170,7 +184,7 @@ def build_fuji_story(run: FujiRun, live: LiveState | None = None) -> FujiStory:
             continue
         title, subtitle, outcome = FUJI_CASE_META[case_id]
         cases.append(FujiCase(id=case_id, title=title, subtitle=subtitle, outcome=outcome,
-                              steps=steps))
+                              verdict=FUJI_CASE_VERDICT[case_id], steps=steps))
     matches = None
     if live is not None:
         matches = (live.vulnerable_minted, live.seller_usdc_final) == (
@@ -340,7 +354,7 @@ color:var(--text);border:1px solid var(--border);cursor:pointer;font-size:14px;f
 .casebtn[aria-pressed=true]{border-color:var(--accent);box-shadow:0 0 0 2px #6ea8ff33}
 .casebtn .pill{font-size:10px;padding:1px 7px;border-radius:20px;float:right}
 .pill.bad{background:#ff5c7a22;color:var(--bad)}.pill.good{background:#3ddc9722;color:var(--ok)}
-.pill.resolved{background:#6ea8ff22;color:var(--accent)}
+.pill.resolved{background:#6ea8ff22;color:var(--accent)}.pill.window{background:#ffc35c22;color:var(--warn)}
 .termwrap{display:grid;grid-template-columns:1fr 230px;gap:14px}
 @media(max-width:720px){.termwrap{grid-template-columns:1fr}}
 .term{background:#060b18;border:1px solid var(--border);border-radius:12px;overflow:hidden;min-height:300px;display:flex;flex-direction:column}
@@ -505,7 +519,8 @@ else{
  var curCase=null,stepIdx=0,typing=false,out=$('f-termout');
  // Boutons de cas
  F.cases.forEach(function(c){var b=document.createElement('button');b.className='casebtn';b.setAttribute('aria-pressed','false');
-  var pill='<span class="pill '+c.outcome+'">'+(c.outcome==='bad'?'✗ échec':c.outcome==='good'?'✓ bloqué':'✓ résolu')+'</span>';
+  var names={bad:'✗ échec',good:'✓ bloqué',window:'⏳ réversible',resolved:'✓ résolu'};
+  var pill='<span class="pill '+c.outcome+'">'+(names[c.outcome]||'')+'</span>';
   b.innerHTML=pill+'<b>'+c.title+'</b><small>'+c.subtitle+'</small>';b.onclick=function(){selectCase(c)};$('f-cases').appendChild(b)});
  function typeCmd(cmd,done){var pr='<span class="pr">fuji$</span> ';var el=document.createElement('div');el.className='termline termcmd';
   out.appendChild(el);if(RM){el.innerHTML=pr+cmd;done();return}typing=true;var i=0;
@@ -521,9 +536,7 @@ else{
   t.textContent=c.address.slice(0,10)+'…';d.appendChild(a);d.appendChild(t);r.appendChild(d)})}
  function renderNext(){var box=$('f-next');box.innerHTML='';if(!curCase)return;
   if(stepIdx>=curCase.steps.length){var v=$('f-verdict');v.className='verdict '+(curCase.outcome==='bad'?'badv':'good')+' on';
-   v.textContent=curCase.outcome==='bad'?'✗ Sur un contrat classique, la clé volée a réussi : des jetons sans réserve ont été créés.':
-    curCase.outcome==='good'?'🛡️ Secure Horizons a bloqué le mint gonflé : la clé volée n\u2019a rien pu créer de plus que le dépôt réel.':
-    '🛡️ Problème résolu on-chain : tout le Ghost suspect détruit, l\u2019argent gelé rendu à l\u2019acheteur honnête, le vendeur à zéro.';
+   v.textContent=curCase.verdict;
    return}
   var s=curCase.steps[stepIdx];var b=document.createElement('button');b.className='cmdbtn';
   b.innerHTML=s.narration+'<code>▶ '+s.command+'</code>';b.disabled=typing;b.onclick=function(){runStep()};box.appendChild(b)}

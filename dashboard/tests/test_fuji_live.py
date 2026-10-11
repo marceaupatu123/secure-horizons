@@ -55,10 +55,10 @@ def test_rejeu_enregistre_sans_secret():
     assert "key" not in json.loads(raw)
 
 
-def test_etapes_couvrent_les_trois_cas(run):
+def test_etapes_couvrent_les_cas(run):
     cases = {s.case for s in run.steps}
     assert cases == {fuji_live.CASE_MINT_PASSES, fuji_live.CASE_MINT_BLOCKED,
-                     fuji_live.CASE_GHOST_SELLER}
+                     fuji_live.CASE_RECOVERY_WINDOW, fuji_live.CASE_GHOST_SELLER}
     for step in run.steps:
         assert step.command and step.effect and step.contract
         assert step.contract in run.contracts  # chaque etape pointe un contrat deploye
@@ -70,7 +70,8 @@ def test_histoire_fuji(run):
     assert story.tx_count == len(run.transactions)
     assert story.step_count == len(run.steps)
     ids = [c.id for c in story.cases]
-    assert ids == ["mint-passe", "mint-bloque", "ghost-vendeur"]
+    assert ids == ["mint-passe", "mint-bloque", "fenetre-reprise", "ghost-vendeur"]
+    assert all(c.verdict for c in story.cases)
     assert sum(len(c.steps) for c in story.cases) == story.step_count
     assert story.live_block is None and story.live_matches_record is None
     assert all(c.url.startswith(fuji_live.EXPLORER_URL + "/address/0x") for c in story.contracts)

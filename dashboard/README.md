@@ -26,10 +26,13 @@
   externe, respecte `prefers-reduced-motion`). C'est la page à ouvrir devant un jury ou des
   investisseurs : « Demo interactive » dans la barre latérale.
 - `scenarios/fuji_live.py` : **rejeu en vraies transactions sur Avalanche Fuji** (#148), premier
-  onglet de la démo interactive, raconté en **3 cas joués étape par étape dans un faux terminal**
+  onglet de la démo interactive, raconté en **4 cas joués étape par étape dans un faux terminal**
   (chaque bouton tape et exécute une commande, l'effet renvoie à la transaction Snowtrace) : (1) *le
   mint passe* — contrat classique, mint gonflé accepté ; (2) *le mint est bloqué* — `ProtectedMinter`,
-  mint gonflé rejeté on-chain puis seul le dépôt servi ; (3) *un vendeur de Ghost pose problème* — le
+  mint gonflé rejeté on-chain puis seul le dépôt servi ; (3) *la fenêtre de reprise* — un échange
+  donne du **M-Ghost** (pas du M-Coin), converti en **M-Coin** via `convert` seulement après la
+  fenêtre de sécurité (raccourcie à 1 s pour jouer la conversion en direct), ce qui rend la reprise
+  possible ; (4) *un vendeur de Ghost pose problème* — le
   Ghost est écoulé via le `SettlementRouter` (USDC de l'acheteur bloqué au coffre, vendeur payé en
   Ghost de paiement), le vendeur est signalé (méthode non divulguée), les gardiens 2/3 détruisent tout
   le Ghost suspect et brûlent le Ghost de paiement du vendeur (son USDC, gelé faute de conversion, est
