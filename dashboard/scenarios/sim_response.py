@@ -1,5 +1,9 @@
 """Réponse simulée : simulation hors chaîne, à remplacer par #17 (orchestrateur) et #19 (journal DORA).
 
+Encore utilisee par C et D (et A en repli). B, N1, N2, N3 passent par le vrai
+orchestrateur (`real_pipeline.py`) ; seuls les effets cote Ghost (`ghost_on_*`,
+simulation de #8) sont partages.
+
 Machine a etats OPEN_ANSWERS §3.5 : le surveillant ne peut que RETARDER
 (`delay` auto-expirant, fenetre allongee) ; la destruction passe uniquement par
 une `ReleaseDecision` multisig 2/3 (l'IA ne decide jamais seule). Sans
@@ -47,6 +51,55 @@ def _set_quarantine(builder: _Builder, address: str, status: QuarantineStatus, b
     builder.quarantine_record(address, status, balance, ratio, opened_at, DEMO_EXTENDED_WINDOW)
 
 
+def ghost_on_delay(builder: _Builder, address: str, at: datetime, expires_at: datetime,
+                   ghost_balance: int, ratio: float, suspect_amount: int) -> None:
+    """Cote Ghost (simule, #8) d'un retard : quarantaine allongee + balise « elevated »."""
+    _set_quarantine(builder, address, QuarantineStatus.EXTENDED, ghost_balance, ratio, at)
+    builder.beacon(address, BeaconRiskLevel.ELEVATED, ratio, suspect_amount, at,
+                   window_expires_at=expires_at)
+
+
+def ghost_on_expire(builder: _Builder, address: str, at: datetime, opened_at: datetime,
+                    ghost_amount: int,
+                    contamination_ratio: float) -> GhostTokenRedemptionEvent | None:
+    """Cote Ghost (simule, #8) d'un retard expire : conversion 1:1 + balise « normal »."""
+    _set_quarantine(builder, address, QuarantineStatus.RELEASED, ghost_amount,
+                    contamination_ratio, opened_at)
+    redemption = None
+    if ghost_amount > 0:
+        redemption = GhostTokenRedemptionEvent(
+            tx_hash=_fake_tx_hash(builder.rng), log_index=0, block_number=builder.next_block(),
+            chain_id=DEMO_CHAIN_ID, redeemed_at=at, holder=address, ghost_amount=ghost_amount,
+            token_amount=ghost_amount, fee_amount=0, contamination_ratio=contamination_ratio,
+        )
+        builder.ghost_redemptions.append(redemption)
+        builder.log(at, "contract", "ghost_redeemed", "Ghost converti 1:1 en vrai token.",
+                    {"ghost_amount": ghost_amount, "token_amount": ghost_amount},
+                    subject_address=address, related_tx_hash=redemption.tx_hash)
+    builder.beacon(address, BeaconRiskLevel.NORMAL, contamination_ratio,
+                   int(contamination_ratio * ghost_amount), at)
+    return redemption
+
+
+def ghost_on_burn(builder: _Builder, address: str, at: datetime, ghost_balance: int,
+                  burn_ratio: float, decision_id: str) -> GhostTokenBurnEvent:
+    """Cote Ghost (simule, #8) d'une destruction autorisee par le multisig."""
+    burned = int(burn_ratio * ghost_balance)
+    burn = GhostTokenBurnEvent(
+        tx_hash=_fake_tx_hash(builder.rng), log_index=0, block_number=builder.next_block(),
+        chain_id=DEMO_CHAIN_ID, burned_at=at, address=address, burned_amount=burned,
+        contamination_ratio=burn_ratio, suspect_amount=burned, decision_id=decision_id,
+    )
+    builder.ghost_burns.append(burn)
+    builder.log(at, "contract", "ghost_burned", "Fraction suspecte du Ghost détruite.",
+                {"burned_amount": burned, "decision_id": decision_id},
+                subject_address=address, related_tx_hash=burn.tx_hash)
+    # Apres destruction, le solde restant est la fraction saine (ratio 0).
+    _set_quarantine(builder, address, QuarantineStatus.BURNED, ghost_balance - burned, 0.0, at)
+    builder.beacon(address, BeaconRiskLevel.FROZEN, burn_ratio, burned, at)
+    return burn
+
+
 def apply_delay(builder: _Builder, alert: Alert, at: datetime, ghost_balance: int = 0,
                 perimeter: str | None = None) -> ResponseAction:
     """Retard auto-expirant applique par le surveillant (fenetre Ghost allongee)."""
@@ -57,10 +110,8 @@ def apply_delay(builder: _Builder, alert: Alert, at: datetime, ghost_balance: in
         "Fenêtre Ghost allongée (retarder, auto-expirant) : conversion suspendue.",
         address, alert, expires_at=expires_at,
     )
-    _set_quarantine(builder, address, QuarantineStatus.EXTENDED, ghost_balance,
-                    alert.contamination_ratio, at)
-    builder.beacon(address, BeaconRiskLevel.ELEVATED, alert.contamination_ratio,
-                   alert.suspect_amount, at, window_expires_at=expires_at)
+    ghost_on_delay(builder, address, at, expires_at, ghost_balance, alert.contamination_ratio,
+                   alert.suspect_amount)
     return action
 
 
@@ -80,22 +131,8 @@ def expire_delay(builder: _Builder, action: ResponseAction, ghost_amount: int,
                 "Retard expiré sans décision : retour automatique à la normale.",
                 {"action_id": action.action_id}, subject_address=address,
                 related_action_id=action.action_id)
-    _set_quarantine(builder, address, QuarantineStatus.RELEASED, ghost_amount,
-                    contamination_ratio, action.created_at)
-    redemption = None
-    if ghost_amount > 0:
-        redemption = GhostTokenRedemptionEvent(
-            tx_hash=_fake_tx_hash(builder.rng), log_index=0, block_number=builder.next_block(),
-            chain_id=DEMO_CHAIN_ID, redeemed_at=at, holder=address, ghost_amount=ghost_amount,
-            token_amount=ghost_amount, fee_amount=0, contamination_ratio=contamination_ratio,
-        )
-        builder.ghost_redemptions.append(redemption)
-        builder.log(at, "contract", "ghost_redeemed", "Ghost converti 1:1 en vrai token.",
-                    {"ghost_amount": ghost_amount, "token_amount": ghost_amount},
-                    subject_address=address, related_tx_hash=redemption.tx_hash)
-    builder.beacon(address, BeaconRiskLevel.NORMAL, contamination_ratio,
-                   int(contamination_ratio * ghost_amount), at)
-    return redemption
+    return ghost_on_expire(builder, address, at, action.created_at, ghost_amount,
+                           contamination_ratio)
 
 
 def confirm_destroy(builder: _Builder, alert: Alert, at: datetime, ghost_balance: int,
@@ -124,19 +161,7 @@ def confirm_destroy(builder: _Builder, alert: Alert, at: datetime, ghost_balance
     builder.action(ResponseActionType.DESTROY, ResponseActionStatus.APPLIED, at, "multisig",
                    "Destruction du Ghost suspect (ratio x solde non converti).",
                    address, alert, decision_id=decision.decision_id)
-    burn = GhostTokenBurnEvent(
-        tx_hash=_fake_tx_hash(builder.rng), log_index=0, block_number=builder.next_block(),
-        chain_id=DEMO_CHAIN_ID, burned_at=at, address=address, burned_amount=burned,
-        contamination_ratio=burn_ratio, suspect_amount=burned, decision_id=decision.decision_id,
-    )
-    builder.ghost_burns.append(burn)
-    builder.log(at, "contract", "ghost_burned", "Fraction suspecte du Ghost détruite.",
-                {"burned_amount": burned, "decision_id": decision.decision_id},
-                subject_address=address, related_tx_hash=burn.tx_hash)
-    # Apres destruction, le solde restant est la fraction saine (ratio 0).
-    _set_quarantine(builder, address, QuarantineStatus.BURNED, ghost_balance - burned, 0.0, at)
-    builder.beacon(address, BeaconRiskLevel.FROZEN, burn_ratio, burned, at)
-    return burn
+    return ghost_on_burn(builder, address, at, ghost_balance, burn_ratio, decision.decision_id)
 
 
 def build_dataset(builder: _Builder, seed: int) -> DemoDataset:

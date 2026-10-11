@@ -22,12 +22,34 @@ if TYPE_CHECKING:
     from dashboard.scenarios.config import SimulationParams
 
 SIMULATION_LABEL = "simulation hors chaîne"
+REAL_LABEL = "implémentation réelle"
+
+
+def _refs(numbers: list[int] | tuple[int, ...]) -> str:
+    return ", ".join(f"#{n}" for n in numbers)
 
 
 def simulation_banner(replace_by: list[int] | tuple[int, ...]) -> str:
     """Bandeau texte : « simulation hors chaîne, à remplacer par #4, #5 »."""
-    refs = ", ".join(f"#{n}" for n in replace_by)
+    refs = _refs(replace_by)
     return f"{SIMULATION_LABEL}, à remplacer par {refs}" if refs else SIMULATION_LABEL
+
+
+def real_source(refs: list[int] | tuple[int, ...]) -> str:
+    """Source d'une grandeur calculee par le vrai code : « implémentation réelle (#11, #12) »."""
+    return f"{REAL_LABEL} ({_refs(refs)})" if refs else REAL_LABEL
+
+
+def implementation_banner(real: list[int] | tuple[int, ...],
+                          replace_by: list[int] | tuple[int, ...]) -> str:
+    """« implémentation réelle : #11, #12 ; simulation hors chaîne, à remplacer par #8 ».
+
+    Le bandeau « simulation hors chaîne » n'apparait que s'il reste une brique simulee.
+    """
+    parts = [f"{REAL_LABEL} : {_refs(real)}"] if real else []
+    if replace_by or not real:
+        parts.append(simulation_banner(replace_by))
+    return " ; ".join(parts)
 
 
 class ScenarioStatus(str, Enum):
@@ -78,6 +100,9 @@ class ScenarioVariant(BaseModel):
     checks: list[ScenarioCheck]
     dataset: DemoDataset
     end_time: datetime
+    # Rapport d'incident DORA (#15, Markdown) de l'alerte confirmee, si le scenario en a une
+    # (#113). Hors ligne par defaut (aucun appel AWS), Bedrock reel avec LLM_LIVE=1.
+    incident_report: str | None = None
 
 
 class ScenarioResult(BaseModel):
@@ -110,7 +135,13 @@ class ScenarioResult(BaseModel):
 
 @dataclass(frozen=True)
 class ScenarioSpec:
-    """Description d'un scenario enregistre ; `runner` est la seule partie a remplacer."""
+    """Description d'un scenario enregistre ; `runner` est la seule partie a remplacer.
+
+    `replace_by` : briques encore simulees (par defaut). `implemented_by` : briques
+    toujours branchees sur le vrai code. `opt_in_by` : briques branchees sur le vrai
+    code seulement si un backend optionnel est active (`opt_in_hint`), avec repli
+    automatique sur la simulation sinon.
+    """
 
     id: str
     title: str
@@ -120,3 +151,20 @@ class ScenarioSpec:
     depends_on: tuple[int, ...]
     replace_by: tuple[int, ...]
     runner: Callable[[int, SimulationParams], ScenarioResult]
+    implemented_by: tuple[int, ...] = ()
+    opt_in_by: tuple[int, ...] = ()
+    opt_in_hint: str = ""
+
+    def implementation_label(self) -> str:
+        """Etat de branchement du scenario (catalogue), en texte."""
+        label = implementation_banner(self.implemented_by, self.replace_by)
+        if self.opt_in_by:
+            label += (f" (backend réel optionnel pour {_refs(self.opt_in_by)} : "
+                      f"{self.opt_in_hint})")
+        return label
+
+    def result_banner(self, result: ScenarioResult) -> str:
+        """Bandeau d'un resultat : briques reelles effectivement utilisees + reste simule."""
+        remaining = set(result.replace_by)
+        real = [n for n in sorted({*self.implemented_by, *self.opt_in_by}) if n not in remaining]
+        return implementation_banner(real, result.replace_by)

@@ -410,3 +410,19 @@ d'usage nouveau) — hypothèse qu'un vrai protocole ne vérifie pas.
 **Proposition** : garder les seuils simples pour la démo (confirme OPEN_ANSWERS §1) ; citer la
 prédiction conforme au jury comme piste mesurée, avec sa limite. Une seule graine mesurée : à
 répéter avant toute affirmation chiffrée (`docs/CLAIMS.md`).
+
+## 14. Lignage (#106) et conversions Ghost → M vues par le monitor — → Tranché, voir `docs/OPEN_ANSWERS.md` §14
+
+En mode Ghost (#8), le monitor émet les transferts ordinaires de Ghost en `TransferEvent(is_ghost=True)`. En
+revanche, comme pour tous les tokens depuis #10, il **n'émet pas les burns**, donc pas les conversions
+(`Ghost → 0x0`). Or `detection/lineage.retroactive_seeds` déduit le solde Ghost non converti en rejouant les
+transferts : sans la conversion, un porteur qui a converti garde, dans le rejeu, un solde fictif, et il peut
+recevoir une graine pour du Ghost qu'il n'a plus. La destruction sur la chaîne est plafonnée par le vrai solde,
+donc aucune perte de fonds, mais la restitution et le total « récupéré » sont surestimés.
+
+**→ Tranché, voir `docs/OPEN_ANSWERS.md` §14.** Décision du 2026-10-11 (marceaupatu123) : option **(c)** —
+au moment du semis, `retroactive_seeds` plafonne le soupçon de chaque détenteur par `balanceOf(Ghost, addr)`
+lu on-chain (vérité de la chaîne, le plus simple). **(b)** (flux dédié aux conversions) reste l'évolution
+propre si le coût RPC gêne ; **(a)** (émettre les burns comme transferts) est écartée car elle oblige à filtrer
+de faux transferts dans les règles de détection volume/HHI. Le texte complet des trois options et la limite
+mesurée (une lecture RPC par graine, à documenter dans `docs/CLAIMS.md`) vivent désormais dans `OPEN_ANSWERS` §14.

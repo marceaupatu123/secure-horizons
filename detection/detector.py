@@ -190,8 +190,9 @@ class RuleBasedMonitor:
 
         Args:
             event: le mint observe.
-            context: donnees hors `MintEvent` (depot, taux, offre, collateral,
-                evenements admin, taux de reference). None = rien a verifier.
+            context: donnees hors `MintEvent` (depot, deposant/`requester` pour
+                I3, taux, offre, collateral, evenements admin, taux de
+                reference). None = rien a verifier.
 
         Returns:
             Une `Alert` (« retarder le perimetre ») si une regle est violee,
@@ -202,6 +203,7 @@ class RuleBasedMonitor:
         findings = [
             finding
             for finding in (
+                self._check_path(event, context),
                 self._check_i1(event, context),
                 self._check_i3(event, context),
                 self._check_oracle(event, context),
@@ -407,6 +409,62 @@ class RuleBasedMonitor:
             volume_zscore=stats.volume_zscore,
             reason=reason,
             seeds=seeds,
+        )
+
+    def _check_path(self, event: MintEvent, context: MintContext) -> _Finding | None:
+        """I4 : un mint du token sans `SwapCompleted` dans sa transaction (#104).
+
+        Le seul chemin de mint prevu est `ProtectedMinter.completeSwap`. Un
+        `Transfer(0x0)` sans son evenement de traitement signifie un second
+        chemin (minter remplace, bug, upgrade) : tout le mint est suspect.
+        """
+        if not context.path_unexpected:
+            return None
+        return _Finding(
+            severity=self.params.invariant_severity,
+            reason=(
+                f"I4 viole : mint de {event.amount} vers {event.recipient} sans "
+                "SwapCompleted du contrat protege dans la transaction (chemin "
+                "de mint non prevu)"
+            ),
+            recipient_suspect_amount=event.amount,
+        )
+
+    def check_admin_event(self, event: AdminEvent, detail: str = "") -> Alert | None:
+        """Alerte IMMEDIATE sur un evenement d'administration non annonce (#104).
+
+        Avant #104, les evenements admin n'etaient verifies qu'au mint suivant
+        (`MintContext.admin_events`) : une prise de controle (role accorde a
+        l'attaquant) restait muette jusqu'au premier mint. Ici, chaque
+        evenement observe est evalue seul, des sa lecture.
+
+        Aucun montant n'est suspect (rien n'a encore ete minte) : l'alerte ne
+        porte pas de graine, elle appelle un audit humain (OPEN_ANSWERS §1, §3).
+
+        Args:
+            event: l'evenement observe.
+            detail: precision lisible (role, ancien -> nouveau taux).
+
+        Returns:
+            Une `Alert` si l'evenement n'a pas ete annonce, sinon `None`.
+        """
+        findings = self._check_admin_events((event,))
+        if not findings:
+            return None
+        (finding,) = findings
+        reason = finding.reason + (f" [{detail}]" if detail else "")
+        return Alert(
+            alert_id=str(uuid.uuid4()),
+            kind=AlertKind.MINT,
+            severity=finding.severity,
+            created_at=datetime.now(timezone.utc),
+            monitor_name=MINT_MONITOR_NAME,
+            subject_address=event.subject_address,
+            source_tx_hash=event.tx_hash,
+            contamination_ratio=0.0,
+            suspect_amount=0,
+            reason=reason + ". " + _RESPONSE_NOTE,
+            seeds=[],
         )
 
     def _check_i1(self, event: MintEvent, context: MintContext) -> _Finding | None:

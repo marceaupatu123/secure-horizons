@@ -1,9 +1,17 @@
-"""Catalogue des 7 scenarios de demo (#47) : simulation hors chaîne, à remplacer par #n.
+"""Catalogue des 7 scenarios de demo (#47), branches sur le vrai code amont (#70).
 
 Chaque runner est deterministe pour une seed donnee (`random.Random(seed)` local,
-horloge fixe `DEMO_REFERENCE_TIME`) et ne renvoie que des grandeurs MESUREES sur
-l'etat final de la simulation. Le numero d'issue qui remplacera chaque brique est
-porte par `replace_by`. Brancher la vraie implementation = remplacer le runner.
+horloge simulee) et ne renvoie que des grandeurs MESUREES sur l'etat final du rejeu
+(comptages, pas des mesures de performance, cf. docs/CLAIMS.md).
+
+- B, N1, N2, N3 : trafic #24, surveillants #11/#12 et reponse #17 reels
+  (`real_pipeline.py`) ; le Ghost (#8, non livre) reste simule pour B et N3.
+- A : contrats Foundry #4/#5 reels sur anvil si `SH_DEMO_CONTRACTS_BACKEND=anvil`
+  (`real_contracts.py`), repli automatique sur la simulation sinon.
+- C, D : simulation hors chaîne, à remplacer par #7 / #8 / #25 (non livres).
+
+`replace_by` porte les briques encore simulees ; `implemented_by` / `opt_in_by`
+celles branchees sur le vrai code.
 """
 
 from __future__ import annotations
@@ -12,6 +20,7 @@ import random
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from functools import partial
 
 from dashboard.demo_data import (
     DEMO_CHAIN_ID,
@@ -21,6 +30,7 @@ from dashboard.demo_data import (
     _Builder,
     _fake_address,
 )
+from dashboard.scenarios import real_contracts
 from dashboard.scenarios.config import SimulationParams
 from dashboard.scenarios.models import (
     SIMULATION_LABEL,
@@ -30,6 +40,24 @@ from dashboard.scenarios.models import (
     ScenarioSpec,
     ScenarioStatus,
     ScenarioVariant,
+    real_source,
+)
+from dashboard.scenarios.real_pipeline import (
+    DETECTION_REFS,
+    GENERATOR_RATE,
+    RESPONSE_REFS,
+    TRAFFIC_REFS,
+    alert_addresses,
+    daily_volumes,
+    delayed_supply_share,
+    generation_params,
+    respond,
+    run_detectors,
+)
+from dashboard.scenarios.real_report import (
+    incident_report_markdown,
+    related_actions,
+    related_audit,
 )
 from dashboard.scenarios.registry import register
 from dashboard.scenarios.sim_contracts import (
@@ -39,7 +67,7 @@ from dashboard.scenarios.sim_contracts import (
     ProtectedMinter,
     VulnerableMinter,
 )
-from dashboard.scenarios.sim_detector import bucket_stats, detect
+from dashboard.scenarios.sim_detector import detect
 from dashboard.scenarios.sim_response import (
     apply_delay,
     build_dataset,
@@ -53,8 +81,10 @@ from dashboard.scenarios.sim_traffic import (
     legit_traffic,
 )
 from dashboard.view_model import PerimeterState, derive_perimeter_states
+from data.generate import event_time, generate_normal, generate_scenario_b
 from shared.models import (
     Alert,
+    MintEvent,
     MintRequest,
     ResponseAction,
     ResponseActionStatus,
@@ -66,39 +96,62 @@ from shared.models import (
 ATTACK_SUSPECT_RATIO = 1.0
 LEGIT_RATIO = 0.0
 
+_REAL_PIPELINE = (11, 12, 17, 24)
 DEPENDS_ON: dict[str, tuple[int, ...]] = {
-    "A": (4, 5), "B": (11, 12, 17), "C": (7, 25), "D": (8, 25),
-    "N1": (11, 12), "N2": (11, 12), "N3": (11, 12, 17),
+    "A": (4, 5), "B": _REAL_PIPELINE, "C": (7, 25), "D": (8, 25),
+    "N1": _REAL_PIPELINE, "N2": _REAL_PIPELINE, "N3": _REAL_PIPELINE,
 }
+# Briques encore simulees (bandeau « simulation hors chaîne, à remplacer par #… »).
 REPLACE_BY: dict[str, tuple[int, ...]] = {
-    "A": (4, 5, 24), "B": (11, 12, 17, 24), "C": (7, 25), "D": (8, 25),
-    "N1": (11, 12), "N2": (11, 12), "N3": (11, 12, 17),
+    "A": (4, 5), "B": (8,), "C": (7, 25), "D": (8, 25),
+    "N1": (), "N2": (), "N3": (8,),
 }
+# Briques toujours branchees sur le vrai code.
+IMPLEMENTED_BY: dict[str, tuple[int, ...]] = {
+    "B": _REAL_PIPELINE, "N1": _REAL_PIPELINE, "N2": _REAL_PIPELINE, "N3": _REAL_PIPELINE,
+}
+# Briques branchees sur le vrai code seulement via un backend optionnel (repli simulation).
+OPT_IN_BY: dict[str, tuple[int, ...]] = {"A": (4, 5)}
 _MAIN = "main"
+_DETECTION_SOURCE = real_source(DETECTION_REFS)
+_RESPONSE_SOURCE = real_source(RESPONSE_REFS)
+_TRAFFIC_SOURCE = real_source(TRAFFIC_REFS)
 
 
 # --- Helpers communs ---------------------------------------------------------
 
 
-def _metric(key: str, label: str, value: int | float | None, unit: str) -> MeasuredMetric:
-    return MeasuredMetric(key=key, label=label, value=value, unit=unit, source=SIMULATION_LABEL)
+def _metric(key: str, label: str, value: int | float | None, unit: str,
+            source: str = SIMULATION_LABEL) -> MeasuredMetric:
+    return MeasuredMetric(key=key, label=label, value=value, unit=unit, source=source)
 
 
-def _result(scenario_id: str, seed: int, variants: list[ScenarioVariant]) -> ScenarioResult:
+def _result(scenario_id: str, seed: int, variants: list[ScenarioVariant],
+            replace_by: tuple[int, ...] | None = None,
+            message: str | None = None) -> ScenarioResult:
+    remaining = REPLACE_BY[scenario_id] if replace_by is None else replace_by
     return ScenarioResult(
         scenario_id=scenario_id,
         seed=seed,
         status=ScenarioStatus.COMPLETED,
-        message=f"Rejoué avec la seed {seed} : grandeurs mesurées sur l'état final "
-                f"({SIMULATION_LABEL}).",
-        simulated=True,
-        replace_by=list(REPLACE_BY[scenario_id]),
+        message=message or f"Rejoué avec la seed {seed} : grandeurs mesurées sur l'état final "
+                           f"({SIMULATION_LABEL}).",
+        simulated=bool(remaining),
+        replace_by=list(remaining),
         variants=variants,
     )
 
 
 def _bucket(params: SimulationParams) -> timedelta:
     return timedelta(minutes=params.bucket_minutes)
+
+
+def _delayed_share_metric(events: list, actions: list[ResponseAction], initial_supply: int,
+                          label: str) -> MeasuredMetric:
+    """Pic de la part de l'offre en fenetre allongee, en % (friction locale, #70)."""
+    share = delayed_supply_share(events, actions, initial_supply)
+    return _metric("delayed_supply_share", label, None if share is None else 100 * share,
+                   "% de l'offre", _RESPONSE_SOURCE)
 
 
 def _log_traffic(builder: _Builder, at: datetime, legit: int, attack: int = 0) -> None:
@@ -213,107 +266,274 @@ def _simulate_attack(rng: random.Random, builder: _Builder,
 # --- A : meme attaque rejouee (vulnerable vs protege) ------------------------
 
 
-def run_a(seed: int, params: SimulationParams) -> ScenarioResult:
-    """Meme MintRequest et meme montant signe rejoues sur les deux minters."""
-    rng = random.Random(seed)
-    requester = _fake_address(rng)
-    request = MintRequest(
-        request_id=rng.randint(1, 10_000), requester=requester,
+@dataclass(frozen=True)
+class _MinterOutcome:
+    """Etat final d'un minter apres l'attaque (montants dans `unit`)."""
+
+    minted: int
+    supply: int
+    collateral: int
+    loss: int
+    deposit: int
+    signed_amount: int
+    inflated_call_accepted: bool | None = None  # None : non observe (simulation)
+
+
+_A_VARIANTS = (("vulnerable", "Contrat vulnérable"), ("protected", "Contrat protégé"))
+
+
+def _a_request(rng: random.Random, params: SimulationParams) -> MintRequest:
+    return MintRequest(
+        request_id=rng.randint(1, 10_000), requester=_fake_address(rng),
         deposit_token=_fake_address(rng), deposit_amount=params.deposit_amount,
         created_at=DEMO_REFERENCE_TIME, chain_id=DEMO_CHAIN_ID,
         signature="0x" + format(rng.getrandbits(520), "0130x"),
     )
+
+
+def _a_sim_outcomes(request: MintRequest, params: SimulationParams) -> dict[str, _MinterOutcome]:
     signed_amount = params.deposit_amount * params.signed_amount_multiplier
+    outcomes: dict[str, _MinterOutcome] = {}
+    vulnerable = VulnerableMinter()
+    minted = vulnerable.mint(signed_amount, request.deposit_amount)
+    outcomes["vulnerable"] = _MinterOutcome(minted, vulnerable.supply, vulnerable.collateral,
+                                            vulnerable.unbacked(), request.deposit_amount,
+                                            signed_amount)
+    protected = ProtectedMinter()
+    minted = protected.process(request)
+    outcomes["protected"] = _MinterOutcome(minted, protected.supply, protected.collateral,
+                                           protected.unbacked(), request.deposit_amount,
+                                           signed_amount)
+    return outcomes
+
+
+def _a_variants(seed: int, rng: random.Random, request: MintRequest,
+                outcomes: dict[str, _MinterOutcome], source: str, unit: str,
+                where: str) -> list[ScenarioVariant]:
+    """Variantes A (meme demande, meme montant signe) a partir des etats finaux."""
+    requester = request.requester
     variants: list[ScenarioVariant] = []
-    for name, label in (("vulnerable", "Contrat vulnérable"), ("protected", "Contrat protégé")):
+    for name, label in _A_VARIANTS:
+        outcome = outcomes[name]
         builder = _Builder(rng, DEMO_REFERENCE_TIME)
         at = builder.at(1)
         builder.log(request.created_at, "contract", "mint_request_registered",
-                    "Demande de mint et dépôt enregistrés on-chain.",
-                    {"request_id": request.request_id, "deposit_amount": request.deposit_amount},
+                    f"Demande de mint et dépôt enregistrés ({where}).",
+                    {"request_id": request.request_id, "deposit_amount": outcome.deposit},
                     subject_address=requester)
         builder.log(at, "attacker", "mint_authorization_signed",
                     "Autorisation signée (clé volée) avec un montant anormal.",
-                    {"request_id": request.request_id, "signed_amount": signed_amount},
+                    {"request_id": request.request_id, "signed_amount": outcome.signed_amount},
                     subject_address=requester)
-        if name == "vulnerable":
-            minter: VulnerableMinter | ProtectedMinter = VulnerableMinter()
-            minted = minter.mint(signed_amount, request.deposit_amount)
-            message = "Mint accepté : le contrat crédite le montant signé."
-        else:
-            minter = ProtectedMinter()
-            minted = minter.process(request)
-            message = "Mint traité : montant dérivé du dépôt on-chain, montant signé ignoré."
+        message = ("Mint accepté : le contrat crédite le montant signé."
+                   if name == "vulnerable" else
+                   "Mint traité : montant dérivé du dépôt on-chain, montant signé ignoré.")
         builder.log(at, "contract", "mint_processed", message,
-                    {"request_id": request.request_id, "signed_amount": signed_amount,
-                     "minted_amount": minted, "deposit_amount": request.deposit_amount},
+                    {"request_id": request.request_id, "signed_amount": outcome.signed_amount,
+                     "minted_amount": outcome.minted, "deposit_amount": outcome.deposit},
                     subject_address=requester)
         # Aucun surveillant dans ce scenario : rien n'est marque suspect (ratio 0).
-        builder.ghost_mint(requester, minted, LEGIT_RATIO, at, DEMO_NORMAL_WINDOW)
-        loss = minter.unbacked()
-        check = (ScenarioCheck(label="vulnérable vidé", expected="perte protocole > 0",
-                               passed=loss > 0)
-                 if name == "vulnerable" else
-                 ScenarioCheck(label="protégé borné", expected="perte protocole = 0",
-                               passed=loss == 0))
+        builder.ghost_mint(requester, outcome.minted, LEGIT_RATIO, at, DEMO_NORMAL_WINDOW)
+        checks = [ScenarioCheck(label="vulnérable vidé", expected="perte protocole > 0",
+                                passed=outcome.loss > 0)
+                  if name == "vulnerable" else
+                  ScenarioCheck(label="protégé borné", expected="perte protocole = 0",
+                                passed=outcome.loss == 0)]
+        if name == "protected" and outcome.inflated_call_accepted is not None:
+            checks.append(ScenarioCheck(
+                label="appel avec montant et destinataire refusé",
+                expected="completeSwap(id, destinataire, montant) rejeté on-chain",
+                passed=not outcome.inflated_call_accepted))
         variants.append(ScenarioVariant(
             name=name, label=label,
             metrics=[
-                _metric("protocol_loss", "Perte protocole (offre non adossée)", loss,
-                        "base units"),
-                _metric("minted", "Montant émis", minter.supply, "base units"),
-                _metric("collateral", "Dépôt adossé", minter.collateral, "base units"),
+                _metric("protocol_loss", "Perte protocole (offre non adossée)", outcome.loss,
+                        unit, source),
+                _metric("minted", "Montant émis", outcome.supply, unit, source),
+                _metric("collateral", "Dépôt adossé", outcome.collateral, unit, source),
             ],
-            checks=[check], dataset=build_dataset(builder, seed), end_time=at,
+            checks=checks, dataset=build_dataset(builder, seed), end_time=at,
         ))
-    return _result("A", seed, variants)
+    return variants
+
+
+def _run_a_sim(seed: int, params: SimulationParams) -> ScenarioResult:
+    rng = random.Random(seed)
+    request = _a_request(rng, params)
+    outcomes = _a_sim_outcomes(request, params)
+    return _result("A", seed, _a_variants(seed, rng, request, outcomes, SIMULATION_LABEL,
+                                          "base units", "simulés"))
+
+
+def _run_a_anvil(seed: int, params: SimulationParams,
+                 chain_factory: Callable[[], real_contracts.AnvilChain]) -> ScenarioResult:
+    """Rejoue l'attaque sur les vrais contrats #4/#5 deployes sur une chaine anvil locale."""
+    rng = random.Random(seed)
+    request = _a_request(rng, params)
+    with chain_factory() as chain:
+        readings = real_contracts.replay_scenario_a(chain, params.deposit_amount,
+                                                    params.signed_amount_multiplier)
+    outcomes = {
+        name: _MinterOutcome(
+            minted=r.minted, supply=r.minted, collateral=r.collateral, loss=r.unbacked,
+            deposit=params.deposit_amount * real_contracts.DECIMALS_SCALE,
+            signed_amount=r.signed_amount, inflated_call_accepted=r.inflated_call_accepted,
+        )
+        for name, r in readings.items()
+    }
+    variants = _a_variants(seed, rng, request, outcomes, real_source(OPT_IN_BY["A"]),
+                           "base units (stable, 18 déc.)", "on-chain, anvil local")
+    return _result("A", seed, variants, replace_by=(),
+                   message=f"Rejoué avec la seed {seed} sur une chaîne anvil locale : contrats "
+                           "Foundry #4/#5 réels, offre et collatéral lus on-chain (comptages, "
+                           "pas des mesures du contrat déployé).")
+
+
+def run_a(seed: int, params: SimulationParams,
+          chain_factory: Callable[[], real_contracts.AnvilChain] | None = None) -> ScenarioResult:
+    """Meme MintRequest et meme montant signe rejoues sur les deux minters.
+
+    `SH_DEMO_CONTRACTS_BACKEND=anvil` : vrais contrats #4/#5 sur anvil ; repli automatique
+    sur la simulation (bandeau conserve) si Foundry est absent ou si le rejeu echoue.
+    """
+    backend = real_contracts.selected_backend()
+    if backend != real_contracts.BACKEND_ANVIL:
+        return _run_a_sim(seed, params)
+    reason = real_contracts.unavailable_reason() if chain_factory is None else None
+    if reason is None:
+        try:
+            return _run_a_anvil(seed, params, chain_factory or real_contracts.AnvilChain)
+        except real_contracts.ContractsBackendError as exc:
+            reason = str(exc)
+    fallback = _run_a_sim(seed, params)
+    return fallback.model_copy(update={
+        "message": f"Backend anvil demandé mais indisponible ({reason}) : repli sur la "
+                   f"{SIMULATION_LABEL}. " + fallback.message,
+    })
 
 
 # --- B : attaquant sous les plafonds -----------------------------------------
 
 
+def _log_generated(builder: _Builder, at: datetime, transfers: int, mints: int,
+                   attack_events: int = 0) -> None:
+    builder.log(at, "simulation", "simulation_started",
+                f"Trafic du générateur data/ (#24) : {transfers} transferts, {mints} mints, "
+                f"dont {attack_events} événements d'attaque (vérité terrain du manifeste).",
+                {"transfers": transfers, "mints": mints, "attack_events": attack_events})
+
+
+def _real_message(seed: int, simulated: str | None) -> str:
+    rest = (f" ; {simulated} : {SIMULATION_LABEL}" if simulated
+            else " ; aucune brique simulée")
+    return (f"Rejoué avec la seed {seed} : trafic #24, surveillants #11/#12 et réponse #17 "
+            f"réels{rest}. Comptages sur trafic synthétique, pas des mesures de performance.")
+
+
 def run_b(seed: int, params: SimulationParams) -> ScenarioResult:
-    """Mints sous plafond : le contrat seul ne rejette rien, les surveillants alertent."""
+    """Detournement 1:1 (#24) : aucun mint hors I1, le contrat seul ne voit rien ; les
+    vrais surveillants #11/#12 et la vraie reponse #17 tournent sur le trafic genere."""
     rng = random.Random(seed)
     builder = _Builder(rng, DEMO_REFERENCE_TIME)
-    run = _simulate_attack(rng, builder, params)
-    attackers = set(run.attackers)
-    response = _respond(builder, run.ledger, run.alerts, attackers, params, run.traffic_end)
-    attacker_alerts = [a for a in run.alerts if a.subject_address in attackers]
-    first = min((a.created_at for a in attacker_alerts), default=None)
-    delay_seconds = None if first is None else (first - run.attack_start).total_seconds()
-    rejections = sum(1 for t in run.attack if t.amount > params.onchain_cap_per_tx)
-    false_positives = sum(1 for a in run.alerts if a.subject_address not in attackers)
-    destroyed = sum(run.ledger.burned.get(a, 0) for a in run.attackers)
-    extended = bool(attacker_alerts) and all(
-        any(d.perimeter_address == a.subject_address and d.expires_at is not None
-            and d.expires_at - d.created_at == DEMO_EXTENDED_WINDOW for d in response.delays)
-        for a in attacker_alerts
+    gen = generation_params(seed, params)
+    scenario = generate_scenario_b(gen)
+    attack = scenario.manifest["attack"]
+    attack_txs = set(attack["tx_hashes"])
+    attack_addresses = {a.lower() for a in (attack["attacker"], *attack["fresh_addresses"],
+                                            attack["exit_point"])}
+    deposits = {e.request_id: e.deposit_amount for e in scenario.events
+                if isinstance(e, MintRequest)}
+    mints = [e for e in scenario.events if isinstance(e, MintEvent)]
+    transfers = [e for e in scenario.events if isinstance(e, TransferEvent)]
+    attack_mints = [e for e in mints if e.request_id in attack["request_ids"]]
+    _log_generated(builder, gen.start, len(transfers), len(mints),
+                   sum(1 for e in (*mints, *transfers) if e.tx_hash in attack_txs))
+
+    # Ghost (#8, simule) : seuls les lots de l'attaque sont suivis (ratio 1, verite terrain).
+    ledger = GhostLedger(DEMO_NORMAL_WINDOW)
+
+    def credit(event: MintEvent, at: datetime) -> None:
+        ledger.credit(event.recipient, event.amount, ATTACK_SUSPECT_RATIO, at)
+        builder.ghost_mint(event.recipient, event.amount, ATTACK_SUSPECT_RATIO, at,
+                           DEMO_NORMAL_WINDOW)
+
+    def move(event: TransferEvent, at: datetime) -> None:
+        ledger.transfer(event.sender, event.recipient, event.amount, at, keep_window=True)
+
+    moves = [(e.observed_at, partial(credit, e)) for e in attack_mints]
+    moves += [(e.observed_at, partial(move, e)) for e in transfers
+              if e.tx_hash in attack_txs and e.is_ghost]
+
+    detection = run_detectors(builder, scenario.events, scenario.manifest, params)
+    response = respond(builder, ledger, detection.alerts, attack_addresses, params, gen.end,
+                       moves)
+    t0 = min(e.observed_at for e in attack_mints)
+    attack_alerts = [a for a in detection.alerts
+                     if a.created_at >= t0 and alert_addresses(a) & attack_addresses]
+    first = min((a.created_at for a in attack_alerts), default=None)
+    delay_seconds = None if first is None else (first - t0).total_seconds()
+    # Pas de plafond fixe par operation (OPEN_ANSWERS §0) : le seul controle de montant
+    # on-chain est I1 (mint = depot x taux) ; un mint d'attaque a 1:1 passe.
+    rejections = sum(1 for e in attack_mints
+                     if e.amount != deposits[e.request_id] * GENERATOR_RATE)
+    false_positives = sum(1 for a in detection.alerts if not alert_addresses(a) & attack_addresses)
+    destroyed = sum(amount for address, amount in ledger.burned.items()
+                    if address.lower() in attack_addresses)
+    actions = response.actions
+    extended = bool(attack_alerts) and all(
+        any(d.action_type == ResponseActionType.DELAY and d.perimeter_address is not None
+            and d.perimeter_address.lower() == a.subject_address.lower()
+            and d.expires_at is not None
+            and d.expires_at - d.created_at == DEMO_EXTENDED_WINDOW for d in actions)
+        for a in attack_alerts
     )
+    # Rapport DORA (#15) sur la premiere alerte d'attaque confirmee par le multisig (#113).
+    destroyed_addresses = {address.lower() for address in response.destroyed_at}
+    confirmed_alert = next((a for a in attack_alerts
+                            if alert_addresses(a) & destroyed_addresses), None)
+    report = None
+    if confirmed_alert is not None:
+        scope = alert_addresses(confirmed_alert)
+        linked = related_actions(scope, actions)
+        report = incident_report_markdown(
+            confirmed_alert, linked,
+            related_audit(scope, linked, response.orchestrator.audit_log),
+            generated_at=response.end_time or gen.end)
     variant = ScenarioVariant(
-        name=_MAIN, label="Attaquant sous les plafonds",
+        name=_MAIN, label="Détournement 1:1 puis sortie concentrée (trafic #24)",
         metrics=[
-            _metric("contract_rejections", "Rejets par le contrat seul", rejections,
-                    "transferts"),
-            _metric("alert_count", "Alertes", len(run.alerts), "alertes"),
-            _metric("detection_delay_seconds", "Délai de détection", delay_seconds, "s"),
-            _metric("false_positive_count", "Faux positifs", false_positives, "alertes"),
+            _metric("contract_rejections", "Rejets par le contrat seul (mints d'attaque hors I1)",
+                    rejections, "mints", _TRAFFIC_SOURCE),
+            _metric("alert_count", "Alertes", len(detection.alerts), "alertes",
+                    _DETECTION_SOURCE),
+            _metric("detection_delay_seconds", "Délai de détection (depuis le mint d'attaque)",
+                    delay_seconds, "s", _DETECTION_SOURCE),
+            _metric("false_positive_count", "Faux positifs", false_positives, "alertes",
+                    _DETECTION_SOURCE),
             _metric("suspect_ghost_destroyed", "Ghost suspect détruit", destroyed, "base units"),
             _metric("protocol_loss", "Perte protocole (Ghost suspect converti)",
-                    run.ledger.total_converted_suspect(), "base units"),
+                    ledger.total_converted_suspect(), "base units"),
+            _delayed_share_metric(scenario.events, actions,
+                                  int(scenario.manifest["initial_supply"]),
+                                  "Part de l'offre en fenêtre allongée (pic, friction locale)"),
         ],
         checks=[
             ScenarioCheck(label="détecté par les surveillants",
-                          expected="au moins une alerte sur l'attaquant", passed=first is not None),
+                          expected="au moins une alerte sur une adresse de l'attaque",
+                          passed=first is not None),
             ScenarioCheck(label="contrat seul ne rejette rien",
                           expected="rejets par le contrat seul = 0", passed=rejections == 0),
             ScenarioCheck(label="fenêtre allongée",
-                          expected="retard appliqué sur chaque adresse attaquante alertée",
+                          expected="retard appliqué sur chaque adresse de l'attaque alertée",
                           passed=extended),
+            ScenarioCheck(label="rapport d'incident DORA",
+                          expected="rapport #15 produit pour l'alerte confirmée par le multisig",
+                          passed=report is not None),
         ],
-        dataset=build_dataset(builder, seed), end_time=response.end_time,
+        dataset=build_dataset(builder, seed), end_time=response.end_time or gen.end,
+        incident_report=report,
     )
-    return _result("B", seed, [variant])
+    return _result("B", seed, [variant], message=_real_message(seed, "Ghost (#8)"))
 
 
 # --- C : gel et pare-feu de contagion (optionnel) ----------------------------
@@ -447,87 +667,116 @@ def run_d(seed: int, params: SimulationParams) -> ScenarioResult:
 # --- N1 / N2 / N3 : scenarios de controle ------------------------------------
 
 
-def _legit_only(seed: int, params: SimulationParams, growth: float,
-                scenario_id: str) -> ScenarioResult:
+def _legit_only(seed: int, params: SimulationParams, scenario_id: str,
+                **generation: float) -> ScenarioResult:
+    """Trafic legitime seul du generateur #24 rejoue dans les vrais #11/#12 puis #17."""
     rng = random.Random(seed)
     builder = _Builder(rng, DEMO_REFERENCE_TIME)
-    start = builder.t0
-    buckets = params.warmup_buckets + params.baseline_buckets
-    legit = legit_addresses(rng, params.legit_address_count)
-    traffic = legit_traffic(rng, legit, start, buckets, params, growth=growth)
-    _log_traffic(builder, start, len(traffic))
-    alerts = detect(builder, traffic, start, params)
-    response = _respond(builder, GhostLedger(DEMO_NORMAL_WINDOW), alerts, set(), params,
-                        start + buckets * _bucket(params))
-    freezes = _count_actions(builder.actions,
+    gen = generation_params(seed, params, **generation)
+    scenario = generate_normal(gen)
+    mints = sum(1 for e in scenario.events if isinstance(e, MintEvent))
+    _log_generated(builder, gen.start,
+                   sum(1 for e in scenario.events if isinstance(e, TransferEvent)), mints)
+    detection = run_detectors(builder, scenario.events, scenario.manifest, params)
+    alerts = detection.alerts
+    response = respond(builder, GhostLedger(DEMO_NORMAL_WINDOW), alerts, set(), params, gen.end)
+    freezes = _count_actions(response.actions,
                              {ResponseActionType.DELAY, ResponseActionType.DESTROY})
     no_alert = ScenarioCheck(label="zéro alerte", expected="aucune alerte sur du trafic légitime",
                              passed=not alerts)
     if scenario_id == "N1":
         metrics = [
-            _metric("alert_count", "Alertes", len(alerts), "alertes"),
-            _metric("freeze_count", "Retards / destructions appliqués", freezes, "actions"),
-            _metric("false_positive_count", "Faux positifs", len(alerts), "alertes"),
+            _metric("alert_count", "Alertes", len(alerts), "alertes", _DETECTION_SOURCE),
+            _metric("freeze_count", "Retards / destructions appliqués", freezes, "actions",
+                    _RESPONSE_SOURCE),
+            _metric("false_positive_count", "Faux positifs", len(alerts), "alertes",
+                    _DETECTION_SOURCE),
         ]
         checks = [no_alert, ScenarioCheck(label="zéro gel", expected="aucun retard ni destruction",
                                           passed=freezes == 0)]
-        label = "Trafic légitime seul"
+        label = "Trafic légitime seul (générateur #24)"
     else:
-        stats = bucket_stats(traffic, start, params.bucket_minutes, params.supply)
-        growth_measured = stats[-1].volume / stats[0].volume if stats and stats[0].volume else None
+        days = daily_volumes(detection.slots, gen.start)
+        growth_measured = days[-1] / days[0] if len(days) > 1 and days[0] else None
         metrics = [
-            _metric("volume_growth_measured", "Croissance du volume (dernière / première tranche)",
-                    growth_measured, "×"),
-            _metric("alert_count", "Alertes", len(alerts), "alertes"),
+            _metric("volume_growth_measured", "Croissance du volume (dernier / premier jour)",
+                    growth_measured, "×", _TRAFFIC_SOURCE),
+            _metric("alert_count", "Alertes", len(alerts), "alertes", _DETECTION_SOURCE),
         ]
         checks = [ScenarioCheck(label="pas de déclenchement",
                                 expected="aucune alerte malgré la croissance", passed=not alerts)]
-        label = "Croissance légitime forte"
+        label = "Croissance légitime forte (générateur #24)"
     variant = ScenarioVariant(name=_MAIN, label=label, metrics=metrics, checks=checks,
-                              dataset=build_dataset(builder, seed), end_time=response.end_time)
-    return _result(scenario_id, seed, [variant])
+                              dataset=build_dataset(builder, seed),
+                              end_time=response.end_time or gen.end)
+    return _result(scenario_id, seed, [variant], message=_real_message(seed, None))
 
 
 def run_n1(seed: int, params: SimulationParams) -> ScenarioResult:
-    """Trafic legitime seul : on mesure les faux positifs."""
-    return _legit_only(seed, params, 1.0, "N1")
+    """Trafic legitime seul : on compte les faux positifs."""
+    return _legit_only(seed, params, "N1")
 
 
 def run_n2(seed: int, params: SimulationParams) -> ScenarioResult:
-    """Croissance legitime forte et large : volume eleve SANS dispersion effondree."""
-    return _legit_only(seed, params, params.growth_factor, "N2")
+    """Croissance legitime forte et large : volume eleve SANS dispersion effondree.
+
+    `growth` du generateur = +(growth_factor - 1) sur la periode (x growth_factor a la fin).
+    """
+    return _legit_only(seed, params, "N2", growth=max(0.0, params.growth_factor - 1.0))
 
 
 def run_n3(seed: int, params: SimulationParams) -> ScenarioResult:
-    """Burst legitime concentre : retard declenche, aucune confirmation, retour seul."""
+    """Burst legitime concentre : retard declenche, aucune confirmation, retour seul.
+
+    Le burst (consolidation vers une adresse ancienne, depuis des adresses anciennes) est
+    injecte par le dashboard (`sim_traffic.consolidation_burst`) dans le trafic normal #24,
+    le dernier jour a midi, avec des montants tires du trafic legitime genere.
+    """
     rng = random.Random(seed)
     builder = _Builder(rng, DEMO_REFERENCE_TIME)
-    start = builder.t0
-    legit = legit_addresses(rng, params.legit_address_count)
-    buckets = params.warmup_buckets + 1
-    traffic = legit_traffic(rng, legit, start, buckets, params)
-    sink = traffic[0].recipient  # adresse ancienne : deja active pendant le warmup
-    burst = consolidation_burst(rng, legit, sink, start + params.warmup_buckets * _bucket(params),
-                                params)
-    _log_traffic(builder, start, len(traffic) + len(burst))
+    gen = generation_params(seed, params)
+    scenario = generate_normal(gen)
+    legit = list(scenario.manifest["known_addresses"])
+    transfers = [e for e in scenario.events if isinstance(e, TransferEvent)]
+    sink = rng.choice(legit)  # adresse ancienne (population initiale du generateur)
+    burst_start = gen.start + timedelta(days=params.real_traffic_days - 1, hours=12)
+    burst = consolidation_burst(rng, legit, sink, burst_start, params,
+                                amounts=[t.amount for t in transfers])
+    events = sorted([*scenario.events, *burst], key=event_time)
+    _log_generated(builder, gen.start, len(transfers) + len(burst),
+                   sum(1 for e in scenario.events if isinstance(e, MintEvent)))
+    builder.log(burst_start, "simulation", "consolidation_burst",
+                f"Burst légitime injecté par le dashboard : {len(burst)} transferts vers une "
+                "adresse ancienne.", {"transfers": len(burst)}, subject_address=sink)
     ledger = GhostLedger(DEMO_NORMAL_WINDOW)
-    for transfer in burst:
-        ledger.credit(transfer.recipient, transfer.amount, LEGIT_RATIO, transfer.observed_at)
-    alerts = detect(builder, sorted(traffic + burst, key=lambda t: t.observed_at), start, params)
-    response = _respond(builder, ledger, alerts, set(), params, start + buckets * _bucket(params))
-    states = derive_perimeter_states(builder.alerts, builder.actions, response.end_time)
+    builder.ghost_mint(sink, sum(t.amount for t in burst), LEGIT_RATIO, burst_start,
+                       DEMO_NORMAL_WINDOW)
+
+    def credit(event: TransferEvent, at: datetime) -> None:
+        ledger.credit(event.recipient, event.amount, LEGIT_RATIO, at)
+
+    detection = run_detectors(builder, events, scenario.manifest, params)
+    alerts = detection.alerts
+    response = respond(builder, ledger, alerts, set(), params, gen.end,
+                       [(t.observed_at, partial(credit, t)) for t in burst])
+    actions = response.actions
+    end_time = response.end_time or gen.end
+    states = derive_perimeter_states(builder.alerts, actions, end_time)
     delayed = sum(1 for s in states.values() if s == PerimeterState.DELAYED)
-    destroys = sum(1 for a in builder.actions if a.action_type == ResponseActionType.DESTROY)
-    delays = _count_actions(builder.actions, {ResponseActionType.DELAY})
+    destroys = sum(1 for a in actions if a.action_type == ResponseActionType.DESTROY)
+    delays = _count_actions(actions, {ResponseActionType.DELAY})
     variant = ScenarioVariant(
-        name=_MAIN, label="Fausse alerte auto-expirante",
+        name=_MAIN, label="Fausse alerte auto-expirante (trafic #24 + burst)",
         metrics=[
-            _metric("false_positive_count", "Faux positifs", len(alerts), "alertes"),
+            _metric("false_positive_count", "Faux positifs", len(alerts), "alertes",
+                    _DETECTION_SOURCE),
             _metric("delayed_perimeters_at_end", "Périmètres retardés à la fin", delayed,
-                    "périmètres"),
+                    "périmètres", _RESPONSE_SOURCE),
             _metric("ghost_redeemed", "Ghost converti 1:1 après expiration",
                     sum(response.redeemed.values()), "base units"),
-            _metric("destroy_count", "Destructions", destroys, "actions"),
+            _metric("destroy_count", "Destructions", destroys, "actions", _RESPONSE_SOURCE),
+            _delayed_share_metric(events, actions, int(scenario.manifest["initial_supply"]),
+                                  "Part de l'offre inutilement retardée (pic, borne basse)"),
         ],
         checks=[
             ScenarioCheck(label="fenêtre allongée déclenchée",
@@ -537,9 +786,10 @@ def run_n3(seed: int, params: SimulationParams) -> ScenarioResult:
             ScenarioCheck(label="aucun gel définitif", expected="0 destruction",
                           passed=destroys == 0),
         ],
-        dataset=build_dataset(builder, seed), end_time=response.end_time,
+        dataset=build_dataset(builder, seed), end_time=end_time,
     )
-    return _result("N3", seed, [variant])
+    return _result("N3", seed, [variant],
+                   message=_real_message(seed, "Ghost (#8) et burst injecté par le dashboard"))
 
 
 # --- Enregistrement ------------------------------------------------------------
@@ -549,7 +799,10 @@ def _spec(scenario_id: str, title: str, description: str, expected: str, optiona
           runner: Callable[[int, SimulationParams], ScenarioResult]) -> ScenarioSpec:
     return ScenarioSpec(id=scenario_id, title=title, description=description, expected=expected,
                         optional=optional, depends_on=DEPENDS_ON[scenario_id],
-                        replace_by=REPLACE_BY[scenario_id], runner=runner)
+                        replace_by=REPLACE_BY[scenario_id], runner=runner,
+                        implemented_by=IMPLEMENTED_BY.get(scenario_id, ()),
+                        opt_in_by=OPT_IN_BY.get(scenario_id, ()),
+                        opt_in_hint=real_contracts.OPT_IN_HINT if scenario_id in OPT_IN_BY else "")
 
 
 SPECS: tuple[ScenarioSpec, ...] = (
@@ -558,8 +811,9 @@ SPECS: tuple[ScenarioSpec, ...] = (
           "vulnérable puis sur le contrat protégé (montant dérivé on-chain du dépôt).",
           "Le vulnérable se fait vider, le protégé borne la perte.", False, run_a),
     _spec("B", "Attaquant sous les plafonds",
-          "L'attaquant reste sous les seuils on-chain pour échapper au contrat seul ; les "
-          "surveillants doivent le repérer.",
+          "L'attaquant reste sous les seuils on-chain pour échapper au contrat seul (mint 1:1 "
+          "détourné puis sortie concentrée, générateur #24) ; les surveillants doivent le "
+          "repérer.",
           "Détection + alerte + allongement de fenêtre Ghost.", False, run_b),
     _spec("C", "Gel et pare-feu de contagion",
           "Un gel est publié sur la balise de risque ; on compare les créances douteuses d'un "

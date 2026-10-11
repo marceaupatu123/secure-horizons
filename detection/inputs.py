@@ -52,6 +52,9 @@ class AdminEventKind(str, Enum):
     ROLE_GRANTED = "role_granted"
     ORACLE_CHANGED = "oracle_changed"
     RATE_CHANGED = "rate_changed"
+    # #104 : retrait d'un role (AccessControl `RoleRevoked`), p. ex. un admin
+    # legitime evince apres une prise de controle.
+    ROLE_REVOKED = "role_revoked"
 
 
 @dataclass(frozen=True)
@@ -132,6 +135,11 @@ class MintContext:
     collateral_value: int | None = None
     admin_events: tuple[AdminEvent, ...] = field(default_factory=tuple)
     requester: str | None = None
+    # #104 : le mint observe (Transfer depuis 0x0 du token) n'a AUCUN
+    # `SwapCompleted` du contrat protege dans sa transaction : il est passe par
+    # un chemin non prevu (I4 viole, OPEN_ANSWERS §1). Renseigne par
+    # `detection.provenance`, jamais devine.
+    path_unexpected: bool = False
 
     def __post_init__(self) -> None:
         if self.requester is not None:

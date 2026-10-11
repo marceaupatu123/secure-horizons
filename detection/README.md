@@ -37,6 +37,12 @@ sur la sortie standard (journaux sur la sortie d'erreur). Aucune intégration av
   PROVISOIRE** : chaque tranche est comparée aux 24 tranches précédentes, alerte possible après
   12 tranches (1 h). Sélection : `--profile`, sinon `DETECTION_PROFILE`, sinon `default`.
 - **Points de sortie** : `--exit-point ADRESSE` (répétable, PROVISOIRE).
+- **Mode contrat protégé (#104)** : avec `MONITOR_MINTER_ADDRESS`, chaque mint arrive avec sa
+  demande (`detection/provenance.py`) : I1 et I3 sont **vérifiés en LIVE** contre le dépôt et le
+  déposant lus dans `SwapRequested` (pas dans `SwapCompleted`, écrit par le contrat surveillé) ;
+  un mint sans `SwapCompleted` lève **I4** (critique) ; `RoleGranted` / `RoleRevoked` /
+  `RateChanged` non annoncés lèvent une alerte **dès leur lecture**
+  (`RuleBasedMonitor.check_admin_event`). Détails et limites : `monitor/README.md`.
 - **GAP pour `shared/` (@marceaupatu123, #79)** : aucun modèle partagé pour l'offre en
   circulation ni pour le contexte d'un mint (dépôt, taux) ; le pipeline les adapte dans
   `detection/`.
@@ -50,6 +56,13 @@ mint = déposant de la demande, #91 : détournement à 1:1 du scénario B, entr�
 (`Δ totalSupply = Σ Mint − Σ Burn`), I6 (`totalSupply ≤ collatéral × facteur`), les événements
 d'administration non annoncés et l'écart du taux au-delà de δ vs une référence. Une `Alert`
 signifie seulement **retarder** le périmètre (§3) ; détruire / pause globale = multisig.
+
+- **I3 (#91)** : si l'appelant fournit `MintContext.requester` (le déposant de la demande) et que
+  `event.recipient` en diffère, tout le montant minté est suspect. C'est le seul contrôle qui
+  attrape le **détournement à 1:1 du scénario B** (OPEN_ANSWERS §1, piste 4 : la demande d'une
+  victime est mintée vers l'attaquant) — I1 tient dans ce cas, seul le changement de destinataire
+  trahit l'attaque, quelle que soit sa taille. `requester` reste **hors `shared/`** (fourni par
+  l'appelant comme `deposit_amount`).
 
 - **Paramètres** : un seul fichier, `detection/params.py` (ε, δ, facteur I6, gravités), tous
   **PROVISOIRES / À MESURER**, aucune valeur mesurée.
