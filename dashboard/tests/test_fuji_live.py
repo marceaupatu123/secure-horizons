@@ -38,10 +38,12 @@ def run() -> fuji_live.FujiRun:
 
 def test_rejeu_enregistre_coherent(run):
     assert run.chain_id == fuji_live.FUJI_CHAIN_ID
-    assert run.vulnerable_loss > 0  # le contrat classique a cru la signature
-    assert run.protected_loss == 0  # chaque jeton protege est adosse a un depot
+    assert run.vulnerable_loss > 0  # cas 1 : le contrat classique a cru la signature
+    assert run.protected_loss == 0  # cas 2 : chaque jeton protege est adosse
     assert run.protected_inflated_rejected
-    assert run.attacker_ghost_before > 0 and run.attacker_ghost_after == 0
+    assert run.seller_usdc_final == 0  # cas 3 : le vendeur ne garde rien
+    assert run.buyer_mprime_after == 0  # tout le Ghost suspect detruit
+    assert run.seller_payment_after == 0  # Ghost de paiement brule
     assert run.observed_mints  # le vrai ChainListener a relu les mints
     assert all(tx.url.startswith(fuji_live.EXPLORER_URL + "/tx/0x") for tx in run.transactions)
 
@@ -53,12 +55,23 @@ def test_rejeu_enregistre_sans_secret():
     assert "key" not in json.loads(raw)
 
 
+def test_etapes_couvrent_les_trois_cas(run):
+    cases = {s.case for s in run.steps}
+    assert cases == {fuji_live.CASE_MINT_PASSES, fuji_live.CASE_MINT_BLOCKED,
+                     fuji_live.CASE_GHOST_SELLER}
+    for step in run.steps:
+        assert step.command and step.effect and step.contract
+        assert step.contract in run.contracts  # chaque etape pointe un contrat deploye
+        assert step.tx_urls and all(u.startswith(fuji_live.EXPLORER_URL) for u in step.tx_urls)
+
+
 def test_histoire_fuji(run):
     story = build_fuji_story(run)
     assert story.tx_count == len(run.transactions)
-    assert sum(len(s.txs) for s in story.steps) == story.tx_count
-    assert story.vulnerable_minted_tokens > story.vulnerable_collateral_tokens
-    assert story.protected_minted_tokens <= story.protected_collateral_tokens
+    assert story.step_count == len(run.steps)
+    ids = [c.id for c in story.cases]
+    assert ids == ["mint-passe", "mint-bloque", "ghost-vendeur"]
+    assert sum(len(c.steps) for c in story.cases) == story.step_count
     assert story.live_block is None and story.live_matches_record is None
     assert all(c.url.startswith(fuji_live.EXPLORER_URL + "/address/0x") for c in story.contracts)
 
@@ -76,7 +89,7 @@ def test_rapport_dora_fuji(run):
     assert alert.source_tx_hash == inflated.tx_hash
     assert alert.monitor_name == DEMO_RULE_NAME
     assert [a.action_type.value for a in actions] == ["delay", "destroy"]
-    assert actions[1].suspect_amount == run.attacker_ghost_before - run.attacker_ghost_after
+    assert actions[1].suspect_amount == run.sell_mprime
     assert all(e.related_tx_hash for e in audit)
     report = fuji_incident_report(run)
     assert "Rapport d'incident" in report
@@ -87,7 +100,7 @@ def test_rapport_dora_fuji(run):
 def test_rapport_dora_fuji_incomplet(run):
     from dashboard.scenarios.fuji_report import FujiReportError, build_fuji_incident
 
-    partial = run.model_copy(update={"transactions": [t for t in run.transactions
-                                                      if t.actor != "guardian2"]})
+    partial = run.model_copy(update={"transactions": [
+        t for t in run.transactions if not (t.actor == "guardian2" and "validation" in t.label.lower())]})
     with pytest.raises(FujiReportError):
         build_fuji_incident(partial)

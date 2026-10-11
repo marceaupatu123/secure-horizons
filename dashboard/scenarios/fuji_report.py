@@ -53,8 +53,11 @@ def build_fuji_incident(run: FujiRun) -> tuple[Alert, list[ResponseAction], list
     inflated = _find(run, lambda r: r.actor == "attacker" and not r.success,
                      "mint gonflé rejeté")
     delay = _find(run, lambda r: r.actor == "watcher", "retard du surveillant")
-    propose = _find(run, lambda r: r.actor == "guardian1", "proposition de destruction")
-    approve = _find(run, lambda r: r.actor == "guardian2", "validation 2 sur 3")
+    propose = _find(run, lambda r: r.actor == "guardian1" and "proposition" in r.label.lower(),
+                    "proposition de destruction")
+    approve = _find(run, lambda r: r.actor == "guardian2" and "validation" in r.label.lower(),
+                    "validation 2 sur 3")
+    suspect = run.sell_mprime or run.seller_payment_before * DECIMALS_SCALE
     multiplier = run.signed_amount // run.deposit if run.deposit else 0
 
     alert = Alert(
@@ -66,11 +69,11 @@ def build_fuji_incident(run: FujiRun) -> tuple[Alert, list[ResponseAction], list
         subject_address=attacker,
         source_tx_hash=inflated.tx_hash,
         contamination_ratio=1.0,
-        suspect_amount=run.attacker_ghost_before,
-        reason=(f"Tentative de mint gonflé (×{multiplier} le dépôt) signée par la clé de service "
-                "SERVICE_ROLE et rejetée on-chain par le ProtectedMinter sur Avalanche Fuji : clé "
-                "de service présumée compromise. Règle de démo du dashboard, pas un surveillant "
-                "du module detection."),
+        suspect_amount=suspect,
+        reason=(f"Clé de service présumée compromise : un mint gonflé (×{multiplier} le dépôt) a été "
+                "rejeté on-chain par le ProtectedMinter, et le même acteur, vendeur de Ghost, a été "
+                "signalé (méthode non divulguée) sur Avalanche Fuji. Règle de démo du dashboard, pas "
+                "un surveillant du module detection."),
     )
     delay_action = ResponseAction(
         action_id=f"fuji-delay-{delay.tx_hash[2:10]}",
@@ -81,7 +84,7 @@ def build_fuji_incident(run: FujiRun) -> tuple[Alert, list[ResponseAction], list
         perimeter_address=attacker,
         triggering_alert_id=alert.alert_id,
         contamination_ratio=1.0,
-        suspect_amount=run.attacker_ghost_before,
+        suspect_amount=suspect,
     )
     destroy_action = ResponseAction(
         action_id=f"fuji-destroy-{approve.tx_hash[2:10]}",
@@ -93,7 +96,7 @@ def build_fuji_incident(run: FujiRun) -> tuple[Alert, list[ResponseAction], list
         decision_id=f"multisig 2/3 (proposition {propose.tx_hash[:10]}…, validation "
                     f"{approve.tx_hash[:10]}…)",
         contamination_ratio=1.0,
-        suspect_amount=run.attacker_ghost_before - run.attacker_ghost_after,
+        suspect_amount=suspect,
     )
     linked = {delay.tx_hash: delay_action.action_id, propose.tx_hash: destroy_action.action_id,
               approve.tx_hash: destroy_action.action_id}

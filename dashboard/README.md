@@ -26,15 +26,18 @@
   externe, respecte `prefers-reduced-motion`). C'est la page à ouvrir devant un jury ou des
   investisseurs : « Demo interactive » dans la barre latérale.
 - `scenarios/fuji_live.py` : **rejeu en vraies transactions sur Avalanche Fuji** (#148), premier
-  onglet de la démo interactive. Déploie `MockUSDC`, `VulnerableMinter`, `ProtectedMinter` (+ Ghost),
-  joue le schéma de l'attaque Resolv (clé de service volée, mint gonflé ×1000) sur les deux
-  contrats, fait relire les mints par le vrai `monitor.ChainListener`, puis retarde (surveillant) et
-  détruit (2 gardiens sur 3) le Ghost du pirate. ~25 transactions, résultat public dans
-  `fuji_runs/latest.json`, relu en direct sur la chaîne à chaque affichage de la page. Lancer :
-  `python -m dashboard.scenarios.fuji_live` (nécessite `forge build` dans `contracts/` et
-  `GUARDIAN_PRIVATE_KEY` d'un compte de **TEST** Fuji dans `.env` ; les autres rôles sont des comptes
-  de test dérivés de cette clé et approvisionnés par elle). Le signal de réponse (mint gonflé rejeté)
-  est une règle de démo, pas un surveillant du module `detection`.
+  onglet de la démo interactive, raconté en **3 cas joués étape par étape dans un faux terminal**
+  (chaque bouton tape et exécute une commande, l'effet renvoie à la transaction Snowtrace) : (1) *le
+  mint passe* — contrat classique, mint gonflé accepté ; (2) *le mint est bloqué* — `ProtectedMinter`,
+  mint gonflé rejeté on-chain puis seul le dépôt servi ; (3) *un vendeur de Ghost pose problème* — le
+  Ghost est écoulé via le `SettlementRouter` (USDC de l'acheteur bloqué au coffre, vendeur payé en
+  Ghost de paiement), le vendeur est signalé (méthode non divulguée), les gardiens 2/3 détruisent tout
+  le Ghost suspect et brûlent le Ghost de paiement du vendeur (son USDC, gelé faute de conversion, est
+  restitué à l'acheteur). Les gestes d'intendance (dépôts de collatéral, faucets) sont joués mais non
+  exposés. Le vrai `monitor.ChainListener` relit les mints ; la page relit l'état on-chain à chaque
+  affichage. Lancer : `python -m dashboard.scenarios.fuji_live` (`forge build` dans `contracts/` +
+  `GUARDIAN_PRIVATE_KEY` d'un compte de **TEST** Fuji dans `.env`). Le signal de réponse est une règle
+  de démo, pas un surveillant du module `detection`.
 - `scenarios/fuji_report.py` : **rapport d'incident DORA de l'incident réel Fuji** (#148). Traduit
   les vraies transactions en `Alert` / `ResponseAction` / `AuditLogEntry` partagés et appelle
   `llm.report` tel quel (hors ligne par défaut, Bedrock avec `LLM_LIVE=1`), puis ajoute un tableau de

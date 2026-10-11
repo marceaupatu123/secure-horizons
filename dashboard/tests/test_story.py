@@ -105,5 +105,5 @@ def test_html_avec_rejeu_fuji(story):
     if run is None:
         pytest.skip("aucun rejeu Fuji enregistré")
     html = render_story_html(story.model_copy(update={"fuji": build_fuji_story(run)}))
-    assert run.transactions[0].tx_hash in html
+    assert run.steps[0].tx_urls[0] in html
     assert FORBIDDEN_WORD not in html.lower()
