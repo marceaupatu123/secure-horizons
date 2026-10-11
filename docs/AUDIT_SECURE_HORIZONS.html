@@ -32,7 +32,7 @@
 <body>
 
 <h1>Audit Secure Horizons — rapport &amp; propositions de réponse</h1>
-<p class="meta">Projet : secure-horizons (Équipe 20 — Guardians of Value) · Audit en lecture seule, puis propositions de correction · 2026-10-11<br>
+<p class="meta">Projet : secure-horizons (Équipe 20 — Guardians of Value) · Audit en lecture seule, puis propositions de correction · 2026-10-11 · <em>révisé le 2026-10-11 : 4.3 et le résumé mis à jour sur l'état de <code>main</code> (lignage rétroactif présent, taux borné depuis #137)</em><br>
 Chaque problème est suivi d'une <strong>proposition de réponse recommandée</strong> (la plus pertinente selon l'auditeur), à valider avant implémentation.</p>
 
 <h2>Avant-propos : les mots-clés</h2>
@@ -48,7 +48,7 @@ Chaque problème est suivi d'une <strong>proposition de réponse recommandée</s
 </table>
 
 <h2>Résumé</h2>
-<p>Le <strong>cœur on-chain est solide</strong> (contrat <code>ProtectedMinter</code> : montant/destinataire dérivés, taux figé, un seul mint immuable, pause 3/3). La faiblesse est <strong>la couche de détection</strong> et quelques points de robustesse dans la réponse. Neuf problèmes sont documentés ci-dessous, chacun avec une proposition de correction. Les trois priorités : (1) rendre la détection non contournable par mise en forme lente du trafic ; (2) remplacer la logique « ET » du discriminant ; (3) implémenter le lignage d'origine du Ghost — sans lui, la promesse de récupération/saisie ne tient pas.</p>
+<p>Le <strong>cœur on-chain est solide</strong> (contrat <code>ProtectedMinter</code> : montant/destinataire dérivés, taux borné — au plus 5 % par changement, appliqué après 1 h (#137) —, un seul mint immuable, pause 3/3). La faiblesse est <strong>la couche de détection</strong> et quelques points de robustesse dans la réponse. Neuf problèmes sont documentés ci-dessous, chacun avec une proposition de correction. Les trois priorités : (1) rendre la détection non contournable par mise en forme lente du trafic ; (2) remplacer la logique « ET » du discriminant ; (3) brancher côté contrat le lignage rétroactif déjà calculé hors chaîne (décision §11, piste (b)) — sans ce branchement, la récupération après propagation reste à 0 % sur la chaîne.</p>
 
 <h2 class="pb">Problèmes détaillés et propositions de réponse</h2>
 
@@ -73,10 +73,10 @@ Chaque problème est suivi d'une <strong>proposition de réponse recommandée</s
 <h3>4.3 — Récupération 0 % une fois l'argent propagé (contamination prospective) <span class="sev high">ÉLEVÉ</span></h3>
 <p><strong>Fichier :</strong> <code>data/ghost_ledger.py</code>, mesuré par <code>data/late_marking.py</code>.</p>
 <p><strong>Mots :</strong> <em>prospectif</em> = on ne marque le voleur qu'au moment de la détection ; ce qu'il a envoyé avant portait une suspicion de 0. <em>Lignage d'origine</em> = on étiquette la source frauduleuse ; toute sa descendance reste suspecte où qu'elle aille.</p>
-<p><strong>Le problème :</strong> votre propre mesure donne 0 % récupéré en prospectif dès que l'argent a circulé, contre 100 % avec le lignage (si l'alerte précède l'échéance). Le modèle implémenté est le prospectif.</p>
+<p><strong>Le problème :</strong> votre propre mesure donne 0 % récupéré en prospectif dès que l'argent a circulé, contre 100 % avec le lignage (si l'alerte précède l'échéance). <strong>État de <code>main</code> :</strong> le lignage rétroactif est implémenté <em>hors chaîne</em> dans <code>detection/lineage.py</code> (<code>retroactive_seeds</code>, #106/#112, plafonné par <code>balanceOf</code> depuis #132). Le contrat <code>GhostToken</code>, lui, reste prospectif : la racine de Merkle signée 2/3 qui porterait ces graines n'y est pas encore branchée.</p>
 <div class="reco">
 <h4>Proposition recommandée</h4>
-<p><strong>Implémenter le lignage d'origine par tranche (piste a).</strong> Chaque tranche de Ghost porte l'identifiant de son origine (le mint/émission d'où elle provient). Une alerte vise une <em>origine</em>, et toute tranche non convertie issue de cette origine devient saisissable, peu importe chez qui elle est. C'est exactement ce que la nouvelle mécanique séquestre/saisie (<code>docs/GHOST_MARKET_SEIZURE.md</code>, déjà mergée) requiert pour fonctionner. Prototypable d'abord dans le registre hors-chaine, chiffré par un sweep « délai de détection vs part saisie », avant de le porter au contrat.</p>
+<p><strong>Brancher la piste (b) déjà décidée (<code>docs/OPEN_ANSWERS.md</code> §11).</strong> Le surveillant rejoue les transferts publics, calcule les graines hors chaîne (c'est fait) et les publie par une racine de Merkle signée 2/3 (à brancher dans <code>GhostToken</code>). À chiffrer par un sweep « délai de détection vs part récupérée ». Le lignage par tranche dans le contrat (piste a) a été écarté par cette décision ; le rouvrir demande une nouvelle décision d'équipe.</p>
 </div>
 
 <h3>4.4 — Pas d'idempotence : rejeu d'alerte → déni de service <span class="sev high">ÉLEVÉ</span></h3>
@@ -136,7 +136,7 @@ Chaque problème est suivi d'une <strong>proposition de réponse recommandée</s
 <tr><th>Ordre</th><th>Problème</th><th>Effort</th><th>Où</th></tr>
 <tr><td>1</td><td>4.5 Quorum ≥ 2 + 4.4 idempotence</td><td>Court</td><td><code>response/orchestrator.py</code></td></tr>
 <tr><td>2</td><td>4.1 zone morte baseline + 4.2 score continu / anti-fan-out</td><td>Moyen</td><td><code>detection/detector.py</code>, <code>detection/params.py</code></td></tr>
-<tr><td>3</td><td>4.3 lignage d'origine (prototype chiffré)</td><td>Moyen</td><td><code>data/ghost_ledger.py</code>, <code>data/late_marking.py</code></td></tr>
+<tr><td>3</td><td>4.3 branchement on-chain du lignage rétroactif (§11, piste b) + sweep chiffré</td><td>Moyen</td><td><code>contracts/src/GhostToken.sol</code>, <code>detection/lineage.py</code></td></tr>
 <tr><td>4</td><td>4.6 journal hash-chaîné</td><td>Court</td><td><code>response/</code></td></tr>
 <tr><td>5</td><td>4.7 gardes div/0 · 4.8 fail-loud mint · 4.9 état terminal</td><td>Court</td><td><code>detection/</code>, <code>response/</code></td></tr>
 </table>
