@@ -152,3 +152,77 @@ def test_invalid_operations() -> None:
         lg.mint(A, 0, T, backed=True)
     with pytest.raises(ValueError):
         LedgerParams(ratio_threshold=2.0)
+    with pytest.raises(ValueError):
+        LedgerParams(commission_rate=1.5)
+
+
+# --- Marche du Ghost + sequestre / saisie (docs/GHOST_MARKET_SEIZURE.md) ---
+
+
+def test_market_sell_applies_discount_and_commission_without_minting() -> None:
+    lg = ledger(commission_rate=0.02)
+    lg.mint(A, 1_000, T, backed=True)  # A detient 1000 de Ghost
+    lg.credit_real(B, 1_000)  # B a de quoi payer
+
+    supply_before = lg.supply_real
+    sale = lg.market_sell(A, B, amount=1_000, price=950, at=T)  # 5 % de decote
+
+    assert (sale.amount, sale.price, sale.discount) == (1_000, 950, 50)
+    assert sale.commission == 19 and sale.seller_proceeds == 931  # 2 % de 950
+    assert lg.commission_collected == 19
+    assert lg.account(A).real == 931 and lg.account(B).real == 50
+    assert lg.account(B).ghost == 1_000 and lg.account(A).ghost == 0
+    # Aucun vrai token minte : la valeur reelle est conservee (en circulation + pot commission).
+    assert lg.supply_real + lg.commission_collected == supply_before
+
+
+def test_market_sell_rejects_price_above_face_value() -> None:
+    lg = ledger()
+    lg.mint(A, 100, T, backed=True)
+    lg.credit_real(B, 1_000)
+    with pytest.raises(ValueError):
+        lg.market_sell(A, B, amount=100, price=101, at=T)  # paierait plus que la valeur faciale
+
+
+def test_first_alerting_address_anchors_the_chain() -> None:
+    lg = ledger()
+    lg.lock_escrow(A, 1_000)  # sequestre a la source
+    anchor1 = lg.flag_alert(A, T)  # A declenche la 1re alerte -> ancre
+    anchor2 = lg.flag_alert(B, T + timedelta(minutes=1))  # alerte isolee de B
+
+    assert anchor1 == A  # D2 : premiere adresse a alerter = ancre
+    assert anchor2 == B  # chaine independante
+
+
+def test_seize_burns_downstream_and_restitutes_escrow_to_authorities() -> None:
+    lg = ledger()
+    AUTH = "0x" + "ff" * 20
+    # Fraude : mint non adosse chez A, sequestre bloque a la source.
+    lg.mint(A, 1_000, T, backed=False)
+    lg.lock_escrow(A, 1_000)
+    anchor = lg.flag_alert(A, T, suspect_amount=1_000)
+    # A revend son Ghost a C (dernier acheteur) sur le marche.
+    lg.credit_real(C, 1_000)
+    lg.market_sell(A, C, amount=1_000, price=600, at=T)
+
+    seizure = lg.seize(anchor, AUTH, T + timedelta(minutes=5), decision_id="dec-1")
+
+    # Dernier acheteur (C) perd tout son Ghost (D1).
+    assert seizure.burned_ghost == 1_000 and lg.account(C).ghost == 0
+    # Le sequestre est restitue aux autorites (coffre hors systeme), D1.
+    assert seizure.seized_collateral == 1_000
+    assert lg.seized_total == 1_000 and lg.escrow.get(anchor, 0) == 0
+
+
+def test_seize_keeps_solvency_coherent() -> None:
+    lg = ledger()
+    AUTH = "0x" + "ff" * 20
+    lg.mint(A, 1_000, T, backed=True)  # Ghost adosse
+    lg.lock_escrow(A, 1_000)
+    anchor = lg.flag_alert(A, T, suspect_amount=1_000)
+
+    lg.seize(anchor, AUTH, T + timedelta(minutes=5), decision_id="dec-2")
+
+    # Ghost detruit (offre Ghost tombe), collateral restitue aux autorites : pas de deficit cree.
+    assert lg.supply_ghost == 0
+    assert lg.deficit == 0 and lg.reserve == 0
