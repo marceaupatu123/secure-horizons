@@ -52,9 +52,32 @@ minter (`SwapRequested`, `SwapCompleted`, `RoleGranted`, `RoleRevoked`, `RateCha
    la révision groupée de `MintEvent` (#104, partie `shared`) reste au propriétaire de `shared/`.
 
 Limites assumées : le cache des demandes en attente vit en mémoire (borné à 100 000, PROVISOIRE) :
-après un redémarrage, les demandes antérieures retombent sur `source="completion"`. Un `Transfer`
-depuis `0x0` sur M issu d'une **conversion Ghost → M** (#8, pas encore livré) serait vu comme un mint
-hors chemin : à traiter quand #8 émettra son événement de conversion.
+après un redémarrage, les demandes antérieures retombent sur `source="completion"`.
+
+### Sous-mode « Ghost » (#8, suite #104)
+
+Activé quand `MONITOR_GHOST_ADDRESS` (le M-Ghost, `ProtectedMinter.ghost()`) est renseignée en plus de
+`MONITOR_MINTER_ADDRESS` (refusé sans elle). `MONITOR_TOKEN_ADDRESS` reste le vrai token M
+(`ProtectedMinter.stable()`). Un troisième appel `eth_getLogs` par plage lit `GhostIssued` et
+`GhostConverted` sur le Ghost. Interface lue dans `contracts/src/GhostToken.sol` de la PR #123 (pas encore
+mergée) : à revérifier si ces signatures changent avant le merge.
+
+**Décisions d'architecture prises ici (assistant, 2026-10-11 — à relire par l'équipe)** :
+
+1. **Avec le Ghost, le mint est `GhostIssued(kind=MINT)`**, et non plus un `Transfer(0x0)` sur M : c'est le seul
+   chemin de création de valeur (`completeSwap` → `issueFromMinter`, I4 révisé dans #8). Il est rattaché au
+   `SwapCompleted` de sa transaction comme avant, donc I1/I3 sont recalculés depuis `SwapRequested`. Ici, la
+   « vérité » du montant est l'événement du Ghost, un contrat distinct du minter, et plus le solde de M.
+2. **Un `Transfer(0x0 → X, v)` sur M accompagné d'un `GhostConverted(X, _, v, …)` dans la même transaction est
+   une conversion**, pas un mint : sa valeur a déjà été comptée à l'émission du Ghost. Il est retiré du flux de
+   mints. Sans ce tri, chaque conversion légitime levait une alerte I4 **critique** (faux positif).
+3. **Un `Transfer(0x0)` sur M sans `GhostConverted` correspondant** (même destinataire, même montant) contourne
+   le Ghost : il reste un mint **sans provenance**, donc I4 critique. Un `SwapCompleted` présent dans la même
+   transaction ne lui sert **jamais** de provenance, car il ne peut justifier que du Ghost.
+4. `GhostIssued` de type `TRANSFER_M` (Ghost émis en échange d'un M brûlé) ou `RESTITUTION` ne crée pas de valeur
+   nouvelle : ces événements ne sont pas des mints. Les transferts de Ghost, les gels et les destructions
+   (`GhostTransferred`, `PerimeterDelayed`, `GhostDestroyed`) ne sont **pas encore** lus : ce sera le travail
+   suivant pour alimenter le lignage (`detection/lineage.py`, #106).
 
 ## Écoute des transferts (#10)
 

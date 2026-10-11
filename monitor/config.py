@@ -70,6 +70,7 @@ DEFAULT_CHECKPOINT_PATH: str | None = None
 ENV_RPC_URL = "FUJI_RPC_URL"
 ENV_TOKEN_ADDRESS = "MONITOR_TOKEN_ADDRESS"
 ENV_MINTER_ADDRESS = "MONITOR_MINTER_ADDRESS"
+ENV_GHOST_ADDRESS = "MONITOR_GHOST_ADDRESS"
 ENV_POLL_INTERVAL_SECONDS = "MONITOR_POLL_INTERVAL_SECONDS"
 ENV_BLOCK_BATCH_SIZE = "MONITOR_BLOCK_BATCH_SIZE"
 ENV_CONFIRMATIONS = "MONITOR_CONFIRMATIONS"
@@ -126,6 +127,11 @@ class MonitorConfig:
     # (#104) : decodage de SwapRequested / SwapCompleted / evenements admin et
     # rattachement de chaque mint a sa demande. None = ecouteur ERC-20 generique.
     minter_address: str | None = None
+    # Adresse du M-Ghost (#8, `ProtectedMinter.ghost()`). Renseignee (avec
+    # `minter_address`) = mode « Ghost » : les mints sont lus dans
+    # `GhostIssued(kind=MINT)` et un `Transfer(0x0)` sur M n'est legitime que
+    # s'il accompagne un `GhostConverted`. None = pas de Ghost (contrat #5 seul).
+    ghost_address: str | None = None
 
     def __post_init__(self) -> None:
         if self.token_address is not None:
@@ -136,6 +142,15 @@ class MonitorConfig:
             object.__setattr__(
                 self, "minter_address", normalize_address(self.minter_address)
             )
+        if self.ghost_address is not None:
+            object.__setattr__(
+                self, "ghost_address", normalize_address(self.ghost_address)
+            )
+            if self.minter_address is None:
+                raise ValueError(
+                    "ghost_address exige minter_address (le mode Ghost est un "
+                    "sous-mode du contrat protege)"
+                )
         if self.chain_id < 1:
             raise ValueError("chain_id doit etre >= 1")
         if self.poll_interval_seconds <= 0:
@@ -232,6 +247,7 @@ def load_monitor_config(
         rpc_url=rpc_url,
         token_address=_optional_str(source, ENV_TOKEN_ADDRESS),
         minter_address=_optional_str(source, ENV_MINTER_ADDRESS),
+        ghost_address=_optional_str(source, ENV_GHOST_ADDRESS),
         poll_interval_seconds=_float_from_env(
             source, ENV_POLL_INTERVAL_SECONDS, DEFAULT_POLL_INTERVAL_SECONDS
         ),

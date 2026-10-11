@@ -142,3 +142,64 @@ def test_provider_mint_inconnu_rend_none() -> None:
         request_id=None,
     )
     assert provider(event) is None
+
+
+# ------------------------------------------------------------ mode Ghost (#8)
+
+
+def _run_ghost(logs) -> list[Alert]:  # type: ignore[no-untyped-def]
+    from monitor.tests.test_protected import GHOST
+
+    alerts: list[Alert] = []
+    pipeline = DetectionPipeline(RuleBasedMonitor(), alerts.append)
+    config = MonitorConfig(
+        rpc_url=None,
+        token_address=TOKEN,
+        minter_address=MINTER,
+        ghost_address=GHOST,
+        start_block=0,
+    )
+    listener = ChainListener(
+        config,
+        FakeWeb3(_SupplyEth(logs, 50)),
+        sleep=lambda _: None,
+        now=lambda: FIXED_NOW,
+    )
+    run_live(pipeline, config, listener, max_polls=1, now=lambda: FIXED_NOW)
+    return alerts
+
+
+def test_ghost_mint_honnete_et_conversion_ne_levent_aucune_alerte() -> None:
+    """Sans le mode Ghost, la conversion serait un faux positif I4 critique."""
+    from monitor.protected import ISSUE_KIND_MINT
+    from monitor.tests.test_protected import ghost_converted, ghost_issued
+
+    logs = [
+        swap_requested(0, ALICE, 1_000_000, WAD, block=10, index=0, tx=1),
+        ghost_issued(ALICE, MINTER, 0, 10**18, ISSUE_KIND_MINT, block=11, index=0, tx=2),
+        swap_completed(0, ALICE, ALICE, 1_000_000, 10**18, WAD, block=11, index=1, tx=2),
+        ghost_converted(ALICE, 10**18, 99 * 10**16, 10**16, block=20, index=0, tx=3),
+        transfer(ZERO, ALICE, 99 * 10**16, block=20, index=1, tx=3),
+    ]
+    assert _run_ghost(logs) == []
+
+
+def test_ghost_mint_gonfle_leve_i1_et_i3() -> None:
+    """Resolv avec le Ghost : depot 1 USDC, 400 de Ghost emis a l'attaquant."""
+    from monitor.protected import ISSUE_KIND_MINT
+    from monitor.tests.test_protected import ghost_issued
+
+    logs = [
+        swap_requested(3, ALICE, 1_000_000, WAD, block=10, index=0, tx=1),
+        ghost_issued(ATTACKER, MINTER, 3, 400 * 10**18, ISSUE_KIND_MINT, block=11, index=0, tx=2),
+        swap_completed(3, ALICE, ATTACKER, 400_000_000, 400 * 10**18, WAD, block=11, index=1, tx=2),
+    ]
+    reasons = " | ".join(a.reason for a in _run_ghost(logs))
+    assert "I1" in reasons and "I3" in reasons
+
+
+def test_ghost_m_minte_hors_conversion_leve_i4() -> None:
+    logs = [transfer(ZERO, ATTACKER, 10**24, block=11, index=0, tx=9)]
+    (alert,) = _run_ghost(logs)
+    assert alert.severity == AlertSeverity.CRITICAL
+    assert "I4 viole" in alert.reason
