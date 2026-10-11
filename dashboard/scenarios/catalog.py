@@ -30,7 +30,7 @@ from dashboard.demo_data import (
     _Builder,
     _fake_address,
 )
-from dashboard.scenarios import real_contracts
+from dashboard.scenarios import real_contracts, real_ghost
 from dashboard.scenarios.config import SimulationParams
 from dashboard.scenarios.models import (
     SIMULATION_LABEL,
@@ -111,7 +111,10 @@ IMPLEMENTED_BY: dict[str, tuple[int, ...]] = {
     "B": _REAL_PIPELINE, "N1": _REAL_PIPELINE, "N2": _REAL_PIPELINE, "N3": _REAL_PIPELINE,
 }
 # Briques branchees sur le vrai code seulement via un backend optionnel (repli simulation).
-OPT_IN_BY: dict[str, tuple[int, ...]] = {"A": (4, 5), "C": (7,)}
+# Pour B et N3, la partie Ghost (#8) est rejouee sur les vrais contrats Token Ghost quand
+# `SH_DEMO_CONTRACTS_BACKEND=anvil` (real_ghost.py), avec repli automatique sur la simulation.
+# Pour C, la balise de risque et le faux marche de pret (#7) sont rejoues sur anvil (real_contracts.py).
+OPT_IN_BY: dict[str, tuple[int, ...]] = {"A": (4, 5), "B": (8,), "C": (7,), "N3": (8,)}
 _MAIN = "main"
 _DETECTION_SOURCE = real_source(DETECTION_REFS)
 _RESPONSE_SOURCE = real_source(RESPONSE_REFS)
@@ -430,9 +433,11 @@ def _real_message(seed: int, simulated: str | None) -> str:
             f"réels{rest}. Comptages sur trafic synthétique, pas des mesures de performance.")
 
 
-def run_b(seed: int, params: SimulationParams) -> ScenarioResult:
+def _run_b_sim(seed: int, params: SimulationParams) -> ScenarioResult:
     """Detournement 1:1 (#24) : aucun mint hors I1, le contrat seul ne voit rien ; les
-    vrais surveillants #11/#12 et la vraie reponse #17 tournent sur le trafic genere."""
+    vrais surveillants #11/#12 et la vraie reponse #17 tournent sur le trafic genere.
+
+    La partie Ghost (#8) reste simulee ici (bandeau « simulation hors chaîne »)."""
     rng = random.Random(seed)
     builder = _Builder(rng, DEMO_REFERENCE_TIME)
     gen = generation_params(seed, params)
@@ -534,6 +539,102 @@ def run_b(seed: int, params: SimulationParams) -> ScenarioResult:
         incident_report=report,
     )
     return _result("B", seed, [variant], message=_real_message(seed, "Ghost (#8)"))
+
+
+# Source des grandeurs Ghost lues sur les vrais contrats #8 (opt-in anvil).
+_GHOST_REAL_SOURCE = real_source((8,))
+_GHOST_ONCHAIN_VARIANT = "ghost-onchain"
+# Message commun a la variante on-chain : sequence FIXE de demonstration, montants fictifs,
+# INDEPENDANTE de la seed et du trafic simule. C'est ce que docs/CLAIMS.md exige : on n'annonce
+# « reel » que ce qui est effectivement lu sur la chaine, et on dit que c'est une demonstration.
+_GHOST_ONCHAIN_NOTE = ("Séquence fixe de démonstration des contrats Token Ghost #8 sur anvil "
+                       "local, montants fictifs, INDÉPENDANTE de la seed et du trafic simulé "
+                       "(ce n'est pas un rejeu du scénario de cette seed). Grandeurs lues "
+                       "on-chain : comptages sur une chaîne locale, pas des mesures du contrat "
+                       "déployé (docs/CLAIMS.md).")
+
+
+def _ghost_real_metrics(reading: real_ghost.GhostReading) -> list[MeasuredMetric]:
+    """Grandeurs lues on-chain apres le rejeu Ghost (#8) sur anvil (18 decimales)."""
+    return [
+        _metric("ghost_destroyed_onchain", "Ghost suspect détruit (on-chain, #8)",
+                reading.destroyed, "base units (gpUSD, 18 déc.)", _GHOST_REAL_SOURCE),
+        _metric("legit_converted_onchain", "M converti par les légitimes après W (on-chain)",
+                reading.legit_converted, "base units (M, 18 déc.)", _GHOST_REAL_SOURCE),
+        _metric("attacker_converted_onchain", "M converti par l'attaquant (on-chain)",
+                reading.attacker_converted, "base units (M, 18 déc.)", _GHOST_REAL_SOURCE),
+        _metric("supply_value_before_onchain", "supplyValue() avant destruction (on-chain)",
+                reading.supply_value_before, "base units (18 déc.)", _GHOST_REAL_SOURCE),
+        _metric("supply_value_after_onchain", "supplyValue() après rejeu (on-chain)",
+                reading.supply_value_after, "base units (18 déc.)", _GHOST_REAL_SOURCE),
+        _metric("ghost_reserve_onchain", "Réserve de restitution (on-chain)", reading.reserve,
+                "base units (18 déc.)", _GHOST_REAL_SOURCE),
+    ]
+
+
+def _append_ghost_onchain_variant(result: ScenarioResult, reading: real_ghost.GhostReading,
+                                  checks: list[ScenarioCheck], seed: int,
+                                  label: str) -> ScenarioResult:
+    """Ajoute les lectures on-chain dans une VARIANTE SÉPARÉE, honnêtement étiquetée.
+
+    La variante principale (chiffres Ghost encore issus du `GhostLedger` SIMULÉ) est laissée
+    INCHANGÉE : #8 reste dans `replace_by`, le bandeau « simulation hors chaîne » est conservé.
+    #8 ne sortirait de `replace_by` que si TOUS les chiffres Ghost affichés venaient de la chaîne,
+    ce qui n'est pas le cas ici (friction, quarantaine, destruction de la variante principale
+    sont simulées). Le message ne parle de la seed que pour la partie simulée.
+    """
+    rng = random.Random(seed)
+    onchain = ScenarioVariant(
+        name=_GHOST_ONCHAIN_VARIANT, label=label, metrics=_ghost_real_metrics(reading),
+        checks=checks, dataset=build_dataset(_Builder(rng, DEMO_REFERENCE_TIME), seed),
+        end_time=DEMO_REFERENCE_TIME,
+    )
+    return result.model_copy(update={
+        "variants": [*result.variants, onchain],
+        "message": result.message + " " + _GHOST_ONCHAIN_NOTE,
+    })
+
+
+def _run_b_anvil(seed: int, params: SimulationParams,
+                 chain_factory: Callable[[], real_contracts.AnvilChain]) -> ScenarioResult:
+    """Rejoue B (simulation inchangee, bandeau #8 conserve) PLUS une variante on-chain separee :
+    la partie Ghost (#8) est demontree sur les vrais contrats via une sequence fixe sur anvil."""
+    base = _run_b_sim(seed, params)
+    with chain_factory() as chain:
+        reading = real_ghost.replay_scenario_b(chain)
+    checks = [
+        ScenarioCheck(label="Ghost suspect détruit (on-chain)",
+                      expected="destruction 2/3 > 0", passed=reading.destroyed > 0),
+        ScenarioCheck(label="attaquant n'a rien converti (on-chain)",
+                      expected="M converti par l'attaquant = 0",
+                      passed=reading.attacker_converted == 0),
+        ScenarioCheck(label="légitimes convertis après W (on-chain)",
+                      expected="M converti par les légitimes > 0",
+                      passed=reading.legit_converted > 0),
+    ]
+    return _append_ghost_onchain_variant(
+        base, reading, checks, seed,
+        "Ghost #8 sur les vrais contrats (démonstration anvil, séquence fixe)")
+
+
+def run_b(seed: int, params: SimulationParams,
+          chain_factory: Callable[[], real_contracts.AnvilChain] | None = None) -> ScenarioResult:
+    """Detection + reponse reelles ; la partie Ghost (#8) RESTE simulee dans la variante
+    principale. Si `SH_DEMO_CONTRACTS_BACKEND=anvil`, une variante on-chain separee demontre #8
+    sur les vrais contrats Token Ghost (sequence fixe), avec repli automatique sinon."""
+    if real_contracts.selected_backend() != real_contracts.BACKEND_ANVIL:
+        return _run_b_sim(seed, params)
+    reason = real_contracts.unavailable_reason() if chain_factory is None else None
+    if reason is None:
+        try:
+            return _run_b_anvil(seed, params, chain_factory or real_contracts.AnvilChain)
+        except real_contracts.ContractsBackendError as exc:
+            reason = str(exc)
+    fallback = _run_b_sim(seed, params)
+    return fallback.model_copy(update={
+        "message": fallback.message + f" Démonstration anvil du Ghost (#8) demandée mais "
+                   f"indisponible ({reason}) : variante on-chain non ajoutée.",
+    })
 
 
 # --- C : gel et pare-feu de contagion (optionnel) ----------------------------
@@ -801,12 +902,14 @@ def run_n2(seed: int, params: SimulationParams) -> ScenarioResult:
     return _legit_only(seed, params, "N2", growth=max(0.0, params.growth_factor - 1.0))
 
 
-def run_n3(seed: int, params: SimulationParams) -> ScenarioResult:
+def _run_n3_sim(seed: int, params: SimulationParams) -> ScenarioResult:
     """Burst legitime concentre : retard declenche, aucune confirmation, retour seul.
 
     Le burst (consolidation vers une adresse ancienne, depuis des adresses anciennes) est
     injecte par le dashboard (`sim_traffic.consolidation_burst`) dans le trafic normal #24,
     le dernier jour a midi, avec des montants tires du trafic legitime genere.
+
+    La partie Ghost (#8) reste simulee ici (bandeau « simulation hors chaîne »).
     """
     rng = random.Random(seed)
     builder = _Builder(rng, DEMO_REFERENCE_TIME)
@@ -866,6 +969,46 @@ def run_n3(seed: int, params: SimulationParams) -> ScenarioResult:
     )
     return _result("N3", seed, [variant],
                    message=_real_message(seed, "Ghost (#8) et burst injecté par le dashboard"))
+
+
+def _run_n3_anvil(seed: int, params: SimulationParams,
+                  chain_factory: Callable[[], real_contracts.AnvilChain]) -> ScenarioResult:
+    """Rejoue N3 (simulation inchangee, bandeau #8 conserve) PLUS une variante on-chain separee.
+
+    On-chain : aucune destruction, le legitime retarde sans soupçon convertit apres le retour."""
+    base = _run_n3_sim(seed, params)
+    with chain_factory() as chain:
+        reading = real_ghost.replay_scenario_n3(chain)
+    checks = [
+        ScenarioCheck(label="aucune destruction (on-chain)",
+                      expected="Ghost suspect détruit = 0", passed=reading.destroyed == 0),
+        ScenarioCheck(label="conversion après retour à la normale (on-chain)",
+                      expected="M converti par le légitime > 0",
+                      passed=reading.legit_converted > 0),
+    ]
+    return _append_ghost_onchain_variant(
+        base, reading, checks, seed,
+        "Ghost #8 sur les vrais contrats (démonstration anvil, séquence fixe)")
+
+
+def run_n3(seed: int, params: SimulationParams,
+           chain_factory: Callable[[], real_contracts.AnvilChain] | None = None) -> ScenarioResult:
+    """Fausse alerte auto-expirante ; la partie Ghost (#8) RESTE simulee dans la variante
+    principale. Si `SH_DEMO_CONTRACTS_BACKEND=anvil`, une variante on-chain separee demontre #8
+    sur les vrais contrats Token Ghost (sequence fixe), avec repli automatique sinon."""
+    if real_contracts.selected_backend() != real_contracts.BACKEND_ANVIL:
+        return _run_n3_sim(seed, params)
+    reason = real_contracts.unavailable_reason() if chain_factory is None else None
+    if reason is None:
+        try:
+            return _run_n3_anvil(seed, params, chain_factory or real_contracts.AnvilChain)
+        except real_contracts.ContractsBackendError as exc:
+            reason = str(exc)
+    fallback = _run_n3_sim(seed, params)
+    return fallback.model_copy(update={
+        "message": fallback.message + f" Démonstration anvil du Ghost (#8) demandée mais "
+                   f"indisponible ({reason}) : variante on-chain non ajoutée.",
+    })
 
 
 # --- Enregistrement ------------------------------------------------------------
