@@ -35,8 +35,17 @@ _T0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
 
 def _addr(index: int) -> str:
-    """Adresse EVM synthetique deterministe (0x + 40 hex)."""
-    return "0x" + f"{index:040x}"
+    """Adresse EVM synthetique deterministe NON NULLE (0x + 40 hex).
+
+    Decalee de +1 pour qu'aucun index n'engendre l'adresse zero : `_addr(0)` ==
+    `0x0...01`, pas `ZERO_ADDRESS`. Depuis le correctif « mint = source » de la
+    review #112, un expediteur egal a un sink (`ZERO_ADDRESS` par defaut) est
+    traite comme une emission non suspecte ; une origine ou un expediteur
+    legitime de test ne doit donc jamais tomber sur l'adresse zero, sans quoi
+    sa valeur ne se propagerait pas. Le vrai zero reste la constante distincte
+    `ZERO_ADDRESS`, utilisee directement par le test du sink zero.
+    """
+    return "0x" + f"{index + 1:040x}"
 
 
 def _tx(index: int) -> str:
@@ -495,6 +504,89 @@ def test_conservation_sans_initial_balances_leve_valueerror() -> None:
         retroactive_seeds(
             transfers, origin_address=_addr(0), origin_amount=100, now=now
         )
+
+
+def test_mint_depuis_sink_traite_comme_source_sans_exception() -> None:
+    """Review #112 (3e) : un mint (sink en expediteur) est une source, pas une erreur.
+
+    Decision 2026-10-10 : tout transfert emet du Ghost, donc un mint apparait
+    comme `Transfer(0x0 -> A, is_ghost=True)`. Pour l'expediteur `0x0`,
+    `held = 0` et `amount > 0` : sans la regle « sink en expediteur = emission »,
+    la garde B2 (`amount > held`) leverait sur tout flux contenant un mint apres
+    t0. Scenario de Yannis : origine A detient 60 a t0, mint `0x0 -> A` de 40,
+    puis A -> B de 50. Attendu : aucune exception, ratio de A = 60/100, et B
+    porte `ceil(60*50/100) = 30`.
+    """
+    origin = _addr(1)  # origine NON NULLE (A)
+    b = _addr(2)
+    transfers = [
+        # Mint : emission depuis l'adresse zero (sink par defaut) vers A.
+        _ghost_transfer(
+            sender=ZERO_ADDRESS,
+            recipient=origin,
+            amount=40,
+            at=_T0 + timedelta(seconds=1),
+            nonce=1,
+        ),
+        # A revend 50 a B (sur un pot de 60 initial + 40 minte = 100).
+        _ghost_transfer(
+            sender=origin,
+            recipient=b,
+            amount=50,
+            at=_T0 + timedelta(seconds=2),
+            nonce=2,
+        ),
+    ]
+    now = _T0 + timedelta(minutes=1)
+
+    # Aucune exception : le mint est une source, pas une violation de la garde B2.
+    seeds = retroactive_seeds(
+        transfers,
+        origin_address=origin,
+        origin_amount=60,  # A detient 60 de suspect a t0
+        now=now,
+    )
+
+    by_addr = {s.address: s for s in seeds}
+    # A : 60 suspect dans un pot de 100 (60 + 40 minte). Il envoie 50 a B :
+    # part suspecte ceilDiv(60*50/100) = 30. A garde 100 - 50 = 50 Ghost,
+    # 60 - 30 = 30 suspect. B recoit 30 suspect dans 50 Ghost.
+    assert by_addr[origin].suspect_amount == 30
+    assert by_addr[origin].contamination_ratio == 30 / 50
+    assert by_addr[b].suspect_amount == 30
+    assert by_addr[b].contamination_ratio == 30 / 50
+    # Le soupcon total reste 60 : le mint n'a ajoute aucun soupcon (valeur neuve).
+    assert retroactive_recovery_total(seeds) == 60
+
+
+def test_mint_sink_vers_sink_ne_credite_personne() -> None:
+    """Un transfert sink -> sink (p. ex. 0x0 -> contrat de burn) ne credite rien."""
+    burn_contract = _addr(0xDEAD)
+    transfers = [
+        _ghost_transfer(
+            sender=ZERO_ADDRESS,
+            recipient=burn_contract,
+            amount=100,
+            at=_T0 + timedelta(seconds=1),
+            nonce=1,
+        ),
+    ]
+    now = _T0 + timedelta(minutes=1)
+
+    seeds = retroactive_seeds(
+        transfers,
+        origin_address=_addr(0),
+        origin_amount=10,
+        now=now,
+        sinks=frozenset({ZERO_ADDRESS, burn_contract}),
+    )
+
+    # Le mint vers un sink ne credite personne ; seul l'origine (hors sink)
+    # porte encore son soupcon initial, qu'elle n'a jamais deplace.
+    by_addr = {s.address: s for s in seeds}
+    assert by_addr[_addr(0)].suspect_amount == 10
+    assert all(s.address != burn_contract for s in seeds)
+    assert all(s.address != ZERO_ADDRESS for s in seeds)
 
 
 def test_expediteur_inconnu_sans_initial_balances_leve_valueerror() -> None:

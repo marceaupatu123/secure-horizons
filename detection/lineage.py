@@ -169,6 +169,15 @@ def retroactive_seeds(
     ne produit **jamais** d'`AlertSeed`. Sinon un Ghost deja converti produirait
     quand meme une graine (sur `0x0...0`), ce qui contredirait §9.
 
+    Emission (mint / emission Ghost, review #112, decision 2026-10-10). Depuis
+    que **tout transfert emet du Ghost**, un mint apparait comme un transfert
+    Ghost **depuis un sink** (`Transfer(0x0 -> x, is_ghost=True)`, ce que le
+    monitor produit depuis #116). La valeur emise est **nouvelle et non
+    suspecte** : un transfert dont l'expediteur est un sink credite le
+    destinataire **sans soupcon**, avant la garde B2. Sans cette regle, un sink
+    expediteur (`held = 0`, `amount > 0`) ferait lever la garde `amount > held`
+    sur tout flux reel contenant un mint apres `t0`.
+
     Conservation du soupcon (B2, review #112, §9). Le rejeu ne connait que le
     lot frauduleux. Si un expediteur detient aussi du Ghost **non suivi** (recu
     avant `t0` ou hors rejeu), son solde reconstruit deviendrait negatif
@@ -242,6 +251,18 @@ def retroactive_seeds(
         recipient = _normalise(event.recipient)
         amount = event.amount
         held = ghost[sender]
+        if sender in normalised_sinks:
+            # Emission : un transfert dont l'expediteur est un sink (`0x0` ->
+            # x) est un mint / une emission de Ghost (decision 2026-10-10 : tout
+            # transfert emet du Ghost ; c'est ce que le monitor produit depuis
+            # #116). La valeur est **nouvelle, non suspecte** : on credite le
+            # destinataire sans soupcon, avant la garde B2. Sans cela, pour un
+            # expediteur sink `held = 0` et la garde `amount > held` leverait
+            # sur tout flux reel contenant un mint apres t0. Un transfert
+            # sink -> sink (p. ex. 0x0 -> contrat de burn) ne credite personne.
+            if recipient not in normalised_sinks:
+                ghost[recipient] += amount
+            continue
         if amount > held:
             # B2 (§9) : le solde reconstruit deviendrait negatif. Sans solde de
             # depart connu couvrant ce transfert, on refuse plutot que de perdre
