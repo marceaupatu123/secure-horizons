@@ -185,6 +185,8 @@ FUJI_CASE_META: dict[str, tuple[str, str, str]] = {
     "mint-bloque": ("Le mint est bloqué", "Secure Horizons : la clé volée ne gagne rien", "good"),
     "fenetre-reprise": ("La fenêtre de reprise", "Un échange donne du M-Ghost, pas du M-Coin",
                         "window"),
+    "marche-speculatif": ("Le marché spéculatif du Ghost",
+                          "On revend le Ghost avant d'avoir des coins", "market"),
     "ghost-vendeur": ("Un vendeur de Ghost pose problème",
                       "On gèle, on détruit, on rembourse l'honnête", "resolved"),
     "contagion": ("Le pare-feu de contagion",
@@ -199,13 +201,18 @@ FUJI_CASE_VERDICT: dict[str, str] = {
                        "de sécurité n'est pas écoulée, tout est réversible — c'est le levier de "
                        "reprise. Au bout des 10 min sans anomalie, le M-Ghost arrive à échéance et "
                        "vaut du M-Coin 1:1, automatiquement : personne n'a à le décider.",
+    "marche-speculatif": "💱 Quarantaine LIQUIDE : le détenteur revend son M-Ghost autant qu'il "
+                         "veut avant toute conversion → un marché spéculatif se forme. Si une fraude "
+                         "est confirmée, c'est le spéculateur qui détient le Ghost qui encaisse la "
+                         "perte, pas le protocole (qui n'a jamais émis de M-Coin).",
     "ghost-vendeur": "🛡️ Problème résolu on-chain : pendant la fenêtre, tout le Ghost suspect est "
                      "détruit et l'argent gelé rendu à l'acheteur honnête ; le vendeur finit à zéro.",
     "contagion": "🧱 Pare-feu : un marché aveugle se fait contaminer (créance douteuse), mais le "
                  "marché qui lit la balise de risque refuse le collatéral empoisonné — zéro perte. "
                  "La fraude est stoppée avant de se propager au reste de la DeFi.",
 }
-FUJI_CASE_ORDER = ("mint-passe", "mint-bloque", "fenetre-reprise", "ghost-vendeur", "contagion")
+FUJI_CASE_ORDER = ("mint-passe", "mint-bloque", "fenetre-reprise", "marche-speculatif",
+                   "ghost-vendeur", "contagion")
 
 
 def _tokens(amount: int) -> float:
@@ -221,6 +228,9 @@ _ACTORS: dict[str, dict[str, tuple[str, str]]] = {
     "ghost-vendeur": {"seller": ("Vendeur", "🕵️"), "buyer": ("Acheteur honnête", "🙂"),
                       "vault": ("Coffre", "🔒"), "watcher": ("Surveillant", "📡"),
                       "guardians": ("Gardiens 2/3", "👥")},
+    "marche-speculatif": {"holder": ("Détenteur", "🙂"), "spec1": ("Spéculateur 1", "🧑‍💼"),
+                          "spec2": ("Spéculateur 2", "🧑‍💼"), "spec3": ("Spéculateur 3", "🧑‍💼"),
+                          "guardians": ("Gardiens 2/3", "👥")},
     "contagion": {"pirate": ("Pirate", "🕵️"), "blind": ("Marché aveugle", "🏦"),
                   "firewall": ("Marché pare-feu", "🧱"), "guardians": ("Gardiens 2/3", "👥")},
 }
@@ -250,6 +260,12 @@ _FLOWS: dict[tuple[str, int], tuple[str, list[tuple[str, str, str, str, str]]]] 
         ("guardians", "seller", "🔥 paiement annulé", "danger", "burn")]),
     ("ghost-vendeur", 4): ("L'argent gelé revient à l'acheteur honnête", [
         ("vault", "buyer", "1 000 USDC rendus", "ok", "send")]),
+    ("marche-speculatif", 0): ("Le M-Ghost se revend de main en main, avant tout M-Coin", [
+        ("holder", "spec1", "👻 vendu 1 000 USDC", "info", "send"),
+        ("spec1", "spec2", "👻 revendu 1 300 USDC", "warn", "send"),
+        ("spec2", "spec3", "👻 revendu 1 100 USDC", "info", "send")]),
+    ("marche-speculatif", 1): ("Fraude confirmée tard : le spéculateur encaisse, pas le protocole", [
+        ("guardians", "spec3", "🔥 Ghost détruit", "danger", "burn")]),
     ("contagion", 0): ("Un marché aveugle prête contre un collatéral empoisonné", [
         ("pirate", "blind", "collatéral empoisonné", "danger", "send"),
         ("blind", "pirate", "760 USDC prêtés", "danger", "send")]),
@@ -459,6 +475,7 @@ color:var(--text);border:1px solid var(--border);cursor:pointer;font-size:14px;f
 .casebtn .pill{font-size:10px;padding:1px 7px;border-radius:20px;float:right}
 .pill.bad{background:#ff5c7a22;color:var(--bad)}.pill.good{background:#3ddc9722;color:var(--ok)}
 .pill.resolved{background:#6ea8ff22;color:var(--accent)}.pill.window{background:#ffc35c22;color:var(--warn)}
+.pill.market{background:#6ea8ff22;color:var(--accent)}
 .termwrap{display:grid;grid-template-columns:1fr 230px;gap:14px}
 @media(max-width:720px){.termwrap{grid-template-columns:1fr}}
 .term{background:#060b18;border:1px solid var(--border);border-radius:12px;overflow:hidden;min-height:300px;display:flex;flex-direction:column}
@@ -650,7 +667,7 @@ else{
  var curCase=null,stepIdx=0,typing=false,out=$('f-termout');
  // Boutons de cas
  F.cases.forEach(function(c){var b=document.createElement('button');b.className='casebtn';b.setAttribute('aria-pressed','false');
-  var names={bad:'✗ échec',good:'✓ bloqué',window:'⏳ réversible',resolved:'✓ résolu'};
+  var names={bad:'✗ échec',good:'✓ bloqué',window:'⏳ réversible',market:'💱 liquide',resolved:'✓ résolu'};
   var pill='<span class="pill '+c.outcome+'">'+(names[c.outcome]||'')+'</span>';
   b.innerHTML=pill+'<b>'+c.title+'</b><small>'+c.subtitle+'</small>';b.onclick=function(){selectCase(c)};$('f-cases').appendChild(b)});
  function typeCmd(cmd,done){var pr='<span class="pr">fuji$</span> ';var el=document.createElement('div');el.className='termline termcmd';

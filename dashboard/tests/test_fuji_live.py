@@ -58,7 +58,8 @@ def test_rejeu_enregistre_sans_secret():
 def test_etapes_couvrent_les_cas(run):
     cases = {s.case for s in run.steps}
     known = {fuji_live.CASE_MINT_PASSES, fuji_live.CASE_MINT_BLOCKED,
-             fuji_live.CASE_RECOVERY_WINDOW, fuji_live.CASE_GHOST_SELLER, fuji_live.CASE_CONTAGION}
+             fuji_live.CASE_RECOVERY_WINDOW, fuji_live.CASE_SPECULATIVE,
+             fuji_live.CASE_GHOST_SELLER, fuji_live.CASE_CONTAGION}
     assert cases <= known and fuji_live.CASE_CONTAGION in cases
     for step in run.steps:
         assert step.command and step.effect and step.contract

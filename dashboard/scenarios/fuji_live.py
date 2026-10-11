@@ -64,14 +64,18 @@ SUB_ACCOUNT_FUNDING_WEI = 10**16  # 0,01 AVAX de test par rôle
 SUB_ACCOUNT_MIN_WEI = 5 * 10**15
 FALLBACK_GAS = 900_000
 RECEIPT_TIMEOUT_SECONDS = 180
-ROLES = ("attacker", "buyer", "watcher", "guardian1", "guardian2", "guardian3", "whale")
+ROLES = ("attacker", "buyer", "spec1", "spec2", "spec3", "watcher",
+         "guardian1", "guardian2", "guardian3", "whale")
 INCIDENT_ACTORS = ("attacker", "buyer", "watcher", "guardian1", "guardian2", "guardian3")
 
 CASE_MINT_PASSES = "mint-passe"
 CASE_MINT_BLOCKED = "mint-bloque"
 CASE_RECOVERY_WINDOW = "fenetre-reprise"
+CASE_SPECULATIVE = "marche-speculatif"
 CASE_GHOST_SELLER = "ghost-vendeur"
 CASE_CONTAGION = "contagion"
+# Prix (USDC, 6 déc.) des reventes successives du M-Ghost : volatils = spéculation.
+SPEC_PRICES_USDC = (1_000 * 10**6, 1_300 * 10**6, 1_100 * 10**6)
 
 ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
 # Marché de prêt fictif (cf. real_contracts._market_config) : décotes PROVISOIRES de #7.
@@ -87,6 +91,9 @@ ACTOR_LABELS = {
     "protocole": "Automatique (échéance atteinte)",
     "attacker": "Le pirate (clé volée)",
     "buyer": "Un acheteur honnête",
+    "spec1": "Spéculateur 1",
+    "spec2": "Spéculateur 2",
+    "spec3": "Spéculateur 3",
     "watcher": "Le surveillant",
     "guardian1": "Gardien 1",
     "guardian2": "Gardien 2",
@@ -618,6 +625,68 @@ def _case_contagion(runner: FujiRunner, usdc: Any) -> None:
         "defended", [refused.url], not refused.success)
 
 
+def _case_speculative_market(runner: FujiRunner, usdc: Any) -> None:
+    """Cas « marché spéculatif du Ghost » : le détenteur revend son M-Ghost en boucle AVANT toute
+    conversion en M-Coin (quarantaine liquide) ; une fraude confirmée tard frappe le spéculateur."""
+    runner.phase("Cas « marché spéculatif du Ghost » — reventes avant tout M-Coin")
+    admin = runner.address("admin")
+    guardians = [runner.address(f"guardian{i}") for i in (1, 2, 3)]
+    minter = runner.deploy("ProtectedMinter", "Déploiement du minter (marché)",
+                           usdc.address, admin, runner.address("whale"), RATE_ONE, guardians,
+                           GHOST_CONFIG)
+    runner.contracts["ProtectedMinter (marché)"] = minter.address
+    ghost = runner.at("GhostToken", minter.functions.ghost().call())
+    runner.contracts["GhostToken (marché)"] = ghost.address
+    router = runner.deploy("SettlementRouter", "Déploiement du routeur (marché)", ghost.address)
+    runner.contracts["SettlementRouter (marché)"] = router.address
+    runner.transact("admin", ghost.functions.grantRole(ghost.functions.WATCHER_ROLE().call(),
+                                                       runner.address("watcher")), "rôle surveillant")
+    # Intendance : offre de fond (budget) + le détenteur initial reçoit son M-Ghost.
+    _mint_ghost(runner, usdc, minter, "whale", "whale", BACKGROUND_DEPOSIT)
+    _mint_ghost(runner, usdc, minter, "whale", "attacker", SELL_AMOUNT_USDC)
+    mg = SELL_AMOUNT_USDC * DECIMALS_SCALE
+
+    # Chaîne de reventes : détenteur -> spec1 -> spec2 -> spec3, à des prix volatils.
+    chain = [("attacker", "spec1"), ("spec1", "spec2"), ("spec2", "spec3")]
+    urls = []
+    for (seller, buyer), price in zip(chain, SPEC_PRICES_USDC):
+        runner.transact(seller, ghost.functions.approve(router.address, mg), "approve M'")
+        runner.transact(buyer, usdc.functions.mint(runner.address(buyer), price), "faucet USDC")
+        runner.transact(buyer, usdc.functions.approve(router.address, price), "approve USDC")
+        rec = runner.transact(buyer, router.functions.buyWithAsset(
+            runner.address(seller), mg, usdc.address, price),
+            f"{buyer} achète le Ghost ({price // 10**6} USDC)")
+        urls.append(rec.url)
+    runner.add_step(
+        CASE_SPECULATIVE, "marche > revendre-ghost --chaine detenteur→spec1→spec2→spec3",
+        "spec3", "SettlementRouter (marché)",
+        "Le détenteur n'a pas encore de M-Coin, mais revend son M-Ghost. Puis les spéculateurs se "
+        "le revendent entre eux.",
+        f"✓ Le même lot de M-Ghost a changé de mains {len(chain)} fois en quelques secondes, à "
+        f"{', '.join(str(p // 10**6) for p in SPEC_PRICES_USDC)} USDC — un marché spéculatif liquide "
+        "s'est formé, alors qu'AUCUN M-Coin n'existe encore (fenêtre non échue).",
+        "accepted", urls, True)
+
+    # Fraude confirmée tardivement : le Ghost est détruit chez le spéculateur qui le détient.
+    holder = runner.address("spec3")
+    runner.transact("watcher", ghost.functions.delay([holder], [mg], GHOST_W_SECONDS),
+                    "signalement tardif")
+    incident = int(ghost.functions.openIncidentId().call())
+    runner.transact("guardian1", ghost.functions.proposeDestroy(incident, [holder]),
+                    "proposition destruction")
+    approve = runner.transact("guardian2", ghost.functions.approveAction(
+        int(ghost.functions.proposalCount().call())), "validation 2/3")
+    holder_after = int(ghost.functions.balanceOf(holder).call())
+    runner.add_step(
+        CASE_SPECULATIVE, "gardiens > detruire-ghost (fraude confirmée tard)",
+        "guardian2", "GhostToken (marché)",
+        "On confirme la fraude APRÈS plusieurs reventes. Qui paie ?",
+        f"✓ Le Ghost est détruit chez le dernier spéculateur (solde : {_tok(holder_after)}). C'est "
+        "LUI qui encaisse la perte — le protocole n'a jamais émis de M-Coin, sa perte est de 0. Le "
+        "risque a été transféré au marché spéculatif.",
+        "defended", [approve.url], approve.success)
+
+
 def _case_ghost_seller(runner: FujiRunner, usdc: Any) -> dict[str, int]:
     """Cas 3 : un vendeur de Ghost est signalé -> destruction de tout le Ghost + USDC gelé rendu."""
     runner.phase("Cas 3 — un vendeur de Ghost pose problème")
@@ -742,6 +811,7 @@ def replay_on_fuji(web3: Any, master_key: str,
     case1 = _case_mint_passes(runner, usdc)
     case2 = _case_mint_blocked(runner, usdc)
     _case_recovery_window(runner, usdc)
+    _case_speculative_market(runner, usdc)
     case3 = _case_ghost_seller(runner, usdc)
     _case_contagion(runner, usdc)
 
