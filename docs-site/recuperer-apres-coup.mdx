@@ -74,6 +74,26 @@ son Ghost en vrai jeton avant le gel, cette part est partie — c'est irréversi
 C'est le **plafond** du système : on ne réclame jamais à quelqu'un plus que ce qu'il détient
 *encore* en Ghost. Le soupçon s'arrête à la porte de sortie.
 
+### Le plafond est lu sur la chaîne, pas déduit du film
+
+Rejouer le film a une faiblesse : il ne voit pas tout. Les **conversions** (un Ghost qui devient
+vrai jeton) ne passent pas par le même flux que les transferts, donc le rejeu seul pourrait croire
+que quelqu'un détient encore de l'argent **déjà sorti**, et le soupçonner à tort.
+
+La parade (décision §14, option c) : au moment de transmettre les graines, on **lit le vrai solde
+Ghost sur la blockchain** (`balanceOf`) et on plafonne avec lui. Le soupçon retenu est le plus
+petit des deux : ce que le film reconstitue, ou ce que la chaîne affiche.
+
+**Analogie** : tu as reconstitué le trajet d'un billet à partir des tickets de caisse, et tu en
+déduis que la personne devrait l'avoir encore en poche. Avant de l'accuser, tu **regardes dans sa
+poche** : si elle est vide, l'affaire s'arrête là.
+
+<Note>
+Conséquence directe : **un porteur qui a déjà tout converti ne reçoit aucune graine**. La vérité
+de la chaîne prime toujours sur la reconstitution. Vérifié par tests
+(`detection/tests/test_lineage.py`).
+</Note>
+
 ## Et ceux de bonne foi qui ont payé ?
 
 Quand les faux jetons d'un lot sont détruits, l'argent **bloqué derrière le paiement du voleur**
