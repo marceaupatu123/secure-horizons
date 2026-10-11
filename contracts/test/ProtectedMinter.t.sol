@@ -6,7 +6,8 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {BaseTest} from "./utils/BaseTest.sol";
 import {ProtectedMinter} from "../src/ProtectedMinter.sol";
-import {StableToken} from "../src/StableToken.sol";
+import {GhostedStable} from "../src/GhostedStable.sol";
+import {GhostToken} from "../src/GhostToken.sol";
 
 /// @dev ERC20 de test à 18 décimales (collatéral refusé par le ProtectedMinter).
 contract Token18 is ERC20 {
@@ -16,7 +17,8 @@ contract Token18 is ERC20 {
 /// @notice Tests unitaires par invariant (I1–I5) et séparation des clés.
 contract ProtectedMinterTest is BaseTest {
     ProtectedMinter internal minter;
-    StableToken internal stable;
+    GhostedStable internal stable;
+    GhostToken internal ghost;
 
     uint256 internal constant DEPOSIT = 1_000e6;
 
@@ -33,7 +35,7 @@ contract ProtectedMinterTest is BaseTest {
 
     function setUp() public {
         _deployUsdc();
-        (minter, stable) = _deployProtected();
+        (minter, stable, ghost) = _deployProtected();
     }
 
     // ---------------------------------------------------------------- I1
@@ -42,14 +44,14 @@ contract ProtectedMinterTest is BaseTest {
         uint256 id = _requestProtected(minter, alice, DEPOSIT);
         vm.prank(service);
         minter.completeSwap(id);
-        assertEq(stable.balanceOf(alice), DEPOSIT * SCALE); // rate = 1e18 => 1:1
+        assertEq(ghost.balanceOf(alice), DEPOSIT * SCALE); // rate = 1e18 => 1:1
 
         vm.prank(admin);
         minter.setRate(0.5e18);
         uint256 id2 = _requestProtected(minter, bob, DEPOSIT);
         vm.prank(service);
         minter.completeSwap(id2);
-        assertEq(stable.balanceOf(bob), DEPOSIT * SCALE / 2);
+        assertEq(ghost.balanceOf(bob), DEPOSIT * SCALE / 2);
     }
 
     /// @notice Le taux est figé à la création de la demande : le changer ensuite n'a pas d'effet.
@@ -59,7 +61,7 @@ contract ProtectedMinterTest is BaseTest {
         minter.setRate(3e18);
         vm.prank(service);
         minter.completeSwap(id);
-        assertEq(stable.balanceOf(alice), DEPOSIT * SCALE);
+        assertEq(ghost.balanceOf(alice), DEPOSIT * SCALE);
         assertEq(minter.getRequest(id).rate, INITIAL_RATE);
     }
 
@@ -73,7 +75,7 @@ contract ProtectedMinterTest is BaseTest {
         uint256 id = _requestProtected(minter, alice, deposit);
         vm.prank(service);
         minter.completeSwap(id);
-        assertEq(stable.balanceOf(alice), expected);
+        assertEq(ghost.balanceOf(alice), expected);
         assertEq(minter.quoteMint(deposit, rate_), expected);
     }
 
@@ -108,7 +110,7 @@ contract ProtectedMinterTest is BaseTest {
         vm.prank(service);
         vm.expectRevert(abi.encodeWithSelector(ProtectedMinter.RequestNotPending.selector, id));
         minter.completeSwap(id);
-        assertEq(stable.balanceOf(alice), DEPOSIT * SCALE);
+        assertEq(ghost.balanceOf(alice), DEPOSIT * SCALE);
     }
 
     function test_I2_revertFutureId() public {
@@ -125,8 +127,8 @@ contract ProtectedMinterTest is BaseTest {
         uint256 id = _requestProtected(minter, alice, DEPOSIT);
         vm.prank(service);
         minter.completeSwap(id);
-        assertEq(stable.balanceOf(alice), DEPOSIT * SCALE);
-        assertEq(stable.balanceOf(service), 0);
+        assertEq(ghost.balanceOf(alice), DEPOSIT * SCALE);
+        assertEq(ghost.balanceOf(service), 0);
     }
 
     /// @notice Il n'existe pas de variante avec montant / destinataire.
@@ -140,7 +142,7 @@ contract ProtectedMinterTest is BaseTest {
         vm.prank(service);
         (ok,) = address(minter).call(abi.encodeWithSignature("completeSwap(uint256,address)", id, service));
         assertFalse(ok);
-        assertEq(stable.totalSupply(), 0);
+        assertEq(ghost.supplyValue(), 0);
         assertEq(uint8(minter.getRequest(id).status), uint8(ProtectedMinter.RequestStatus.Pending));
     }
 
@@ -150,14 +152,39 @@ contract ProtectedMinterTest is BaseTest {
         address[3] memory callers = [admin, service, alice];
         for (uint256 i = 0; i < callers.length; i++) {
             vm.prank(callers[i]);
-            vm.expectRevert(abi.encodeWithSelector(StableToken.NotMinter.selector, callers[i]));
+            vm.expectRevert(abi.encodeWithSelector(GhostedStable.NotMinter.selector, callers[i]));
             stable.mint(callers[i], 1e18);
         }
     }
 
+    /// @notice I4 révisé (#8) : M n'est minté que par le Ghost (conversion) ; le Ghost « mint »
+    ///         n'est émis que par le minter protégé.
     function test_I4_minterIsProtectedMinter() public view {
-        assertEq(stable.minter(), address(minter));
+        assertEq(stable.minter(), address(ghost));
+        assertEq(ghost.minter(), address(minter));
+        assertEq(ghost.underlying(), address(stable));
         assertEq(address(minter.stable()), address(stable));
+        assertEq(address(minter.ghost()), address(ghost));
+    }
+
+    function test_I4_onlyMinterCanIssueGhost() public {
+        address[3] memory callers = [admin, service, alice];
+        for (uint256 i = 0; i < callers.length; i++) {
+            vm.prank(callers[i]);
+            vm.expectRevert(abi.encodeWithSelector(GhostToken.NotMinter.selector, callers[i]));
+            ghost.issueFromMinter(callers[i], 1e18, 0);
+        }
+    }
+
+    /// @notice Le mint produit du Ghost FRAIS au déposant : aucun M, rien de convertible avant W.
+    function test_completeSwap_issuesFreshGhost() public {
+        uint256 id = _requestProtected(minter, alice, DEPOSIT);
+        vm.prank(service);
+        minter.completeSwap(id);
+        assertEq(stable.balanceOf(alice), 0);
+        assertEq(ghost.balanceOf(alice), DEPOSIT * SCALE);
+        assertEq(ghost.convertibleOf(alice), 0);
+        assertEq(ghost.totalIssued(), minter.totalMinted());
     }
 
     // ---------------------------------------------------------------- I5
@@ -169,8 +196,8 @@ contract ProtectedMinterTest is BaseTest {
         minter.completeSwap(a);
         minter.completeSwap(b);
         vm.stopPrank();
-        assertEq(stable.totalSupply(), minter.totalMinted());
-        assertEq(stable.totalSupply(), 3 * DEPOSIT * SCALE);
+        assertEq(ghost.supplyValue(), minter.totalMinted());
+        assertEq(ghost.supplyValue(), 3 * DEPOSIT * SCALE);
         assertEq(minter.totalDeposited(), 3 * DEPOSIT);
         assertEq(usdc.balanceOf(address(minter)), 3 * DEPOSIT);
     }
@@ -212,18 +239,18 @@ contract ProtectedMinterTest is BaseTest {
 
     function test_constructor_rejectsSameAdminAndService() public {
         vm.expectRevert(ProtectedMinter.SameAccount.selector);
-        new ProtectedMinter(IERC20(address(usdc)), admin, admin, INITIAL_RATE, _guardians());
+        new ProtectedMinter(IERC20(address(usdc)), admin, admin, INITIAL_RATE, _guardians(), _ghostConfig());
     }
 
     function test_constructor_rejectsZeroRate() public {
         vm.expectRevert(ProtectedMinter.InvalidRate.selector);
-        new ProtectedMinter(IERC20(address(usdc)), admin, service, 0, _guardians());
+        new ProtectedMinter(IERC20(address(usdc)), admin, service, 0, _guardians(), _ghostConfig());
     }
 
     function test_constructor_rejectsWrongCollateralDecimals() public {
         Token18 t = new Token18();
         vm.expectRevert(abi.encodeWithSelector(ProtectedMinter.UnsupportedCollateralDecimals.selector, uint8(18)));
-        new ProtectedMinter(IERC20(address(t)), admin, service, INITIAL_RATE, _guardians());
+        new ProtectedMinter(IERC20(address(t)), admin, service, INITIAL_RATE, _guardians(), _ghostConfig());
     }
 
     function test_setRate_rejectsZero() public {
