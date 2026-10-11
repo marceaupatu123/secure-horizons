@@ -294,3 +294,30 @@ def test_extra_field_forbidden_on_every_model() -> None:
     for model, example in VALID_CASES:
         with pytest.raises(ValidationError):
             model.model_validate(_mutate(example, champ_inconnu="x"))
+
+
+# --- #79 : request_id optionnel, pas de collision avec la demande n°0 ---
+
+
+def test_mint_event_request_id_defaults_to_none_when_absent() -> None:
+    """Un MintEvent sans request_id vaut None (observation ERC-20 nue), jamais 0.
+
+    Decision #79 (OPEN_ANSWERS §79) : un Transfer ERC-20 ne porte pas l'id de
+    demande ; l'ancienne sentinelle 0 entrait en collision avec la vraie
+    demande n°0 (les demandes sont numerotees a partir de 0).
+    """
+    payload = {k: v for k, v in MINT_EVENT.items() if k != "request_id"}
+    event = MintEvent.model_validate(payload)
+    assert event.request_id is None
+
+
+def test_mint_event_request_id_zero_is_a_real_request_not_a_sentinel() -> None:
+    """request_id=0 reste une vraie demande valide (pas une sentinelle)."""
+    event = MintEvent.model_validate(_mutate(MINT_EVENT, request_id=0))
+    assert event.request_id == 0
+
+
+def test_mint_event_request_id_rejects_negative() -> None:
+    """request_id reste >= 0 quand il est fourni (ge=0)."""
+    with pytest.raises(ValidationError):
+        MintEvent.model_validate(_mutate(MINT_EVENT, request_id=-1))

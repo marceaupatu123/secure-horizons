@@ -32,6 +32,8 @@ Règles :
 | 9 | Volet 2 : surveillance adaptative, allongement de fenêtre ciblé, contamination par ratio | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | PR #38 |
 | 10 | Lignage d'un swap : `swap-id` sur notre pool, jambe sortante en règlement différé (#43) | 2026-10-10 | denybs | Validée en session, à relire par l'équipe | Issue #43 |
 | 10bis | Qui porte le risque : M' protégé / pur / chèque, routeur + Ghost de paiement, restitution sans fonds ni frais (#84) | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | Issue #84 |
+| 11 | Contamination posée après coup : recalcul hors chaîne + racine de Merkle contestable (#85) | 2026-10-11 | denybs | Validée en session, à relire par l'équipe | PR #95 |
+| 79 | Champs manquants monitor/detection : `request_id` optionnel (fix collision), `is_ghost` et données I1/I5/I6 gardés en contexte jusqu'aux événements du contrat (#79) | 2026-10-11 | denybs | Validée en session, à relire par l'équipe | Issue #79 |
 
 ---
 
@@ -1056,3 +1058,129 @@ M' contre N' entre deux tokens du standard : chaque émetteur règle sa jambe. P
   - restitution totale ≤ argent bloqué du voleur, et somme des restitutions + paiements = entrées ;
   - rejeu des cas 1, 2, 2bis et 3.
 - Friction à **mesurer** (attente de l'actif final, exclusion des protocoles hors standard).
+
+## §79. Champs manquants repérés par monitor/detection (#79)
+
+> Renvoi depuis l'issue #79 (écarts repérés pendant #9/#10/#11). Propriétaire de `shared/` :
+> @marceaupatu123.
+
+### DÉCISION (2026-10-11, denybs) — _validée en session, à relire par l'équipe_
+
+Trois écarts avaient été remontés entre `shared/models.py` et les besoins de monitor/detection.
+Verdict, un par un :
+
+**1. `MintEvent.request_id` — collision de sentinelle (CORRIGÉ).** C'était le seul **bug** :
+un `Transfer` ERC-20 nu ne porte pas l'id de demande, et le monitor mettait la sentinelle
+`UNKNOWN_REQUEST_ID = 0`, qui **entre en collision** avec la vraie demande n°0
+(`data/generate.py` numérote à partir de 0, `MintRequest.request_id` `ge=0`). **Décision :**
+`MintEvent.request_id` devient `int | None` (défaut `None`). `None` = **inconnu**, jamais une
+vraie demande ; une demande réelle garde un entier `ge=0`. Le monitor met `None`
+(`UNKNOWN_REQUEST_ID = None`). detection ne corrèle pas par ce champ tant qu'il peut être `None`
+(c'était déjà le cas). Un événement dédié futur (`Minted` avec id, côté contrat #5) renseignera un
+vrai id sans nouveau changement de modèle. Changement **non cassant** (élargissement du domaine) ;
+`docs/CONTRACTS.md` (ligne `MintEvent`) mis à jour.
+
+**2. `TransferEvent.is_ghost` — gardé par design, tranché avec #8.** `is_ghost` n'est pas
+déductible d'un `Transfer` ERC-20. Le monitor le fixe par **configuration de listener**
+(`MONITOR_TOKEN_IS_GHOST`, un listener par contrat : token réel vs Ghost). **Décision :** on ne
+touche pas à `shared/` pour l'instant — c'est le **design du contrat Ghost (#8)** qui fixera comment
+distinguer un Ghost on-chain (événement dédié, ou contrat Ghost séparé). Jusque-là, la
+configuration de listener est la bonne couche : le champ `is_ghost` du modèle reste correct, seule
+sa **source** est provisoire.
+
+**3. Données des invariants I1/I5/I6 — gardées en contexte explicite par design.** `MintEvent`
+n'a ni montant déposé ni taux (I1) ; aucun modèle partagé ne porte l'offre totale (I5), la valeur
+du collatéral (I6), ni les événements d'administration (`Upgraded`, `RoleGranted`, oracle/taux).
+detection les reçoit aujourd'hui en **paramètres explicites** (`MintContext`, `AdminEvent`,
+`AdminAnnouncement` dans `detection/inputs.py`). **Décision :** on **ne les ajoute pas** à
+`shared/` maintenant. Raison : **aucun contrat ne les émet encore** — les mettre dans le modèle
+partagé serait inventer une forme avant d'avoir la source on-chain. La vraie source sera les
+**événements du contrat protégé (#5)** (`SwapRequested`/`SwapCompleted` portent déjà `depositAmount`
+et `rate` ; `RateChanged`, `RoleGranted`… existent). Quand monitor décodera ces événements dédiés,
+on fera **une seule** révision de `shared/` alignée sur ce qui est réellement émis, plutôt que
+plusieurs champs spéculatifs. Le passage par contexte explicite reste l'interface d'ici là.
+
+### Reste ouvert
+
+- Révision groupée de `shared/` (montant/taux/offre/collatéral/admin) **le jour où monitor décode
+  les événements dédiés du contrat #5**, pas avant — à faire par le propriétaire de `shared/`.
+- Distinction on-chain d'un Ghost (`is_ghost`) : à figer avec le design du contrat Ghost (#8).
+
+## §11. Contamination posée après coup — comment rattraper le M' déjà propagé (#85)
+
+> Renvoi depuis `OPEN_QUESTIONS.md` §11.
+
+### DÉCISION (2026-10-11, denybs) — _validée en session, à relire par l'équipe_ : piste (b), recalcul hors chaîne + racine de Merkle
+
+**Problème.** Le ratio de contamination (§9) se transmet **au moment** de chaque transfert. Si le
+voleur n'est marqué suspect (`AlertSeed`) qu'**après** avoir fait circuler son M', son ratio
+valait 0 au moment des ventes : le soupçon n'a pas suivi la chaîne. Comment atteindre le M' chez
+le dernier détenteur (ex. le 40e de la chaîne de §10bis) ?
+
+**Mesure qui tranche** (`python -m data.late_marking`, PR #95, inclus dans `make calibrate`,
+données **fictives**, chaîne des 40 de §10bis, voleur marqué **après** avoir tout revendu,
+détection à 3 min, fenêtre Ghost `W = 10 min`) :
+
+| Piste | M' récupéré |
+|---|---|
+| (a) lignage d'origine par tranche | **100 %** |
+| (b) recalcul rétroactif hors chaîne + preuve | **100 %** (même couverture que (a)) |
+| (c) contamination prospective seule | **0 %** |
+
+Lecture de la mesure : **(a) et (b) récupèrent autant** ; le vrai levier n'est **pas** la piste
+mais la **vitesse de détection face à l'échéance** — avec lignage (a ou b) on récupère tout tant
+que l'alerte **précède l'échéance** du M' (W), et rien au-delà. (c) ne rattrape jamais la chaîne
+déjà propagée.
+
+**Décision : piste (b)** — le surveillant **rejoue les événements de transfert publics**, calcule
+rétroactivement qui détient quoi dans le lot frauduleux (y compris les Ghost de paiement des
+graines), et le **multisig 2/3** soumet la liste des destructions **et** des restitutions (§10bis
+point 4) sous forme de **racine de Merkle**. Chaque porteur peut refaire le calcul et **contester**.
+
+**Pourquoi (b) plutôt que (a), à couverture égale :**
+
+1. **Coût on-chain nul par tranche.** (a) impose de stocker un identifiant d'origine sur **chaque**
+   tranche d'échéance (§0bis-b) et de gérer la **fusion** de tranches d'origines différentes — du
+   `SSTORE` et une sémantique de mélange à définir, à l'intérieur du contrat Ghost (#8) qui doit
+   rester simple et auditable. (b) ne demande **aucun** stockage de lignage dans le contrat.
+2. **Un seul mécanisme pour détruire ET restituer.** La §10bis (point 4) exige déjà que la liste
+   de **restitutions** arrive sous forme de **racine de Merkle**. (b) fait transiter destructions
+   et restitutions par **le même** chemin ; (a) aurait un lignage on-chain pour l'un et une racine
+   de Merkle pour l'autre.
+3. **Cohérent avec « l'IA ne décide jamais seule d'une destruction » (§3, §9).** Le calcul est
+   hors chaîne et **public/reproductible** ; c'est le **multisig humain** qui engage la racine, et
+   les porteurs peuvent la **contester** avant exécution. (a) déplacerait une partie de la décision
+   dans l'automatisme on-chain du lignage.
+4. **N'ajoute pas de dépendance de conception à #8.** Le contrat Ghost garde seulement un
+   **point d'extension** (destruction acceptant une racine de Merkle) ; il n'a pas à porter le
+   lignage. Cela **débloque #84** sans alourdir #8.
+
+**Conséquence sur le comportement par défaut.** En l'absence de racine soumise, le contrat se
+comporte comme la piste (c) : on n'atteint que ce que le voleur détient **encore** + ses Ghost de
+paiement. (b) est le **sur-ensemble** activé par le multisig quand une chaîne a déjà propagé.
+
+**Hypothèses explicites (à mesurer / documenter dans `docs/CLAIMS.md`, jamais garanties) :**
+
+- Les événements de transfert sont **publics et complets** (le surveillant voit tout le lot).
+- La **vitesse de détection** doit précéder l'échéance W du M' pour que la récupération soit totale ;
+  au-delà de W, la part déjà convertie est **perdue** (c'est une friction, pas un échec du mécanisme).
+- La racine de Merkle est **contestable** : le délai de contestation et le format de preuve
+  (feuille = `(adresse, lot, montant_détruit, montant_restitué)`) sont à figer dans #84.
+
+**Impact aval :**
+
+- **#84 débloqué** : la destruction/restitution par racine de Merkle est la primitive attendue.
+- **#8** : garde l'unique point d'extension « destruction par racine de Merkle » (déjà prévu sur
+  `feat/8-ghost-token`), **sans** champ de lignage par tranche.
+- **detection** : `python -m data.late_marking` fournit le calcul de référence ; un surveillant
+  qui produit la liste rétroactive reste à brancher (hors périmètre #85, suivra avec #84).
+
+### Reste ouvert
+
+- Délai de **contestation** d'une racine soumise, et procédure de contestation (hors périmètre
+  hackathon si le temps manque) — à décider avec #84.
+- Format exact des **feuilles** de l'arbre de Merkle (destruction + restitution unifiées) — figé
+  dans les tests d'invariants de #84.
+- La récupération **au-delà de W** est hors de portée par construction : à **énoncer** comme limite
+  dans `docs/CLAIMS.md`, pas à combler.
+
