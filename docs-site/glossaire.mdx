@@ -1,69 +1,427 @@
 ---
 title: "Glossaire"
-description: "Tous les mots de crypto et de sécurité du projet, expliqués en une ligne."
+description: "Plus de 80 mots de crypto, de sécurité, du projet, des outils et de la régulation, chacun en une phrase avec une mini-analogie et un lien vers la page qui le détaille."
+icon: "book"
 ---
 
-<Note>Classé par ordre alphabétique. Chaque terme en une phrase simple.</Note>
+<Info>
+**Ce que tu vas comprendre ici**
+- Chaque terme du projet en **une phrase**, avec une **mini-analogie** quand c'est utile.
+- Un **lien** vers la page qui détaille le concept, quand il y en a une.
+- Classé par **ordre alphabétique**, toutes catégories mêlées (crypto, sécurité, projet, outils,
+  régulation).
 
-## A – C
+Astuce : garde cette page ouverte dans un onglet en lisant le reste de la doc.
+</Info>
 
-**Blockchain** — un grand registre public et partagé où toutes les opérations sont enregistrées et
-très difficiles à effacer.
+<Note>
+Les termes **propres au projet** (Token Ghost, ratio de contamination, M', racine de Merkle…) sont
+définis d'après `docs/OPEN_ANSWERS.md`, `docs/CONTRACTS.md` et le code. Les identifiants techniques
+(I1…I6, noms de modèles) sont recopiés tels quels.
+</Note>
+
+## A
+
+**Adresse** — l'identifiant public d'un compte sur la blockchain (format `0x…` sur 40 caractères
+hex). **Analogie** : un numéro de compte bancaire, visible de tous. Voir [bases](/bases-blockchain).
+
+**AccessControl** — le composant OpenZeppelin qui gère les **rôles** dans un contrat (qui a le droit
+de faire quoi). Voir [Les contrats](/modules/contracts).
+
+**AlertSeed** — une adresse « graine » marquée suspecte au départ de la contamination, avec son
+montant suspect. **Analogie** : la première goutte d'encre qu'on identifie dans le verre. Voir
+[Pricer le risque](/contamination-par-ratio).
+
+**AMM (automated market maker)** — un marché automatisé qui fixe les prix par une formule, sans
+carnet d'ordres. **Analogie** : un distributeur qui ajuste son prix selon ce qu'il lui reste en
+stock.
+
+**Analogie (dans cette doc)** — une image du quotidien (banque, péage, colis…) pour expliquer un
+concept technique.
+
+**Avalanche** — la blockchain sur laquelle on travaille ; son réseau de test s'appelle **Fuji**.
+
+## B
+
+**Balise de risque (RiskBeaconUpdate)** — un panneau public où l'on publie le **prix du risque** (le
+ratio) d'une adresse, lisible par les protocoles en aval. **Analogie** : le signalement partagé
+d'une carte volée que tous les commerçants voient. Voir [Pricer le risque](/contamination-par-ratio).
+
+**Baseline** — le comportement « normal » de référence auquel on compare le trafic courant. **Analogie** :
+la température habituelle d'une pièce ; on s'alarme d'un écart, pas d'une valeur absolue. Voir
+[Les trois volets](/les-trois-volets).
+
+**Base units** — un montant exprimé en **entiers**, dans la plus petite unité du jeton (jamais en
+`float`). **Analogie** : compter en centimes plutôt qu'en euros à virgule.
+
+**Bedrock (Amazon Bedrock)** — le service AWS qui donne accès à des **LLM** ; on l'appelle
+uniquement sur alerte, pour le rapport d'incident. Voir [Le module LLM](/modules/llm).
+
+**Bloc** — un paquet de transactions ajouté à la blockchain à intervalles réguliers. **Analogie** :
+une page du grand registre, datée et scellée. Voir [bases](/bases-blockchain).
+
+**block.timestamp** — l'horodatage d'un bloc, utilisé pour mesurer les durées (plutôt qu'un nombre
+de blocs, car le temps de bloc varie sur Fuji).
+
+**Budget de quarantaine** — la part **maximale** de l'offre qu'on peut mettre en fenêtre allongée à
+un instant donné ; au-delà, il faut un humain. **Analogie** : un plafond de dépenses sur une carte,
+pour qu'un automate ne vide pas le compte. Voir [Les garde-fous](/les-garde-fous).
+
+**Burn (destruction)** — supprimer définitivement des jetons. Chez nous : la **fraction suspecte**
+(`ratio × solde`) d'un Ghost non converti, sur gel confirmé. Voir [Le Token Ghost](/token-ghost).
+
+## C
+
+**CI (intégration continue)** — des robots qui lancent build et tests à chaque modification de code.
+Voir [Workflow d'équipe](/pratique/workflow-equipe).
+
+**Clé de service (`SERVICE_ROLE`)** — le rôle qui autorise à traiter une demande de mint ; **volée**,
+c'est le cœur du scénario d'attaque (cas Resolv). **Analogie** : la clé du coffre d'une banque. Voir
+[Le problème](/le-probleme).
+
+**Clé privée / signature** — le secret qui autorise une action au nom de son propriétaire ; volée =
+pouvoir volé. **Analogie** : ta signature manuscrite, mais impossible à imiter… sauf si on te la
+vole. Voir [bases](/bases-blockchain).
 
 **Collatéral** — la vraie garantie (le dépôt) déposée en échange de la création de jetons. Pas de
-collatéral, pas de jeton légitime.
+collatéral, pas de jeton légitime. **Analogie** : le billet que tu déposes pour obtenir des jetons
+de casino.
+
+**Contamination (ratio de)** — le **seul nombre par adresse** qui dit quelle **fraction** de son
+solde Ghost est suspecte. **Analogie** : l'intensité de la teinte d'un verre d'eau coloré. Voir
+[Pricer le risque](/contamination-par-ratio).
 
 **Contrat intelligent (smart contract)** — un programme automatique sur la blockchain qui applique
-des règles sans intervention humaine, comme un distributeur.
+des règles sans intervention humaine. **Analogie** : un distributeur automatique. Voir
+[bases](/bases-blockchain).
 
-## D – G
+**Converse (API)** — l'API d'Amazon Bedrock utilisée pour dialoguer avec un LLM. Voir
+[Le module LLM](/modules/llm).
 
-**DeFi (finance décentralisée)** — des services financiers (prêt, échange…) qui fonctionnent via
-des programmes sur blockchain, sans banque centrale.
+**Créance (`swap-id`)** — un droit à être payé plus tard, créé quand on vend un Ghost à notre pool ;
+annulable si une fraude est confirmée. **Analogie** : un bon à encaisser à une date donnée. Voir
+[Le Token Ghost](/token-ghost).
 
-**DORA** — une réglementation européenne sur la résilience numérique de la finance ; nous impose
-de journaliser les incidents et de produire des rapports.
+## D
 
-**ERC20** — le standard technique le plus courant pour un jeton sur Ethereum/Avalanche. Notre
-« Token Ghost » en est un.
+**Décote** — la réduction de prix d'un Ghost, qui reflète le risque qu'il soit détruit. **Analogie** :
+le rabais sur un billet non confirmé.
 
-**Fuji** — le réseau de **test** d'Avalanche. On y travaille avec de la fausse monnaie, sans
-risque.
+**DeFi (finance décentralisée)** — des services financiers (prêt, échange) via des programmes sur
+blockchain, sans banque centrale.
 
-**Fuzzing** — bombarder un programme de milliers de scénarios aléatoires pour tenter de le casser
-et trouver des failles.
+**delay (retarder)** — le seul verbe qu'un surveillant / l'IA peut déclencher **seul** : allonger la
+fenêtre d'un périmètre, de façon **auto-expirante**. Voir [Les garde-fous](/les-garde-fous).
 
-**Gel (freeze)** — mettre en pause des jetons suspects. Réversible, et seul un humain peut le
-lever.
+**Dispersion** — à quel point un flux va vers **beaucoup** d'adresses (large) ou **peu** (concentré) ;
+le discriminant « volume élevé ET dispersion effondrée ». **Analogie** : une foule qui se disperse
+vs qui converge vers une seule sortie. Voir [Les trois volets](/les-trois-volets).
 
-## I – M
+**DORA** — une réglementation européenne sur la résilience numérique de la finance ; nous impose de
+**journaliser** les incidents et de produire des **rapports**. Voir [Les garde-fous](/les-garde-fous).
 
-**Invariant** — une règle qui doit **toujours** rester vraie (ex. « on ne crée jamais plus de
-jetons que de dépôts »). Les tests vérifient qu'elle tient.
+## E
 
-**LLM (grand modèle de langage)** — une IA qui comprend et génère du texte. Chez nous : via Amazon
-Bedrock, pour expliquer un incident.
+**ε (epsilon)** — la tolérance (frais) de l'invariant I1 `minted = deposit × taux`, **à mesurer**.
 
-**Mint (minter)** — fabriquer de nouveaux jetons. Le cœur du risque dans notre scénario.
+**ERC20** — le standard le plus courant d'un jeton sur Ethereum/Avalanche ; notre Token Ghost en est
+un. **Analogie** : la norme d'un format de fichier, que tous les logiciels savent lire.
 
-**Multisig (signature multiple)** — une décision qui exige l'accord de **plusieurs** personnes,
-pas d'une seule. Évite qu'un individu (ou une clé volée) agisse seul.
+**Événement (on-chain)** — un enregistrement émis par un contrat qu'on peut écouter (ex.
+`SwapCompleted`, `GhostTokenMintEvent`). **Analogie** : une notification que l'application envoie.
+Voir [Les interfaces (contrats)](/modules/contracts).
 
-## P – Z
+**Exit point (point de sortie)** — une adresse étiquetée « échange » ou « bridge » vers laquelle un
+voleur tente de sortir les fonds. Voir [Le module detection](/modules/detection).
 
-**Plafond (cap)** — une limite maximale (par opération, par heure) imposée par le contrat.
+## F
 
-**Quarantaine** — période d'observation d'un jeton fraîchement créé avant de le considérer comme
-valide.
+**Facteur d'allongement** — de combien on allonge la fenêtre d'un périmètre suspect (proposition :
+10 min → 1 h). **À mesurer.** Voir [Les garde-fous](/les-garde-fous).
 
-**Signature / clé privée** — le secret qui autorise une action au nom de son propriétaire. Volée =
-pouvoir volé.
+**Faucet** — un robinet qui distribue de la fausse monnaie de test, gratuitement, sur Fuji. **Analogie** :
+l'argent du Monopoly. Voir [Installer](/pratique/installer).
 
-**Token Ghost (jeton fantôme)** — un jeton temporaire émis à la place du vrai, converti 1:1 si
-tout va bien, détruit en cas de fraude.
+**Faux positif (FP)** — une alerte à tort sur du trafic **légitime**. **Analogie** : une alarme
+incendie qui sonne pour une bougie. Voir [Ce qu'on promet au jury](/promesses-jury).
 
-**Transfert** — déplacer des jetons d'une adresse à une autre. Des transferts bizarres (gros
-montants, adresses neuves, découpage) sont des signaux d'alerte.
+**Fenêtre Ghost (W)** — la durée (ex. 10 min) pendant laquelle un Ghost reste Ghost avant conversion.
+**Analogie** : la date de péremption d'un yaourt. Voir [Le Token Ghost](/token-ghost).
 
-**Veto asymétrique** — tout surveillant peut ralentir (geler), personne ne peut accélérer : le
-pire cas d'une erreur est un simple retard.
+**Finalité** — le moment où une transaction est considérée comme **irréversible** sur la blockchain.
+
+**Foundry / forge** — la boîte à outils pour écrire, compiler et tester des contrats Solidity ;
+`forge` est sa commande. Voir [Les tests expliqués](/pratique/tests-expliques).
+
+**Fuji** — le réseau de **test** d'Avalanche ; fausse monnaie, aucun risque réel.
+(`chain_id = 43113`.) Voir [Installer](/pratique/installer).
+
+**Fuzzing** — bombarder un programme de milliers de scénarios aléatoires pour tenter de le casser.
+**Analogie** : un singe qui tape au hasard sur un clavier pour trouver un bug. Voir
+[Les tests expliqués](/pratique/tests-expliques).
+
+## G
+
+**Gas** — le coût (en calcul) de chaque opération sur la blockchain. **Analogie** : le carburant d'un
+trajet ; plus l'opération est lourde, plus elle coûte. Voir [bases](/bases-blockchain).
+
+**git / branche / PR** — l'outil de versionnage ; une **branche** isole un travail, une **PR**
+(pull request) demande à le fusionner. **Analogie** : un brouillon séparé puis sa relecture avant
+publication. Voir [Workflow d'équipe](/pratique/workflow-equipe).
+
+**global_pause (pause globale)** — l'arrêt de tout le protocole ; dernier recours, **multisig 3/3**,
+réversible. Voir [Les garde-fous](/les-garde-fous).
+
+**Guardian** — un détenteur de clé du multisig qui peut approuver une destruction ou une pause. Voir
+[Les garde-fous](/les-garde-fous).
+
+## H
+
+**Herfindahl (indice de)** — une mesure de **concentration** (somme des parts au carré) ; proche de 1
+= tout part au même endroit. **Analogie** : un indice qui dit si un marché est dominé par un seul
+acteur. Voir [Le module detection](/modules/detection).
+
+## I
+
+**I1** — invariant : `minted = deposit × taux` à ε près (bloque le mint gonflé, cas Resolv). Voir
+[Les trois volets](/les-trois-volets).
+
+**I2** — invariant : la demande existe, est en attente, traitée **une seule fois** (bloque rejeu et
+demande inventée).
+
+**I3** — invariant **nouveau** : le destinataire du mint est le **déposant** (bloque le détournement
+à 1:1). Voir [Les trois volets](/les-trois-volets).
+
+**I4** — invariant : une seule fonction, un seul rôle peut minter (bloque un chemin de mint
+parallèle).
+
+**I5** — invariant (surveillant) : `Δ totalSupply = Σ Mint − Σ Burn` (mint passé par un chemin non
+prévu).
+
+**I6** — invariant (surveillant) : `totalSupply ≤ valeur du collatéral × facteur` (dérive de
+solvabilité).
+
+**Invariant** — une règle qui doit **toujours** rester vraie, vérifiée par les tests. **Analogie** :
+« la somme au tableau de bord ne doit jamais dépasser le réservoir ». Voir
+[Les tests expliqués](/pratique/tests-expliques).
+
+**IsolationForest** — un modèle de détection d'anomalies (scikit-learn), piste ML **non branchée**.
+Voir [Le module detection](/modules/detection).
+
+## J
+
+**JSONL** — un fichier texte où **une ligne = un objet JSON** (ici, un événement). **Analogie** : un
+cahier où chaque ligne est une entrée indépendante. Voir [Le module data](/modules/data).
+
+**Journal d'audit (AuditLogEntry)** — un registre **append-only** qui trace qui a fait quoi, quand,
+pour la conformité DORA. **Analogie** : un cahier de bord qu'on n'efface jamais. Voir
+[Les garde-fous](/les-garde-fous).
+
+## K
+
+**Kiro / steering** — l'assistant de dev du projet ; les fichiers **steering** (`.kiro/steering/`)
+lui donnent le contexte des modules. Voir [Workflow d'équipe](/pratique/workflow-equipe).
+
+## L
+
+**LLM (grand modèle de langage)** — une IA qui comprend et génère du texte ; chez nous, pour
+expliquer un incident (via Bedrock). **Analogie** : un rédacteur qui résume un rapport. Voir
+[Le module LLM](/modules/llm).
+
+**LTV (loan-to-value)** — le ratio prêt / garantie d'un marché de prêt. **Analogie** : combien une
+banque te prête par rapport à la valeur de ta maison.
+
+## M
+
+**M / M'** — `M` est le vrai token ; `M'` (M-prime) est le **M en version Ghost**, pas encore
+converti. Voir [Le Token Ghost](/token-ghost).
+
+**M' chèque** — du M' reçu **sans paiement on-chain** (don, salaire direct) ; brûlé en cas de fraude,
+recours **hors chaîne**. Voir [Le Token Ghost](/token-ghost).
+
+**M' protégé** — du M' acheté contre du **vrai M** via le routeur ; on récupère **son propre
+paiement** en cas de fraude. Voir [Le Token Ghost](/token-ghost).
+
+**M' pur** — du M' acheté alors que c'était **déjà du M'** ; porte le risque (`ratio × solde`). Voir
+[Le Token Ghost](/token-ghost).
+
+**MAD (écart absolu médian)** — une mesure de dispersion **robuste** au bruit, utilisée avec la
+médiane pour la baseline. **Analogie** : le « bazar typique » autour du prix du milieu, insensible
+aux cris d'un marchand isolé. Voir [Les trois volets](/les-trois-volets).
+
+**Médiane** — la valeur « du milieu » d'une série, **robuste** aux valeurs extrêmes (contrairement à
+la moyenne). **Analogie** : le salaire médian plutôt que le salaire moyen tiré par les milliardaires.
+
+**Merkle (racine de)** — un petit code qui **résume** une longue liste (destructions + restitutions) ;
+le changer impossible sans changer le code, et chacun peut **prouver** sa ligne. **Analogie** : le
+numéro certifié au dos d'un chèque. Voir [Pricer le risque](/contamination-par-ratio).
+
+**Mint (minter)** — fabriquer de nouveaux jetons ; le cœur du risque de notre scénario. **Analogie** :
+imprimer de la monnaie. Voir [Le problème](/le-probleme).
+
+**MintRequest** — la demande de mint enregistrée on-chain ; la signature autorise « traiter la
+demande n°X », **pas** un montant. Voir [Les interfaces (contrats)](/modules/contracts).
+
+**Multisig (signature multiple)** — une décision qui exige l'accord de **plusieurs** signataires
+(M parmi N). **Analogie** : un coffre à deux clés qu'on tourne ensemble ; voler une clé ne suffit
+plus. Voir [Les garde-fous](/les-garde-fous).
+
+## O
+
+**Oracle** — une source externe de prix / de taux lue par un contrat ; manipulable (ex. flash loan).
+**Analogie** : le thermomètre dont dépend le chauffage ; fausse-le et tout dérape. Voir
+[Les trois volets](/les-trois-volets).
+
+## P
+
+**p95** — la valeur en dessous de laquelle tombent 95 % des mesures ; on la rapporte avec la médiane.
+**Analogie** : « 95 fois sur 100, l'attente est inférieure à X ». Voir
+[Ce qu'on promet au jury](/promesses-jury).
+
+**Plafond (cap)** — une limite maximale par opération ; **écartée** chez nous (pas de plafond fixe,
+une baseline adaptative à la place). Voir [Les trois volets](/les-trois-volets).
+
+**Pool** — une réserve de liquidité partagée pour échanger deux actifs ; chez nous, une **adresse
+avec un ratio** comme une autre. **Analogie** : une caisse commune dans laquelle on pioche. Voir
+[Pricer le risque](/contamination-par-ratio).
+
+**Prédiction conforme** — une méthode qui **borne** le taux de faux positifs sous une hypothèse ;
+**écartée** pour la démo (seuils simples préférés), citée comme piste. Voir
+[Le module detection](/modules/detection).
+
+**Pydantic** — la bibliothèque Python qui **valide** les données contre un schéma strict
+(`extra="forbid"`). **Analogie** : un contrôle qualité qui refuse tout colis non conforme. Voir
+[Le langage commun (shared)](/modules/shared).
+
+**pytest** — l'outil qui lance les tests Python du projet. Voir
+[Les tests expliqués](/pratique/tests-expliques).
+
+**Python** — le langage des modules hors chaîne (monitor, detection, response, data, dashboard, llm).
+
+## Q
+
+**Quarantaine (liquide)** — la période d'observation d'un Ghost avant conversion ; « liquide » car il
+reste **échangeable** pendant ce temps. Voir [Le Token Ghost](/token-ghost).
+
+**QuarantineRecord** — l'état de quarantaine d'un périmètre (solde Ghost, fenêtre, ratio). Voir
+[Les interfaces (contrats)](/modules/contracts).
+
+## R
+
+**Rapport d'incident** — le texte produit par le LLM pour expliquer un incident (DORA). Voir
+[Le module LLM](/modules/llm).
+
+**Réorg (réorganisation)** — quand la blockchain remplace quelques blocs récents par d'autres ; une
+transaction « vue » peut disparaître brièvement. **Analogie** : une page du registre réécrite juste
+après avoir été lue.
+
+**request_id** — l'identifiant d'une `MintRequest` ; depuis #79, `MintEvent.request_id` est
+`int | None` (`None` = inconnu, jamais la demande n°0). Voir [Décisions](/decisions).
+
+**Réserve de restitution** — l'excédent `collatéral − valeur(supply)` cantonné, servant à restituer
+aux victimes (multisig 2/3), jamais au profit du protocole. **Analogie** : une caisse de consignes
+qu'on ne touche que pour rendre. Voir [Le Token Ghost](/token-ghost).
+
+**Resolv** — l'incident réel de référence (mars 2026) : ~200 000 USDC déposés, 80M mintés avec une
+clé `SERVICE_ROLE` volée. C'est **la baseline** « sans notre système ». Voir [Le problème](/le-probleme).
+
+**RPC** — le point d'accès réseau par lequel on lit la blockchain. **Analogie** : le numéro qu'on
+appelle pour avoir des nouvelles de la chaîne. Voir [Le module monitor](/modules/monitor).
+
+## S
+
+**Seuil** — la valeur au-delà de laquelle on déclenche (ratio, volume, montant suspect) ; tous les
+seuils du projet sont **à mesurer**.
+
+**Slippage** — l'écart entre le prix attendu et le prix obtenu lors d'un swap sur un AMM.
+
+**Solidity** — le langage des smart contracts d'Avalanche/Ethereum. Voir [Les contrats](/modules/contracts).
+
+**Solvabilité** — l'affirmation **principale** : `supply ≤ collateral`, aucun vrai token non adossé
+si détecté à temps. Voir [Le Token Ghost](/token-ghost).
+
+**Stablecoin** — un jeton censé garder une valeur stable (ex. adossé à un dollar). Dans notre
+scénario, c'est le jeton minté frauduleusement.
+
+**StableToken / MockUSDC** — nos contrats **fictifs** : le stable (18 décimales) et le collatéral
+(6 décimales, faucet ouvert). Voir [Les contrats](/modules/contracts).
+
+**Streamlit** — la bibliothèque Python du **dashboard** de démo. Voir [Le dashboard](/modules/dashboard).
+
+**Structuring (découpage)** — fractionner une somme pour passer sous les radars ; chez nous,
+**ne nettoie pas** le soupçon (conservé par le ratio). Voir [Pricer le risque](/contamination-par-ratio).
+
+**Swap** — un échange d'un actif contre un autre. Voir [Le Token Ghost](/token-ghost).
+
+**swap-id** — l'identifiant qui lie les deux jambes d'un swap pour pouvoir les annuler ensemble. Voir
+[Le Token Ghost](/token-ghost).
+
+## T
+
+**Taux (rate)** — le facteur de conversion dépôt → mint, figé à la création de la demande (pas
+d'oracle externe dans le contrat protégé). Voir [Les contrats](/modules/contracts).
+
+**Token Ghost (jeton fantôme / M')** — un jeton temporaire émis à chaque transfert, converti 1:1 si
+tout va bien, détruit (fraction suspecte) en cas de fraude. **Analogie** : un billet de concert pas
+encore confirmé. Voir [Le Token Ghost](/token-ghost).
+
+**totalSupply** — la quantité totale de jetons en circulation.
+
+**Tranche d'échéance** — une des N parts dans lesquelles une adresse range son Ghost selon la date de
+conversion (arrondie au créneau supérieur). **Analogie** : des yaourts triés par date de péremption.
+Voir [Le Token Ghost](/token-ghost).
+
+**TransferEvent** — l'observation brute d'un transfert on-chain (expéditeur, destinataire, montant,
+`is_ghost`). Voir [Les interfaces (contrats)](/modules/contracts).
+
+**Transfert** — déplacer des jetons d'une adresse à une autre ; des transferts bizarres (gros
+montant, adresse neuve, découpage) sont des signaux d'alerte. Voir [Les trois volets](/les-trois-volets).
+
+**TxHash** — le hash (empreinte) d'une transaction, qui l'identifie de façon unique. **Analogie** :
+le numéro de reçu d'un paiement.
+
+## V
+
+**Veto asymétrique** — tout surveillant peut **ralentir** (retarder), personne ne peut **accélérer**
+ni libérer seul : le pire cas d'une erreur est un simple retard. **Analogie** : n'importe qui peut
+tirer le frein d'urgence, mais relancer le train demande plusieurs clés. Voir
+[Les garde-fous](/les-garde-fous).
+
+**Volet 1 / 2 / 3** — les trois couches du bouclier : montant dérivé on-chain (1), surveillance
+adaptative + Ghost (2), balise de risque / anti-contagion (3). Voir [Les trois volets](/les-trois-volets).
+
+**Volume (normalisé)** — la quantité échangée rapportée à l'offre (jamais en absolu) ; haut **et**
+concentré = suspect. Voir [Les trois volets](/les-trois-volets).
+
+## W
+
+**Wei** — la plus petite unité d'un jeton ; « envoyer 1 wei » = envoyer une poussière. **Analogie** :
+le centime d'euro, mais encore plus petit.
+
+**Window (W)** — voir **Fenêtre Ghost**.
+
+<Check>
+**À retenir**
+- Les termes **propres au projet** (Token Ghost, ratio, M', racine de Merkle, réserve de
+  restitution) ont chacun une page qui les détaille — suis le lien.
+- Les **invariants I1 à I6** sont le cœur de la détection ; I3 (destinataire = déposant) est
+  **nouveau**.
+- Deux grands principes reviennent partout : **médiane / MAD** (robustesse) et **veto asymétrique**
+  (ralentir solitaire, accélérer jamais).
+- Aucun chiffre n'est affiché sans mesure ; on ne dit jamais « prouvé ».
+</Check>
+
+<CardGroup cols={2}>
+  <Card title="La blockchain en 10 minutes" icon="cube" href="/bases-blockchain">
+    Les mots de base (adresse, bloc, gas, mint, ERC20).
+  </Card>
+  <Card title="Le Token Ghost" icon="ghost" href="/token-ghost">
+    M', tranches, réserve de restitution, swap-id.
+  </Card>
+  <Card title="Pricer le risque" icon="gauge-high" href="/contamination-par-ratio">
+    Ratio de contamination, balise, racine de Merkle.
+  </Card>
+  <Card title="Les garde-fous" icon="lock" href="/les-garde-fous">
+    Trois verbes, multisig, veto asymétrique, DORA.
+  </Card>
+</CardGroup>
