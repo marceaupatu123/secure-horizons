@@ -1,0 +1,92 @@
+---
+title: "La balise de risque (anti-contagion)"
+description: "Comment on empêche une fraude de se propager aux autres plateformes."
+---
+
+<Note>
+Cette page explique la **balise de risque** (`RiskBeacon`) et le **pare-feu de contagion** : le
+troisième volet de la défense, celui qui empêche un problème de **se répandre** au reste de la
+finance décentralisée. Expliqué avec des images simples.
+</Note>
+
+## Le problème : la contagion
+
+En finance décentralisée, les plateformes sont **branchées les unes aux autres**. Un jeton créé
+chez nous peut servir de **garantie pour emprunter** ailleurs, être échangé sur une autre place,
+etc.
+
+**Analogie** : un **incendie dans un immeuble mitoyen**. Si un appartement prend feu et que rien
+ne sépare les logements, le feu passe au voisin, puis au voisin du voisin. Le danger n'est pas
+seulement l'appartement d'origine : c'est la **propagation**.
+
+Pour une fraude, c'est pareil : si un jeton douteux circule librement, d'autres plateformes
+l'acceptent sans savoir qu'il est « contaminé ».
+
+## Notre réponse : une balise que tout le monde peut lire
+
+<Note>
+**La balise de risque est un panneau public : « ce jeton / cette adresse est sous surveillance ».**
+</Note>
+
+Le contrat `RiskBeacon` publie, **sur la blockchain**, un **niveau de risque** que n'importe quelle
+autre plateforme peut consulter avant d'accepter le jeton.
+
+**Analogie** : le **feu tricolore**. Vert = circulation normale. Orange = prudence. Rouge = on
+s'arrête. La balise met le feu au rouge sur ce qui est suspect, et **tout le monde voit le même
+feu en même temps**.
+
+<CardGroup cols={2}>
+  <Card title="Lisible par tous" icon="eye">
+    Le niveau de risque est public et vérifiable on-chain. Pas de secret, pas de rumeur.
+  </Card>
+  <Card title="Branché aux autres" icon="plug">
+    Une plateforme de prêt peut lire la balise **avant** d'accepter le jeton en garantie.
+  </Card>
+</CardGroup>
+
+## Le faux marché de prêt : notre banc d'essai
+
+Pour **démontrer** que ça marche sans toucher à de vraies plateformes, on a construit un
+**faux marché de prêt** (`MockLendingMarket`) — une maquette qui se comporte comme une vraie, mais
+avec des **données fictives**.
+
+<Steps>
+  <Step title="Situation normale">
+    La balise est au vert. Le faux marché accepte le jeton comme garantie, comme n'importe quelle
+    plateforme le ferait.
+  </Step>
+  <Step title="Une fraude est détectée">
+    Un surveillant lève une alerte, la balise passe au **rouge** pour l'adresse / le jeton concerné.
+  </Step>
+  <Step title="Le pare-feu se referme">
+    Le faux marché **lit la balise** et **refuse** désormais ce jeton en garantie. La contagion est
+    stoppée : le problème reste **confiné** à son point de départ.
+  </Step>
+</Steps>
+
+<Note>
+C'est le **scénario C** de nos démonstrations : on montre le feu qui passe au rouge et le marché
+qui ferme sa porte, étape par étape.
+</Note>
+
+## Pourquoi ce n'est pas « l'IA qui décide »
+
+<Warning>
+La balise **signale** un risque ; elle ne **confisque** rien et ne décide d'aucune destruction
+toute seule. Chaque plateforme reste libre de sa réaction, et toute destruction définitive passe
+par une **validation humaine à plusieurs** (multisig).
+</Warning>
+
+La balise est un **renfort** : elle rend l'information disponible pour que les autres se
+protègent. Elle respecte notre règle d'or — *la sécurité vit dans le contrat, la surveillance est
+un renfort, l'humain tranche*.
+
+## Ce qu'on mesure
+
+Le comportement de la balise et du faux marché est **vérifié par des tests**
+(`contracts/test/RiskBeacon.t.sol`) : feu vert → accepté, feu rouge → refusé. On montre un
+mécanisme qui fonctionne sur banc d'essai, on ne « prouve » pas une protection universelle.
+
+<Card title="Revenir aux trois volets" icon="layer-group" href="/les-trois-volets">
+  La balise de risque est le troisième volet du bouclier.
+</Card>

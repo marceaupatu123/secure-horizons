@@ -1,0 +1,106 @@
+---
+title: "Récupérer après coup : le lignage"
+description: "Quand on découvre la fraude trop tard, comment on retrouve l'argent dans la foule."
+---
+
+<Note>
+Cette page explique le **lignage rétroactif** : la façon dont le système **retrouve l'argent volé**
+même quand on comprend la fraude **après** qu'elle a déjà circulé de main en main. Zéro jargon :
+tout est raconté avec une image simple.
+</Note>
+
+## Le problème, en une image
+
+Imagine un **billet volé** qui passe de poche en poche sur un marché bondé.
+
+- Au moment du vol, personne ne sait que ce billet est « sale ».
+- Le voleur le dépense, le commerçant le rend en monnaie, qui le redonne à quelqu'un d'autre…
+- Une heure plus tard, **la police comprend que le vol a eu lieu**. Mais le billet est déjà loin,
+  mélangé à des centaines d'autres mains.
+
+**La question** : comment retrouver *qui* détient aujourd'hui de l'argent qui vient de ce vol,
+sans avoir suivi le billet en direct ?
+
+## Notre réponse : rejouer le film
+
+Comme chaque transfert de Token Ghost est **public et enregistré**, on peut **rejouer le film**
+depuis le début, mais cette fois **en sachant** que l'origine était frauduleuse.
+
+<Steps>
+  <Step title="On marque l'origine comme suspecte… dans le passé">
+    On repart du moment où l'argent volé est entré dans le Ghost (`t0`) et on dit : « ce point de
+    départ était sale ». Le soupçon part donc de la bonne source, **rétroactivement**.
+  </Step>
+  <Step title="On suit le soupçon à chaque transfert">
+    À chaque fois que de l'argent change de main, le soupçon **voyage avec lui**, au prorata.
+    Si quelqu'un reçoit la moitié d'un montant à moitié suspect, il hérite d'un quart de soupçon.
+  </Step>
+  <Step title="On s'arrête aux détenteurs d'aujourd'hui">
+    À la fin du film, on sait **qui tient encore** des Token Ghost issus de ce vol, et **combien**
+    de leur solde est suspect. Ce sont les « graines » (`seeds`) que l'on transmet.
+  </Step>
+</Steps>
+
+## La règle qui rend ça juste : le soupçon ne se lave pas
+
+<Note>
+**Fractionner et disperser l'argent ne le nettoie pas.**
+</Note>
+
+Un voleur malin se dit : « je vais découper mon butin en 50 petits bouts et les envoyer partout,
+comme ça on perdra la trace ». Avec le lignage, ça ne marche pas : le soupçon est **conservé**.
+
+**Analogie** : une goutte d'encre dans l'eau. Tu peux séparer l'eau en 50 verres — il y a moins
+d'encre par verre, mais **la quantité totale d'encre est toujours là**. On la retrouve en
+additionnant tous les verres.
+
+<CardGroup cols={2}>
+  <Card title="Dilution ≠ disparition" icon="droplet">
+    Diviser le montant dilue le **ratio** par portion, mais le **total** suspect est conservé.
+  </Card>
+  <Card title="Arrondi prudent" icon="arrow-up">
+    Quand un calcul tombe entre deux unités, on arrondit **vers le haut** : aucune poussière
+    suspecte n'échappe au filet.
+  </Card>
+</CardGroup>
+
+## La limite honnête : l'argent déjà sorti est hors d'atteinte
+
+<Warning>
+Le lignage ne récupère que ce qui est **encore en Token Ghost**. Si quelqu'un a déjà **converti**
+son Ghost en vrai jeton avant le gel, cette part est partie — c'est irréversible, et c'est voulu.
+</Warning>
+
+C'est le **plafond** du système : on ne réclame jamais à quelqu'un plus que ce qu'il détient
+*encore* en Ghost. Le soupçon s'arrête à la porte de sortie.
+
+## Et ceux de bonne foi qui ont payé ?
+
+Quand les faux jetons d'un lot sont détruits, l'argent **bloqué derrière le paiement du voleur**
+n'a jamais été à lui. On le **restitue** selon une règle fixe et vérifiable :
+
+<Steps>
+  <Step title="D'abord les victimes du lot détruit">
+    Ceux dont les Token Ghost ont été brûlés sont remboursés **au prorata**, mais **jamais plus
+    que ce qu'ils avaient réellement payé**.
+  </Step>
+  <Step title="Le reste à celui qui avait payé le voleur">
+    S'il reste de l'argent bloqué, il revient à la personne qui avait payé le voleur. Le protocole,
+    lui, **ne garde rien**.
+  </Step>
+</Steps>
+
+<Note>
+**On ne crée jamais d'argent.** Le total restitué ne dépasse jamais l'argent réellement bloqué.
+C'est une redistribution, pas une impression de billets.
+</Note>
+
+## Ce qu'on mesure (et pas ce qu'on promet)
+
+Sur notre scénario de test (la « chaîne des 40 » : le voleur revend tout, de main en main, 40 fois),
+quand l'alerte arrive **avant** la fin de la fenêtre, on retrouve **100 % du montant encore en
+Ghost**. C'est **vérifié par des tests** (`detection/tests/test_lineage.py`), pas « prouvé ».
+
+<Card title="Voir le parcours complet d'une attaque" icon="route" href="/le-parcours-dune-attaque">
+  Où le lignage s'insère dans la défense globale.
+</Card>
