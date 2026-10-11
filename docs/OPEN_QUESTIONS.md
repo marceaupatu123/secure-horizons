@@ -496,3 +496,22 @@ sans trancher aucune règle de cette décision. Design détaillé : `contracts/.
   Son échéance est celle du M' vendu.
 - Enforcement, modif de `GhostToken`, et événements de `docs/CONTRACTS.md` : différés / à proposer
   aux propriétaires, non faits ici.
+
+## 18. Garde-fou du taux (#131) — seuils — _choix de l'agent (2026-10-11, provisoire, à valider en équipe)_
+
+Correctif de la faille #131 (une clé `RATE_ADMIN_ROLE` volée mintait sans limite via `setRate`).
+`setRate` immédiat est remplacé par un **timelock borné** dans `ProtectedMinter` : `proposeRate`
+(variation ≤ `MAX_RATE_STEP_BPS`) → `executeRate` après `RATE_DELAY`, annulable par un guardian
+(`cancelRate`). Aucune règle de conception tranchée ici ; seuils à mesurer/valider :
+
+- **`MAX_RATE_STEP_BPS = 500` (5 %)** par changement. Pour un stable visé à 1:1, quelques % par
+  pas suffisent ; valeur **provisoire**, à régler en équipe (lié à #3).
+- **`RATE_DELAY = 1 hour`** avant effet : la fenêtre de réaction de la surveillance. **Provisoire** ;
+  à relier à la fenêtre W du Ghost et au délai de détection mesuré (§5).
+- **Signature du constructeur inchangée** (le taux initial n'est pas borné, et le déploiement/CI
+  anvil ne cassent pas). Séparer `RATE_ADMIN_ROLE` de `DEFAULT_ADMIN_ROLE` au déploiement reste une
+  option **ouverte** (aujourd'hui les deux sont sur `admin`).
+- **Limite assumée** : la borne est *par pas* ; une clé de taux volée non détectée peut dériver le
+  taux de 5 % par `RATE_DELAY` indéfiniment. Le Ghost (#8) rend ce mint récupérable dans la fenêtre,
+  et la surveillance alerte sur `RateProposed`/`RateChanged` — mais un gel doit être confirmé à
+  temps. À dire au jury (`docs/CLAIMS.md`), jamais « borne absolue ».

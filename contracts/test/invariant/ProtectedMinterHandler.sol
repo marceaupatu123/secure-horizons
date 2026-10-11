@@ -171,22 +171,29 @@ contract ProtectedMinterHandler is Test {
         if (ok) ghost_unexpectedSuccess = true;
     }
 
-    /// @notice La clé volée tente de changer le taux.
+    /// @notice La clé volée tente de changer le taux (proposer est réservé à RATE_ADMIN_ROLE).
     function stolenKeySetRate(uint256 newRate) external {
         calls["stolenKeySetRate"]++;
         vm.prank(service);
-        try minter.setRate(newRate) {
+        try minter.proposeRate(newRate) {
             ghost_unexpectedSuccess = true;
         } catch {}
     }
 
-    /// @notice L'admin honnête change le taux (H1) : s'applique aux nouvelles demandes seulement.
+    /// @notice L'admin honnête change le taux (H1) via le timelock borné de #131 : proposition
+    ///         <= 5 % du taux courant, puis exécution après le délai. S'applique aux nouvelles
+    ///         demandes seulement.
     function adminSetRate(uint256 newRate) external {
         calls["adminSetRate"]++;
-        newRate = bound(newRate, MIN_RATE, MAX_RATE);
+        uint256 cur = minter.rate();
+        uint256 maxStep = cur * minter.MAX_RATE_STEP_BPS() / 10_000;
+        // Reste dans la borne de pas (sinon la proposition revert, à juste titre).
+        newRate = bound(newRate, cur > maxStep ? cur - maxStep : 1, cur + maxStep);
+        if (newRate == 0) newRate = 1;
         vm.prank(admin);
-        // Doit réussir : admin honnête, taux > 0 (le setRate n'est pas soumis à la pause).
-        try minter.setRate(newRate) {
+        try minter.proposeRate(newRate) {
+            vm.warp(block.timestamp + minter.RATE_DELAY());
+            minter.executeRate();
             calls["adminSetRate_ok"]++;
             trackedRate = newRate;
         } catch {
