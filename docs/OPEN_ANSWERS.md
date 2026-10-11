@@ -478,7 +478,7 @@ NORMAL ────────────────────────�
 - Alignement du code sur le vocabulaire acté (`response/orchestrator.py`, `CLAUDE.md`) et des
   champs `ResponseAction` dans `docs/CONTRACTS.md` sur cette machine à états.
   → `response/orchestrator.py` **aligné** (PR #56 : machine à états, quorums 2/3 et 3/3, silence
-  = retour auto). Restent `CLAUDE.md` et `docs/CONTRACTS.md`.
+  = retour auto) ; `CLAUDE.md` et le steering alignés (PR steering). Reste `docs/CONTRACTS.md`.
 
 ---
 
