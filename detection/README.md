@@ -44,7 +44,9 @@ sur la sortie standard (journaux sur la sortie d'erreur). Aucune intégration av
 ## Surveillant de mint à règles (#11)
 
 `RuleBasedMonitor.check_mint(event, context)` suit `docs/OPEN_ANSWERS.md` §1 : **aucun seuil sur
-la taille d'un mint**. Il vérifie I1 (`minted = dépôt × taux` à ε près), I5
+la taille d'un mint**. Il vérifie I1 (`minted = dépôt × taux` à ε près), I3 (destinataire du
+mint = déposant de la demande, #91 : détournement à 1:1 du scénario B, entrée
+`MintContext.requester`), I5
 (`Δ totalSupply = Σ Mint − Σ Burn`), I6 (`totalSupply ≤ collatéral × facteur`), les événements
 d'administration non annoncés et l'écart du taux au-delà de δ vs une référence. Une `Alert`
 signifie seulement **retarder** le périmètre (§3) ; détruire / pause globale = multisig.

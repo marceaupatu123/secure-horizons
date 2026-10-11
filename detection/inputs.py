@@ -115,6 +115,10 @@ class MintContext:
             token minte (I6).
         admin_events: evenements d'administration observes depuis la
             derniere verification.
+        requester: deposant de la demande traitee par ce mint (I3 : le
+            destinataire du mint doit etre le deposant, OPEN_ANSWERS §1).
+            Fourni par l'appelant (`MintRequest.requester`), PAS retrouve via
+            `request_id` (voir docstring du module).
     """
 
     deposit_amount: int | None = None
@@ -126,8 +130,11 @@ class MintContext:
     interval_burned_total: int = 0
     collateral_value: int | None = None
     admin_events: tuple[AdminEvent, ...] = field(default_factory=tuple)
+    requester: str | None = None
 
     def __post_init__(self) -> None:
+        if self.requester is not None:
+            _check_address("requester", self.requester)
         if self.deposit_amount is not None and self.deposit_amount <= 0:
             raise ValueError("deposit_amount doit etre > 0")
         for name in ("rate", "reference_rate"):
