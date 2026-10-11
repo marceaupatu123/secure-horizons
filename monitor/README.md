@@ -75,9 +75,15 @@ mergée) : à revérifier si ces signatures changent avant le merge.
    le Ghost : il reste un mint **sans provenance**, donc I4 critique. Un `SwapCompleted` présent dans la même
    transaction ne lui sert **jamais** de provenance, car il ne peut justifier que du Ghost.
 4. `GhostIssued` de type `TRANSFER_M` (Ghost émis en échange d'un M brûlé) ou `RESTITUTION` ne crée pas de valeur
-   nouvelle : ces événements ne sont pas des mints. Les transferts de Ghost, les gels et les destructions
-   (`GhostTransferred`, `PerimeterDelayed`, `GhostDestroyed`) ne sont **pas encore** lus : ce sera le travail
-   suivant pour alimenter le lignage (`detection/lineage.py`, #106).
+   nouvelle : ces événements ne sont pas des mints.
+5. **Les transferts de Ghost** : tout `Transfer` ERC-20 ordinaire lu sur le Ghost (ni émission ni burn), dans le
+   même appel `eth_getLogs`, devient un `TransferEvent(is_ghost=True)`, quelle que soit la valeur de
+   `MONITOR_TOKEN_IS_GHOST`. C'est l'entrée du lignage (`detection/lineage.py`, #106). Avec le Ghost, M ne produit
+   plus de transfert ordinaire, puisqu'un transfert de M = un burn de M + du Ghost émis.
+
+Limites : comme avant, les émissions et les burns de Ghost ne sont pas émis comme `TransferEvent` (#10). Pour le
+lignage, une conversion (burn de Ghost) n'apparaît donc pas comme un envoi vers `0x0` : question ouverte,
+`docs/OPEN_QUESTIONS.md` §14. Les événements `PerimeterDelayed` et `GhostDestroyed` ne sont pas encore lus.
 
 ## Écoute des transferts (#10)
 
