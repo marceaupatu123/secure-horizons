@@ -320,4 +320,48 @@ contract AssetVaultTest is Test {
             _assertCoffreInvariant();
         }
     }
+
+    /// @notice La voie de DESTRUCTION préserve aussi l'invariant du coffre : séquence aléatoire de
+    ///         dépôts, burns de graines 2/3, restitutions (plafonnées au libéré) et conversions ;
+    ///         `locked >= Ghost de paiement` tient toujours, et au bout `Σ redeem + Σ restit == Σ entrées`.
+    function testFuzz_destructionKeepsCoffre(uint256 seed) public {
+        address[3] memory who = [seller, buyer2, carol];
+        uint256 nonce;
+        for (uint256 i = 0; i < 16; i++) {
+            uint256 r = uint256(keccak256(abi.encode(seed, i)));
+            uint256 op = r % 4;
+            address a = who[r % 3];
+            if (op == 0) {
+                _lock(a, (r >> 16) % 500e6 + 1, uint64(MATURITY + (r >> 32) % 500));
+            } else if (op == 1) {
+                uint256 bal = ghost.balanceOf(a); // brûle le Ghost de paiement d'une « graine »
+                if (bal != 0) _burnSeed(a, (r >> 16) % bal + 1, nonce++);
+            } else if (op == 2) {
+                uint256 available = vault.locked() - ghost.totalSupply(); // argent libéré
+                if (available != 0) {
+                    uint256 amt = (r >> 16) % available + 1;
+                    bytes32 root = _leaf(a, amt, nonce);
+                    _confirmRoot(root);
+                    bytes32[] memory proof = new bytes32[](0);
+                    vault.restitute(a, amt, nonce++, proof);
+                }
+            } else {
+                vm.warp(block.timestamp + (r >> 16) % 800);
+                uint256 mat = ghost.maturedOf(a);
+                if (mat != 0) {
+                    vm.prank(a);
+                    vault.redeem((r >> 48) % mat + 1);
+                }
+            }
+            for (uint256 j = 0; j < 3; j++) {
+                _assertStorage(who[j]);
+            }
+            _assertCoffreInvariant(); // locked >= Ghost de paiement, toujours
+        }
+        assertEq(
+            vault.locked() + vault.totalRedeemed() + vault.totalRestituted(),
+            vault.totalLockedIn(),
+            "conservation actif: restant + redeem + restitutions == entrees"
+        );
+    }
 }
