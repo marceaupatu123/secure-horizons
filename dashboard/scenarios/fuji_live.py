@@ -74,6 +74,7 @@ CASE_GHOST_SELLER = "ghost-vendeur"
 
 ACTOR_LABELS = {
     "admin": "L'équipe",
+    "protocole": "Automatique (échéance atteinte)",
     "attacker": "Le pirate (clé volée)",
     "buyer": "Un acheteur honnête",
     "watcher": "Le surveillant",
@@ -497,14 +498,17 @@ def _case_recovery_window(runner: FujiRunner, usdc: Any) -> None:
             break
         time.sleep(CONVERT_POLL_SECONDS)
     conv = runner.transact("buyer", ghost.functions.convert(mghost),
-                           "conversion M-Ghost → M-Coin")
+                           "réalisation 1:1 à l'échéance")
     minted_mcoin = int(mcoin.functions.balanceOf(honest).call())
     runner.add_step(
-        CASE_RECOVERY_WINDOW, f"honnete > convertir --montant {_tok(mghost)}",
-        "buyer", "GhostToken (reprise)",
-        "La fenêtre de sécurité s'est écoulée sans anomalie. L'utilisateur convertit son M-Ghost.",
-        f"✓ {_tok(minted_mcoin)} M-Coin définitifs émis, adossés 1:1 à l'USDC déposé. Après "
-        "conversion, c'est irréversible — mais aucune reprise n'était nécessaire : tout était clean.",
+        CASE_RECOVERY_WINDOW, "⏱ échéance atteinte (10 min, aucune anomalie) → M-Ghost = M-Coin 1:1",
+        "protocole", "GhostToken (reprise)",
+        "Personne ne « convertit » : au bout de la fenêtre sans anomalie, le M-Ghost arrive à "
+        "échéance tout seul et vaut du M-Coin 1:1. Réaliser le vrai jeton est une formalité "
+        "permissionless (détenteur ou automate), qui ne peut pas être refusée.",
+        f"✓ Échéance atteinte sans anomalie : {_tok(mghost)} M-Ghost valent désormais "
+        f"{_tok(minted_mcoin)} M-Coin définitifs, adossés 1:1 à l'USDC. Avant l'échéance, tout "
+        "restait réversible ; après, c'est final — mais ici aucune reprise n'était nécessaire.",
         "defended", [conv.url], conv.success)
 
 

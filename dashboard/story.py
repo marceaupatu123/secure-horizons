@@ -161,7 +161,8 @@ FUJI_CASE_VERDICT: dict[str, str] = {
                    "réel.",
     "fenetre-reprise": "⏳ Un échange donne d'abord du M-Ghost, PAS du M-Coin. Tant que la fenêtre "
                        "de sécurité n'est pas écoulée, tout est réversible — c'est le levier de "
-                       "reprise. Ici, aucune anomalie, donc le M-Ghost devient du M-Coin définitif.",
+                       "reprise. Au bout des 10 min sans anomalie, le M-Ghost arrive à échéance et "
+                       "vaut du M-Coin 1:1, automatiquement : personne n'a à le décider.",
     "ghost-vendeur": "🛡️ Problème résolu on-chain : pendant la fenêtre, tout le Ghost suspect est "
                      "détruit et l'argent gelé rendu à l'acheteur honnête ; le vendeur finit à zéro.",
 }
