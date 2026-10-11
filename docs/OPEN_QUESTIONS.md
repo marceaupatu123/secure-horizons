@@ -350,6 +350,12 @@ Garder le bénéfice (reverter les deux jambes) **sans** émettre ni custodier d
 
 ## 11. Contamination posée après coup (#85) — _ouvert, bloque §10bis_
 
+> → **Tranché (#85)**, voir `docs/OPEN_ANSWERS.md` §11 : **piste (b)**. Le surveillant rejoue les
+> transferts depuis l'origine frauduleuse avec le modèle de ratio du contrat, sème le soupçon
+> rétroactif chez les détenteurs actuels via le verbe *retarder* (`delay` de #8), et le multisig
+> 2/3 confirme la destruction et les restitutions. Pas de racine de Merkle pour le hackathon.
+> Le texte ci-dessous est conservé pour l'historique.
+
 Le ratio de contamination (§9) se transmet **au moment de chaque transfert**. Si le voleur n'est
 marqué suspect (`AlertSeed`) qu'**après** avoir fait circuler son M', son ratio valait 0 au moment
 des ventes : le soupçon n'a pas suivi. Exemple : 10 M' frauduleux passés par 40 personnes en

@@ -32,6 +32,7 @@ Règles :
 | 9 | Volet 2 : surveillance adaptative, allongement de fenêtre ciblé, contamination par ratio | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | PR #38 |
 | 10 | Lignage d'un swap : `swap-id` sur notre pool, jambe sortante en règlement différé (#43) | 2026-10-10 | denybs | Validée en session, à relire par l'équipe | Issue #43 |
 | 10bis | Qui porte le risque : M' protégé / pur / chèque, routeur + Ghost de paiement, restitution sans fonds ni frais (#84) | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | Issue #84 |
+| 11 | Contamination posée après coup : recalcul rétroactif hors chaîne, semé par le surveillant, confirmé par le multisig (#85) | 2026-10-11 | Kiro pour Marceau | Tranché par l'assistant sur délégation, à relire par l'équipe | Issue #85 |
 
 ---
 
@@ -1044,9 +1045,9 @@ M' contre N' entre deux tokens du standard : chaque émetteur règle sa jambe. P
 ### Reste ouvert
 
 - Relecture par l'équipe.
-- **Contamination posée après coup** (issue #85, `OPEN_QUESTIONS.md` §11) : **bloque la
-  conception**. Piste recommandée pour le hackathon : recalcul hors chaîne + racine de Merkle
-  signée par le multisig, contestable par tous.
+- **Contamination posée après coup** (issue #85, `OPEN_QUESTIONS.md` §11) : → **Tranché**, voir
+  §11 ci-dessous (piste (b), recalcul hors chaîne semé par le surveillant, confirmé 2/3). Ne
+  bloque plus la conception.
 - Confirmer l'abandon de la marge de conversion (§0).
 - Tests d'invariants à écrire dans #84 :
   - aucun vrai actif ne sort du coffre vers un vendeur avant l'échéance ;
@@ -1056,3 +1057,89 @@ M' contre N' entre deux tokens du standard : chaque émetteur règle sa jambe. P
   - restitution totale ≤ argent bloqué du voleur, et somme des restitutions + paiements = entrées ;
   - rejeu des cas 1, 2, 2bis et 3.
 - Friction à **mesurer** (attente de l'actif final, exclusion des protocoles hors standard).
+
+---
+
+## §11. Contamination posée après coup (#85)
+
+### DÉCISION (2026-10-11, Kiro pour Marceau) — piste (b) : recalcul rétroactif hors chaîne, semé par le surveillant, confirmé par le multisig 2/3
+
+_Tranché par l'assistant sur délégation explicite de Marceau, à relire par l'équipe._
+
+**Problème** (`OPEN_QUESTIONS.md` §11) : le ratio (§9) se transmet au moment de chaque transfert.
+Si le voleur n'est marqué qu'après avoir fait circuler son M', le soupçon n'a pas suivi la chaîne.
+Exemple de référence : 10 M' frauduleux passés par 40 personnes en 8 minutes, alerte à la 9e
+minute. Il faut atteindre le M' chez le 40e détenteur.
+
+**Mesure disponible** (PR #95, `python -m data.late_marking`, données fictives, détection à
+3 min, W = 10 min) : (a) et (b) récupèrent 100 % du M' encore en Ghost, (c) 0 %. Le levier est la
+vitesse de détection face à l'échéance, pas le choix entre (a) et (b).
+
+**Tranché : piste (b).** Quand une alerte désigne une origine frauduleuse (mint, graine), le
+surveillant :
+
+1. **rejoue** les événements publics de transfert depuis l'entrée de la valeur frauduleuse dans le
+   Ghost (`t0`) avec le **même modèle de ratio que le contrat** (§9), **comme si** l'origine avait
+   été marquée à `t0` ;
+2. en déduit le **soupçon rétroactif** de chaque détenteur actuel, plafonné par son solde Ghost
+   non converti (le Ghost déjà converti reste hors d'atteinte, §9) ;
+3. **sème** ces montants là où la valeur se trouve **maintenant** : les paires (adresse, montant)
+   deviennent les `Alert.seeds` (`AlertSeed`), exécutées par le verbe **retarder** du contrat Ghost
+   (#8 : `delay(accounts, suspectAmounts, duration)`, lots de 64, un seul incident, auto-expirant,
+   borné par le budget de quarantaine) ;
+4. le **multisig 2/3** confirme l'incident (`proposeDestroy`), ce qui détruit la part suspecte
+   (§3). Sans confirmation, l'incident expire et tout redevient normal (silence = retour
+   automatique, §3).
+
+Le même rejeu produit la **liste des restitutions** de §10bis point 4 (Ghost de paiement du
+voleur, qui avait payé qui, plafonds), soumise au même multisig 2/3 (`proposeRestitution`).
+
+**Pourquoi (b) :**
+
+- **Aucun nouveau mécanisme on-chain.** Le design de #8 sème déjà un montant suspect par compte
+  via `delay` et détruit par lot via `proposeDestroy`. (b) ne demande que du code hors chaîne.
+  #8 et #84 ne sont plus bloqués.
+- **Cohérent avec les trois verbes** (§3, §9) : semer et retarder est la direction sûre, que le
+  surveillant peut prendre seul, auto-expirante et bornée ; détruire reste au multisig.
+- **Contestable par tous** : les entrées (événements publics), l'algorithme (code du dépôt) et la
+  sortie (événements `PerimeterDelayed`, un par compte semé) sont publics. N'importe quel porteur
+  refait le calcul avant que le multisig confirme. Le hash du rapport de rejeu va dans le journal
+  d'audit DORA (`AuditLogEntry`).
+
+**Options écartées :**
+
+- **(a) lignage d'origine par tranche** : même couverture mesurée que (b), mais stockage d'un
+  identifiant par tranche (§0bis-b) et règle de fusion ambiguë quand deux origines se mélangent
+  dans une tranche. Coût on-chain sans gain mesuré.
+- **(c) prospectif seul** : 0 % sur une chaîne déjà propagée, ne couvre pas l'objectif
+  anti-blanchiment de §10bis. Il reste le comportement de base du contrat **avant** l'alerte.
+- **Racine de Merkle signée** (variante de (b) proposée en §11) : écartée pour le hackathon. La
+  publication on-chain des semis (`PerimeterDelayed`) et le hash du rapport dans le journal
+  suffisent à la contestation, sans arbre ni preuves à vérifier dans le contrat. À reprendre si un
+  incident dépasse ce que des lots de 64 permettent avant l'échéance.
+
+#### Limites assumées (à dire au jury)
+
+- **Course contre l'échéance** : entre l'alerte et le semis, un détenteur dont la tranche est échue
+  peut convertir. Le rejeu doit tenir en secondes (coût linéaire en nombre d'événements depuis
+  `t0`) et la détection doit précéder l'échéance (§5). Aucun mécanisme ne remplace une alerte à
+  temps.
+- **Confiance dans le surveillant** : un surveillant compromis peut semer de faux montants. Il ne
+  peut que retarder (budget, facteur max, expiration) ; il ne détruit rien sans 2/3. Remède :
+  révocation de `WATCHER_ROLE` par l'admin (hypothèse H1 du design #8).
+- **Écart de modèle** : le rejeu doit reproduire exactement l'arrondi du contrat (`ceilDiv`, §3.3
+  du design #8). Un test compare le rejeu au contrat sur la chaîne des 40.
+
+#### Conséquences
+
+- **detection** : nouveau calcul `retroactive_seeds(events, origin, now)` → `list[AlertSeed]` chez
+  les détenteurs actuels (issue de suivi).
+- **response** : exécuter les semis par lots de 64 (verbe `delay`) et préparer les listes
+  `proposeDestroy` / `proposeRestitution` pour le multisig.
+- **#8 / #84** : débloqués, aucun changement d'interface requis. Le test d'invariant demandé
+  (rejeu = contrat sur la chaîne des 40) est à écrire côté contrat quand #8 sera mergé.
+
+### Reste ouvert
+
+- Relecture par l'équipe.
+- Durée maximale acceptable du rejeu (à **mesurer** sur le trafic synthétique).
