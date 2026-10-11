@@ -22,6 +22,7 @@ import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
 import dashboard.scenarios  # noqa: E402,F401  (peuple le registre)
+from dashboard.demo import run_scenario_quietly  # noqa: E402
 from dashboard.demo_data import DEMO_SEED  # noqa: E402
 from dashboard.scenarios import (  # noqa: E402
     STATUS_LABELS,
@@ -30,7 +31,6 @@ from dashboard.scenarios import (  # noqa: E402
     ScenarioVariant,
     get_spec,
     list_specs,
-    run_scenario,
 )
 from dashboard.scenarios.view import (  # noqa: E402
     checks_to_frame,
@@ -85,6 +85,9 @@ def _render_variant_details(variant: ScenarioVariant) -> None:
                                      data.ghost_burns, at))
         st.markdown("**Journal d'audit**")
         _table(audit_log_to_frame(data.audit_log))
+    if variant.incident_report:
+        with st.expander(f"Rapport d'incident DORA (#15) — {variant.label}"):
+            st.markdown(variant.incident_report)
 
 
 def _render_result(result: ScenarioResult) -> None:
@@ -118,8 +121,9 @@ def main() -> None:
     st.set_page_config(page_title="Scénarios de démo — Secure Horizons", layout="wide")
     st.title("Scénarios de démo")
     st.info(
-        "Données synthétiques et fictives : aucune vraie adresse ni clé. "
-        "Les chiffres sont mesurés sur une simulation hors chaîne, pas sur le contrat déployé."
+        "Données synthétiques et fictives : aucune vraie adresse ni clé. Le bandeau de chaque "
+        "scénario dit quelles briques tournent sur le vrai code et lesquelles restent simulées ; "
+        "les chiffres sont des comptages, pas des mesures du contrat déployé."
     )
 
     specs = list_specs()
@@ -146,7 +150,7 @@ def main() -> None:
     params = (scenario_id, seed, disabled)
     stored = st.session_state.get(RESULT_KEY)
     if clicked or (stored is not None and st.session_state.get(RESULT_PARAMS_KEY) != params):
-        stored = run_scenario(scenario_id, seed=seed, disabled=disabled)
+        stored = run_scenario_quietly(scenario_id, seed=seed, disabled=disabled)
         st.session_state[RESULT_KEY] = stored
         st.session_state[RESULT_PARAMS_KEY] = params
 

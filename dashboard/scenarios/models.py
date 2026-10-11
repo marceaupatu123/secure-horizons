@@ -100,6 +100,9 @@ class ScenarioVariant(BaseModel):
     checks: list[ScenarioCheck]
     dataset: DemoDataset
     end_time: datetime
+    # Rapport d'incident DORA (#15, Markdown) de l'alerte confirmee, si le scenario en a une
+    # (#113). Hors ligne par defaut (aucun appel AWS), Bedrock reel avec LLM_LIVE=1.
+    incident_report: str | None = None
 
 
 class ScenarioResult(BaseModel):
