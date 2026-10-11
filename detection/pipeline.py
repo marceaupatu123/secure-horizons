@@ -72,6 +72,11 @@ from monitor.config import (
     load_monitor_config,
 )
 from monitor.listener import ChainListener
+from monitor.protected import AdminObservation
+from detection.provenance import (
+    admin_event_from_observation,
+    correlator_context_provider,
+)
 from shared.models import Alert, MintEvent, TransferEvent
 
 logger = logging.getLogger(__name__)
@@ -135,6 +140,25 @@ class DetectionPipeline:
             L'alerte emise le cas echeant (liste vide sinon).
         """
         return self._publish(self.monitor.close_slot_if_due(now))
+
+    def set_mint_context_provider(self, provider: MintContextProvider) -> None:
+        """Branche un fournisseur de `MintContext` (ex. mode contrat protege #104)."""
+        self._mint_context = provider
+
+    def process_admin(self, observation: AdminObservation) -> list[Alert]:
+        """Evalue un evenement d'administration DES sa lecture (#104).
+
+        Args:
+            observation: evenement decode par le monitor.
+
+        Returns:
+            L'alerte emise si l'evenement n'a pas ete annonce (liste vide sinon).
+        """
+        return self._publish(
+            self.monitor.check_admin_event(
+                admin_event_from_observation(observation), observation.detail
+            )
+        )
 
     def process(self, event: ObservedEvent) -> list[Alert]:
         """Traite un evenement : cloture d'abord la tranche echue a
@@ -310,11 +334,21 @@ def run_live(
             )
             return 0
         listener = ChainListener(config)
+    correlator = getattr(listener, "correlator", None)
+    if correlator is not None:
+        # Mode contrat protege (#104) : chaque mint arrive avec sa demande.
+        pipeline.set_mint_context_provider(correlator_context_provider(correlator))
+        logger.info(
+            "detection : mode contrat protege, minter %s", config.minter_address
+        )
     logger.info("detection : ecoute du token %s ...", config.token_address)
     for batch in listener.stream_event_batches(max_polls=max_polls):
         pipeline.update_circulating_supply(listener.read_total_supply())
         for event in batch:
-            pipeline.process(event)
+            if isinstance(event, AdminObservation):
+                pipeline.process_admin(event)
+            else:
+                pipeline.process(event)
         pipeline.tick(now())
     return 0
 
