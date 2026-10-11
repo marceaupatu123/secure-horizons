@@ -24,7 +24,13 @@ from collections.abc import Callable
 from fractions import Fraction
 
 from detection.inputs import AdminEvent, AdminEventKind, MintContext
-from monitor.protected import AdminObservation, MintCorrelator, MintProvenance
+from monitor.protected import (
+    KNOWN_ROLES,
+    AdminObservation,
+    MintCorrelator,
+    MintProvenance,
+)
+from shared.models import AdminEvent as SharedAdminEvent
 from shared.models import MintEvent
 
 #: `ProtectedMinter.DECIMALS_SCALE` (10**(18 - 6)) et `RATE_PRECISION` (1e18).
@@ -74,6 +80,62 @@ def admin_event_from_observation(observation: AdminObservation) -> AdminEvent:
         subject_address=observation.subject_address,
         tx_hash=observation.tx_hash,
     )
+
+
+def mint_context_from_event(event: MintEvent) -> MintContext | None:
+    """`MintContext` lu dans les champs partages du `MintEvent` (#104, #135).
+
+    Meme resultat que `mint_context_from_provenance`, mais sans correlateur :
+    fonctionne aussi en REPLAY d'un JSONL et pour tout producteur qui renseigne
+    les champs de demande.
+
+    Args:
+        event: mint observe.
+
+    Returns:
+        - `None` si `via_protected_path is None` (non verifie : aucune regle de
+          mint, comme avant #104) ;
+        - `path_unexpected=True` si `via_protected_path is False` (I4) ;
+        - sinon depot + taux (I1) et deposant (I3), chacun saute s'il est
+          inconnu.
+    """
+    if event.via_protected_path is None:
+        return None
+    if event.via_protected_path is False:
+        return MintContext(path_unexpected=True)
+    rate = rate_from_wad(event.rate_wad) if event.rate_wad is not None else None
+    return MintContext(
+        deposit_amount=event.deposit_amount,
+        rate=rate,
+        requester=event.depositor,
+    )
+
+
+def admin_event_from_shared(event: SharedAdminEvent) -> AdminEvent:
+    """`shared.models.AdminEvent` -> `AdminEvent` du surveillant de mint (#104).
+
+    Les deux enums portent les memes valeurs (`AdminEventKind`), la conversion
+    se fait par valeur.
+    """
+    return AdminEvent(
+        kind=AdminEventKind(event.kind.value),
+        subject_address=event.subject_address,
+        tx_hash=event.tx_hash,
+    )
+
+
+def admin_detail(event: SharedAdminEvent) -> str:
+    """Precision lisible d'un `AdminEvent` partage, au format du monitor.
+
+    Meme texte que `AdminObservation.detail` : `role <NOM> par <actor>` ou
+    `taux <ancien> -> <nouveau> (x 1e18)`. Un role inconnu garde son id brut.
+    """
+    if event.role is not None:
+        name = KNOWN_ROLES.get(event.role.lower(), event.role)
+        return f"role {name} par {event.actor}" if event.actor else f"role {name}"
+    if event.old_rate_wad is not None and event.new_rate_wad is not None:
+        return f"taux {event.old_rate_wad} -> {event.new_rate_wad} (x 1e18)"
+    return ""
 
 
 def correlator_context_provider(

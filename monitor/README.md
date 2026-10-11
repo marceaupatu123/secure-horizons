@@ -48,8 +48,14 @@ minter (`SwapRequested`, `SwapCompleted`, `RoleGranted`, `RoleRevoked`, `RateCha
    restait muette jusque-là). Liste retenue = ce que #5 émet réellement : `RoleGranted`,
    `RoleRevoked`, `RateChanged`. `Upgraded` n'existe pas (#5 n'est pas upgradable).
 6. **Le monitor ne dépend pas de `detection`** : il produit des faits bruts (`MintProvenance`,
-   `AdminObservation`), traduits par `detection/provenance.py`. `shared/` n'est **pas** modifié ;
-   la révision groupée de `MintEvent` (#104, partie `shared`) reste au propriétaire de `shared/`.
+   `AdminObservation`), traduits par `detection/provenance.py`.
+7. **Champs partagés (#104, révision groupée de `shared/` #135)** : chaque `MintEvent` émis en
+   mode contrat protégé porte sa demande (`via_protected_path`, `depositor`, `deposit_amount`,
+   `rate_wad`, `provenance_source`, `claimed_minted`) via `with_provenance`. Un mint sans
+   `SwapCompleted` sort avec `via_protected_path=False` ; hors mode protégé, tout reste `None`.
+   `amount` / `recipient` restent la vérité du log du token. `admin_event_from_observation`
+   convertit une `AdminObservation` en `shared.models.AdminEvent` (rôle bytes32 brut, `actor`,
+   ancien / nouveau taux).
 
 Limites assumées : le cache des demandes en attente vit en mémoire (borné à 100 000, PROVISOIRE) :
 après un redémarrage, les demandes antérieures retombent sur `source="completion"`.

@@ -31,7 +31,7 @@ sur la sortie standard (journaux sur la sortie d'erreur). Aucune intégration av
   générateur n'ont pas d'événement. Le ratio volume/offre du replay est donc surestimé.
 - **Tranches sautées** : un `WARNING` explicite est journalisé (offre inconnue, historique
   insuffisant) au lieu d'un `None` silencieux. Idem, une fois, pour les mints vérifiés sans
-  `MintContext` (GAP : ni dépôt ni taux dans les événements, donc aucune règle de mint vérifiée).
+  `MintContext` (mint ERC-20 nu, hors mode contrat protégé : aucune règle de mint vérifiée).
 - **Profils de chauffe** (`detection/params.py`) : `default` (valeurs PROVISOIRES ci-dessous,
   5 jours d'historique du même créneau) et `demo` — **DEMO, ne pas utiliser en production,
   PROVISOIRE** : chaque tranche est comparée aux 24 tranches précédentes, alerte possible après
@@ -43,9 +43,14 @@ sur la sortie standard (journaux sur la sortie d'erreur). Aucune intégration av
   un mint sans `SwapCompleted` lève **I4** (critique) ; `RoleGranted` / `RoleRevoked` /
   `RateChanged` non annoncés lèvent une alerte **dès leur lecture**
   (`RuleBasedMonitor.check_admin_event`). Détails et limites : `monitor/README.md`.
-- **GAP pour `shared/` (@marceaupatu123, #79)** : aucun modèle partagé pour l'offre en
-  circulation ni pour le contexte d'un mint (dépôt, taux) ; le pipeline les adapte dans
-  `detection/`.
+- **Champs partagés (#104, #135)** : le `MintContext` est d'abord lu dans les champs de demande
+  du `MintEvent` (`mint_context_from_event`), puis à défaut via le fournisseur du corrélateur.
+  Conséquence : un **replay JSONL** de `MintEvent` renseignés vérifie aussi I1, I3 et I4, et les
+  lignes `AdminEvent` partagées sont évaluées (`ReplaySummary.admins`). Un mint ERC-20 nu
+  (`via_protected_path=None`) reste non vérifié.
+- **Reste hors `shared/`** : l'offre en circulation et les annonces d'administration
+  (`AdminAnnouncement`) ; `SupplySnapshot` (I5, I6) existe dans `shared/` mais le monitor ne le
+  produit pas encore.
 
 ## Surveillant de mint à règles (#11)
 

@@ -65,6 +65,7 @@ from monitor.protected import (
     decode_swap_completed,
     decode_swap_requested,
     split_underlying_mints,
+    with_provenance,
 )
 from shared.models import MintEvent, TransferEvent
 
@@ -817,9 +818,17 @@ class ChainListener:
                 )
                 events.extend(ghost_transfers)
             for mint in mints:
-                found = correlator.peek(mint.tx_hash, mint.log_index)
-                request_id = found.request_id if found is not None else None
-                events.append(mint.model_copy(update={"request_id": request_id}))
+                # #104 : la demande rattachee passe dans les champs partages du
+                # MintEvent (#135). `peek` ne consomme pas : le fournisseur de
+                # contexte du pipeline (`correlator_context_provider`) libere
+                # l'entree au traitement.
+                events.append(
+                    with_provenance(
+                        mint,
+                        correlator.peek(mint.tx_hash, mint.log_index),
+                        tracked=correlator.is_tracked(mint.tx_hash, mint.log_index),
+                    )
+                )
         events.sort(key=lambda e: (e.block_number, e.log_index))
         return events
 

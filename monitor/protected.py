@@ -36,9 +36,9 @@ Choix d'architecture (tranche ici, documente dans `monitor/README.md`) :
 
 Le module ne depend PAS de `detection/` : il produit des faits bruts
 (`MintProvenance`, `AdminObservation`) que `detection` traduit en
-`MintContext` / `AdminEvent`. Les modeles partages (`shared/`) ne sont pas
-modifies : la revision groupee de `MintEvent` reste a faire par son
-proprietaire (#104, partie shared).
+`MintContext` / `AdminEvent`. Depuis la revision groupee de `shared/` (#135),
+`with_provenance` reporte la demande dans les champs partages du `MintEvent`
+et `admin_event_from_observation` produit le `shared.models.AdminEvent`.
 """
 
 from __future__ import annotations
@@ -46,9 +46,12 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Literal
 
 from web3 import Web3
+
+from shared.models import AdminEvent, AdminEventKind, MintEvent, MintProvenanceSource
 
 LOGGER = logging.getLogger(__name__)
 
@@ -189,6 +192,12 @@ class AdminObservation:
             changement de taux).
         tx_hash, block_number, log_index: position on-chain.
         detail: precision lisible (nom du role, ancien -> nouveau taux).
+        actor: `sender` de `RoleGranted` / `RoleRevoked` (topic 3) ; None pour
+            `RateChanged`, qui ne le porte pas (#104, `shared.AdminEvent.actor`).
+        role: identifiant bytes32 BRUT du role (topic 1), pas son nom
+            `KNOWN_ROLES` ; None pour `RateChanged` (#104).
+        old_rate_wad, new_rate_wad: ancien / nouveau taux x 1e18 de
+            `RateChanged` ; None pour les evenements de role (#104).
     """
 
     kind: AdminKind
@@ -197,6 +206,10 @@ class AdminObservation:
     block_number: int
     log_index: int
     detail: str = ""
+    actor: str | None = None
+    role: str | None = None
+    old_rate_wad: int | None = None
+    new_rate_wad: int | None = None
 
 
 @dataclass(frozen=True)
@@ -274,6 +287,8 @@ def decode_admin(log: RawLog) -> AdminObservation:
             block_number=position.block_number,
             log_index=position.log_index,
             detail=f"role {role} par {sender}",
+            actor=sender,
+            role=topics[1],
         )
     if topics and topics[0] == RATE_CHANGED_TOPIC:
         if len(topics) != 2:
@@ -286,6 +301,8 @@ def decode_admin(log: RawLog) -> AdminObservation:
             block_number=position.block_number,
             log_index=position.log_index,
             detail=f"taux {old} -> {new} (x 1e18)",
+            old_rate_wad=old,
+            new_rate_wad=new,
         )
     raise ValueError("log d'administration inconnu")
 
@@ -556,3 +573,87 @@ class MintCorrelator:
     def pending_count(self) -> int:
         """Nombre de demandes en attente memorisees."""
         return len(self._pending)
+
+
+# --- Revision groupee #104 : faits du monitor -> modeles partages ---
+
+
+def with_provenance(
+    mint: MintEvent, provenance: MintProvenance | None, *, tracked: bool
+) -> MintEvent:
+    """Renseigne les champs de demande partages d'un `MintEvent` (#104, #135).
+
+    `amount` et `recipient` ne changent jamais : ils restent la verite du log
+    du token. Les champs ajoutes viennent de la demande rattachee.
+
+    Args:
+        mint: mint observe (champs de demande a `None`).
+        provenance: demande rattachee par le correlateur ; `None` = aucune.
+        tracked: le correlateur a vu ce mint (`MintCorrelator.is_tracked`).
+            Faux = observation hors mode contrat protege : rien n'est verifie.
+
+    Returns:
+        Un nouveau `MintEvent` VALIDE (le validateur de coherence de
+        `shared.models.MintEvent` s'applique) :
+        - non suivi : inchange (`via_protected_path=None`) ;
+        - suivi sans provenance : `via_protected_path=False`, `request_id=None`
+          (chemin non prevu, I4) ;
+        - avec provenance : demande complete, `via_protected_path=True`. Un
+          depot ou un taux a 0 devient `None` (inconnu), comme le fait
+          `detection.provenance.mint_context_from_provenance`.
+    """
+    if not tracked:
+        return mint
+    fields: dict[str, Any]
+    if provenance is None:
+        fields = {"request_id": None, "via_protected_path": False}
+    else:
+        fields = {
+            "request_id": provenance.request_id,
+            "depositor": provenance.depositor,
+            "deposit_amount": provenance.deposit_amount or None,
+            "rate_wad": provenance.rate_wad or None,
+            "provenance_source": MintProvenanceSource(provenance.source),
+            "claimed_minted": provenance.claimed_minted,
+            "via_protected_path": True,
+        }
+    return MintEvent.model_validate(mint.model_dump() | fields)
+
+
+def admin_event_from_observation(
+    observation: AdminObservation,
+    *,
+    chain_id: int,
+    observed_at: datetime,
+    contract_address: str,
+) -> AdminEvent:
+    """`AdminObservation` du monitor -> `shared.models.AdminEvent` (#104, #135).
+
+    Args:
+        observation: evenement decode par `decode_admin`.
+        chain_id: chaine observee.
+        observed_at: horodatage d'observation (UTC).
+        contract_address: contrat emetteur du log (le minter).
+
+    Returns:
+        L'evenement partage, avec les champs types de son type (`role` et
+        `actor` pour un role, `old_rate_wad` / `new_rate_wad` pour un taux).
+
+    Raises:
+        ValueError: si l'observation ne respecte pas le modele partage (p. ex.
+            un `RateChanged` dont l'ancien taux vaut 0).
+    """
+    return AdminEvent(
+        tx_hash=observation.tx_hash,
+        log_index=observation.log_index,
+        block_number=observation.block_number,
+        chain_id=chain_id,
+        observed_at=observed_at,
+        contract_address=contract_address,
+        kind=AdminEventKind(observation.kind),
+        subject_address=observation.subject_address,
+        actor=observation.actor,
+        role=observation.role,
+        old_rate_wad=observation.old_rate_wad,
+        new_rate_wad=observation.new_rate_wad,
+    )

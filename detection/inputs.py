@@ -1,24 +1,19 @@
-"""Entrees du surveillant de mint absentes des modeles partages (GAP).
+"""Entrees du surveillant de mint (types internes a `detection/`).
 
-`shared.models.MintEvent` ne porte que le mint observe (destinataire, montant,
-tx). Les invariants de docs/OPEN_ANSWERS.md §1 demandent aussi le depot, le
-taux, l'offre totale, le collateral, les evenements d'administration et un
-taux de reference. Ces donnees sont passees EXPLICITEMENT au surveillant via
-les types ci-dessous, definis dans `detection/` faute de champ dans `shared/`.
+`MintContext` regroupe ce que les invariants de docs/OPEN_ANSWERS.md §1
+demandent en plus du mint observe : depot, taux, deposant, offre totale,
+collateral, evenements d'administration, taux de reference.
 
-GAP a remonter au proprietaire de `shared/` (@marceaupatu123) :
-- `MintEvent` sans montant depose ni taux (deja note en §1 « Consequences »,
-  #2 : `MintEvent` / `MintRequest` devront porter depot, deposant,
-  destinataire et taux) ;
-- aucun modele partage pour l'offre totale, le collateral, un evenement
-  d'administration (`Upgraded`, `RoleGranted`, changement d'oracle/taux) ni
-  une annonce prealable d'un tel changement.
+Depuis la revision groupee de `shared/` (#104, PR #135), `shared.models.MintEvent`
+porte le depot, le deposant, le taux et `via_protected_path`, et
+`shared.models.AdminEvent` les evenements d'administration :
+`detection.provenance.mint_context_from_event` / `admin_event_from_shared` les
+traduisent vers les types ci-dessous, qui restent l'API du surveillant.
 
-Le depot correspondant a un mint n'est PAS retrouve via `MintEvent.request_id` :
-depuis la decision #79 (OPEN_ANSWERS §79), `MintEvent.request_id` est
-`int | None` et le monitor met `None` (plus `0`) quand l'id n'est pas porte par
-l'observation ERC-20 — ce qui leve la collision avec la vraie demande n°0, mais
-ne fournit toujours pas le depot. L'appelant fournit donc lui-meme le depot.
+Restent hors `shared/` : l'offre en circulation, le taux de reference et les
+annonces d'administration (`AdminAnnouncement`). Le depot n'est jamais retrouve
+via `MintEvent.request_id` (qui peut valoir `None`, decision #79, OPEN_ANSWERS
+§79) : il vient des champs de demande du `MintEvent` ou de l'appelant.
 """
 
 from __future__ import annotations

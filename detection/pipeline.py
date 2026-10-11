@@ -12,8 +12,9 @@ Deux modes :
   propre (code 0).
 - REPLAY (`--replay FICHIER.jsonl`) : rejoue un JSONL synthetique produit par
   `data/generate.py` (une ligne = un modele de `shared.models`). Seules les
-  lignes `MintEvent` et `TransferEvent` sont consommees ; les autres
-  (`MintRequest`, evenements Ghost, balise) sont comptees et ignorees.
+  lignes `MintEvent`, `TransferEvent` et `AdminEvent` (#104) sont consommees ;
+  les autres (`MintRequest`, evenements Ghost, balise) sont comptees et
+  ignorees.
 
 Horloge : les tranches de transferts sont cloturees A L'HEURE, meme sans
 transfert : en LIVE a chaque poll (`close_slot_if_due(now)`), en REPLAY a
@@ -31,9 +32,10 @@ PROVISOIRES, a valider par l'equipe :
   evenement : ils ne sont pas dans le fichier, d'ou le parametre. Tant que
   l'offre vaut 0, les tranches sont sautees (WARNING du detecteur).
 
-Mints : `check_mint` est appele sur chaque `MintEvent`, avec le `MintContext`
-fourni par `mint_context` (aucun par defaut : GAP, ni depot ni taux dans les
-evenements, voir `detection/inputs.py`). Sans contexte, aucune regle de mint
+Mints : `check_mint` est appele sur chaque `MintEvent`. Son `MintContext` vient
+d'abord des champs de demande partages du `MintEvent` (#104, #135 :
+`via_protected_path`, depot, deposant, taux), sinon du fournisseur
+`mint_context`. Sans l'un ni l'autre (mint ERC-20 nu), aucune regle de mint
 n'est verifiee ; un WARNING le signale une fois.
 
 Adresses connues : seuls les transferts rendent une adresse « connue » (le
@@ -74,10 +76,13 @@ from monitor.config import (
 from monitor.listener import ChainListener
 from monitor.protected import AdminObservation
 from detection.provenance import (
+    admin_detail,
     admin_event_from_observation,
+    admin_event_from_shared,
     correlator_context_provider,
+    mint_context_from_event,
 )
-from shared.models import Alert, MintEvent, TransferEvent
+from shared.models import AdminEvent, Alert, MintEvent, TransferEvent
 
 logger = logging.getLogger(__name__)
 
@@ -145,15 +150,22 @@ class DetectionPipeline:
         """Branche un fournisseur de `MintContext` (ex. mode contrat protege #104)."""
         self._mint_context = provider
 
-    def process_admin(self, observation: AdminObservation) -> list[Alert]:
+    def process_admin(self, observation: AdminObservation | AdminEvent) -> list[Alert]:
         """Evalue un evenement d'administration DES sa lecture (#104).
 
         Args:
-            observation: evenement decode par le monitor.
+            observation: evenement decode par le monitor (`AdminObservation`)
+                ou modele partage `shared.models.AdminEvent` (replay, #135).
 
         Returns:
             L'alerte emise si l'evenement n'a pas ete annonce (liste vide sinon).
         """
+        if isinstance(observation, AdminEvent):
+            return self._publish(
+                self.monitor.check_admin_event(
+                    admin_event_from_shared(observation), admin_detail(observation)
+                )
+            )
         return self._publish(
             self.monitor.check_admin_event(
                 admin_event_from_observation(observation), observation.detail
@@ -174,7 +186,12 @@ class DetectionPipeline:
         if isinstance(event, TransferEvent):
             alerts += self._publish(self.monitor.check_transfer(event))
             return alerts
-        context = self._mint_context(event) if self._mint_context else None
+        # Le fournisseur est toujours consulte : le correlateur du monitor y
+        # libere son etat. Les champs partages du MintEvent priment (#104) : ils
+        # portent la meme demande et marchent aussi en replay.
+        provided = self._mint_context(event) if self._mint_context else None
+        from_event = mint_context_from_event(event)
+        context = from_event if from_event is not None else provided
         if context is None and not self._warned_no_mint_context:
             logger.warning(
                 "aucun MintContext : regles de mint (I1, I5, I6, admin, oracle) "
@@ -195,6 +212,7 @@ class ReplaySummary:
         ignored: lignes d'un autre modele (MintRequest, Ghost, balise...).
         alerts: alertes emises.
         final_supply: offre en fin de replay, base units.
+        admins: `AdminEvent` partages rejoues (#104).
     """
 
     mints: int
@@ -202,13 +220,17 @@ class ReplaySummary:
     ignored: int
     alerts: int
     final_supply: int
+    admins: int = 0
 
 
-def parse_replay_line(line: str) -> ObservedEvent | None:
-    """Lit une ligne JSONL : `TransferEvent`, `MintEvent` ou None (autre modele).
+ReplayEvent = MintEvent | TransferEvent | AdminEvent
+
+
+def parse_replay_line(line: str) -> ReplayEvent | None:
+    """Lit une ligne JSONL : `TransferEvent`, `MintEvent`, `AdminEvent` ou None.
 
     Les modeles partages etant stricts (`extra="forbid"`), une ligne ne valide
-    qu'un seul d'entre eux.
+    qu'un seul d'entre eux. None = autre modele (ignore).
 
     Raises:
         ValueError: si la ligne n'est pas un objet JSON.
@@ -219,8 +241,8 @@ def parse_replay_line(line: str) -> ObservedEvent | None:
         raise ValueError(f"JSON invalide : {exc}") from exc
     if not isinstance(payload, dict):
         raise ValueError("objet JSON attendu")
-    model: type[TransferEvent] | type[MintEvent]
-    for model in (TransferEvent, MintEvent):
+    model: type[TransferEvent] | type[MintEvent] | type[AdminEvent]
+    for model in (TransferEvent, MintEvent, AdminEvent):
         try:
             return model.model_validate(payload)
         except ValidationError:
@@ -252,7 +274,7 @@ def run_replay(
         raise ValueError("initial_supply doit etre >= 0")
     supply = initial_supply
     pipeline.update_circulating_supply(supply)
-    mints = transfers = ignored = 0
+    mints = transfers = ignored = admins = 0
     last_time: datetime | None = None
     for number, line in enumerate(lines, start=1):
         if not line.strip():
@@ -263,6 +285,12 @@ def run_replay(
             raise ValueError(f"ligne {number} : {exc}") from exc
         if event is None:
             ignored += 1
+            continue
+        if isinstance(event, AdminEvent):
+            # Evalue des sa lecture, comme en LIVE (#104) ; ne touche pas aux
+            # tranches de transferts.
+            admins += 1
+            pipeline.process_admin(event)
             continue
         if isinstance(event, MintEvent):
             mints += 1
@@ -284,6 +312,7 @@ def run_replay(
         ignored=ignored,
         alerts=pipeline.alert_count,
         final_supply=supply,
+        admins=admins,
     )
 
 
@@ -461,12 +490,13 @@ def main(argv: Sequence[str] | None = None, out: TextIO | None = None) -> int:
     with args.replay.open(encoding="utf-8") as source:
         summary = run_replay(source, pipeline, args.initial_supply)
     logger.info(
-        "replay %s (profil %s) : %d mints, %d transferts, %d lignes ignorees, "
-        "%d alertes, offre finale %d base units (%.1f s)",
+        "replay %s (profil %s) : %d mints, %d transferts, %d evenements admin, "
+        "%d lignes ignorees, %d alertes, offre finale %d base units (%.1f s)",
         args.replay,
         profile,
         summary.mints,
         summary.transfers,
+        summary.admins,
         summary.ignored,
         summary.alerts,
         summary.final_supply,
