@@ -31,11 +31,12 @@ from dashboard.story import FujiStory, Story, build_fuji_story, build_story, ren
 STORY_KEY = "story"
 STORY_SEED_KEY = "story_seed"
 STORY_SECONDS_KEY = "story_seconds"
+REPORT_KEY = "story_report"
 COMPONENT_HEIGHT = 900
 
 
-def _replay(seed: int) -> tuple[Story, float]:
-    """Rejoue A et B pour `seed` en montrant la progression ; renvoie l'histoire et la duree."""
+def _replay(seed: int) -> tuple[Story, str | None, float]:
+    """Rejoue A et B pour `seed` ; renvoie l'histoire, le rapport DORA de B et la duree."""
     start = time.perf_counter()
     with st.status("Rejeu des attaques sur le moteur de démo…", expanded=False) as status:
         status.write("🔑 Acte 1 : la clé volée, sur un contrat classique et sur Secure Horizons")
@@ -44,8 +45,9 @@ def _replay(seed: int) -> tuple[Story, float]:
                      "les vrais surveillants")
         result_b = run_scenario_quietly("B", seed=seed, disabled=frozenset())
         story = build_story(result_a, result_b)
+        report = next((v.incident_report for v in result_b.variants if v.incident_report), None)
         status.update(label="Rejeu terminé", state="complete")
-    return story, time.perf_counter() - start
+    return story, report, time.perf_counter() - start
 
 
 def _fuji_story(replay_now: bool) -> FujiStory | None:
@@ -93,8 +95,9 @@ def main() -> None:
             st.caption("Compte de TEST Fuji absent du .env : affichage du dernier rejeu enregistré.")
 
     if clicked or st.session_state.get(STORY_SEED_KEY) != seed:
-        story, seconds = _replay(seed)
+        story, report, seconds = _replay(seed)
         st.session_state[STORY_KEY] = story
+        st.session_state[REPORT_KEY] = report
         st.session_state[STORY_SEED_KEY] = seed
         st.session_state[STORY_SECONDS_KEY] = seconds
 
@@ -102,6 +105,29 @@ def main() -> None:
     st.caption(f"Scénarios rejoués en {st.session_state[STORY_SECONDS_KEY]:.1f} s "
                f"(seed {story.seed}). Clique sur les onglets puis sur ▶ pour lancer chaque animation.")
     components.html(render_story_html(story), height=COMPONENT_HEIGHT, scrolling=True)
+    _render_report(st.session_state.get(REPORT_KEY), story.seed)
+
+
+def _render_report(report: str | None, seed: int) -> None:
+    """Rapport d'incident DORA (#15) de l'acte 2, redige automatiquement."""
+    st.header("📄 Le rapport réglementaire, rédigé tout seul")
+    st.markdown(
+        "En Europe, le règlement **DORA** oblige les acteurs financiers à déclarer chaque incident "
+        "informatique majeur, avec un rapport structuré. C'est comme le **constat amiable** après un "
+        "accrochage : il faut le remplir vite et bien. Dès que les humains confirment l'attaque de "
+        "l'acte 2, notre IA rédige ce rapport à partir des vraies alertes et du vrai journal "
+        "d'audit. Elle **rédige seulement** : elle ne décide d'aucune action."
+    )
+    if report is None:
+        st.info("Aucun rapport : aucune alerte confirmée dans ce rejeu.")
+        return
+    st.caption("Mode hors ligne par défaut (aucun appel AWS, résultat reproductible) ; "
+               "`LLM_LIVE=1` fait rédiger le rapport par Bedrock.")
+    with st.container(border=True):
+        st.markdown(report)
+    st.download_button("⬇️ Télécharger le rapport DORA (Markdown)", report,
+                       file_name=f"rapport-dora-scenario-B-seed{seed}.md", mime="text/markdown",
+                       key="download_dora")
 
 
 main()

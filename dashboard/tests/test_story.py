@@ -90,6 +90,9 @@ def test_page_rejoue_et_affiche_le_composant(monkeypatch):
     at.run()
     assert not at.exception
     assert at.session_state["story"].seed == DEMO_SEED
+    report = at.session_state["story_report"]
+    assert report and any("Rapport d'incident" in m.value for m in at.markdown)
+    assert at.get("download_button")
     assert FORBIDDEN_WORD not in " ".join(c.value for c in at.caption).lower()
 
 
