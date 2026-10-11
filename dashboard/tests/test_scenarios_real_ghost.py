@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 
 from dashboard.scenarios import catalog, real_contracts, real_ghost
+from dashboard.scenarios.registry import get_spec
 from dashboard.scenarios.config import DEFAULT_PARAMS
 from dashboard.scenarios.models import REAL_LABEL, SIMULATION_LABEL
 from dashboard.scenarios.real_ghost import (
@@ -290,24 +291,56 @@ def test_replay_n3_no_destruction_legit_converts_after_return() -> None:
     assert reading.supply_value_before == reading.supply_value_after  # rien detruit
 
 
-def test_run_b_with_chain_uses_real_ghost_source(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_b_adds_separate_onchain_variant_keeps_main_simulated(
+        monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(real_contracts.CONTRACTS_BACKEND_ENV, real_contracts.BACKEND_ANVIL)
     result = catalog.run_b(20, DEFAULT_PARAMS, chain_factory=FakeGhostChain)
-    assert result.simulated is False and result.replace_by == []  # plus aucune brique simulee
-    sources = {m.source for v in result.variants for m in v.metrics}
-    assert any(s == f"{REAL_LABEL} (#8)" for s in sources)
-    assert result.metric("main", "attacker_converted_onchain").value == 0
-    assert result.metric("main", "ghost_destroyed_onchain").value > 0
+    # La variante principale reste simulee : #8 dans replace_by, bandeau conserve.
+    assert result.simulated is True
+    assert 8 in result.replace_by
+    # Les lectures on-chain vivent dans une VARIANTE SEPAREE, pas dans « main ».
+    onchain = result.variant("ghost-onchain")
+    assert {m.source for m in onchain.metrics} == {f"{REAL_LABEL} (#8)"}
+    main = result.variant("main")
+    assert all("_onchain" not in m.key for m in main.metrics)
+    assert result.metric("ghost-onchain", "attacker_converted_onchain").value == 0
+    assert result.metric("ghost-onchain", "ghost_destroyed_onchain").value > 0
+    # Message honnete : indique une sequence fixe independante de la seed.
+    assert "INDÉPENDANTE de la seed" in result.message
     assert all(c.passed for v in result.variants for c in v.checks)
 
 
-def test_run_n3_with_chain_uses_real_ghost_source(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_n3_adds_separate_onchain_variant_keeps_main_simulated(
+        monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(real_contracts.CONTRACTS_BACKEND_ENV, real_contracts.BACKEND_ANVIL)
     result = catalog.run_n3(20, DEFAULT_PARAMS, chain_factory=FakeGhostChain)
-    assert result.simulated is False and result.replace_by == []
-    assert result.metric("main", "ghost_destroyed_onchain").value == 0
-    assert result.metric("main", "legit_converted_onchain").value > 0
+    assert result.simulated is True
+    assert 8 in result.replace_by
+    assert result.metric("ghost-onchain", "ghost_destroyed_onchain").value == 0
+    assert result.metric("ghost-onchain", "legit_converted_onchain").value > 0
+    assert all("_onchain" not in m.key for m in result.variant("main").metrics)
     assert all(c.passed for v in result.variants for c in v.checks)
+
+
+def test_onchain_path_never_claims_real_while_a_ghost_number_is_simulated(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verrou d'honnêteté (docs/CLAIMS.md) : sur le chemin anvil, tant qu'un chiffre Ghost de la
+    variante principale vient encore du GhostLedger simulé, #8 DOIT rester dans replace_by et le
+    bandeau « simulation hors chaîne » doit être conservé."""
+    monkeypatch.setenv(real_contracts.CONTRACTS_BACKEND_ENV, real_contracts.BACKEND_ANVIL)
+    # Metriques Ghost de la variante principale, encore issues de la simulation (clés sans _onchain).
+    simulated_ghost_keys = {"suspect_ghost_destroyed", "protocol_loss", "ghost_redeemed",
+                            "destroy_count", "delayed_perimeters_at_end"}
+    for scenario_id, runner in (("B", catalog.run_b), ("N3", catalog.run_n3)):
+        result = runner(20, DEFAULT_PARAMS, chain_factory=FakeGhostChain)
+        main = result.variant("main")
+        main_keys = {m.source for m in main.metrics}
+        has_simulated_ghost = any(m.key in simulated_ghost_keys for m in main.metrics)
+        if has_simulated_ghost:
+            assert 8 in result.replace_by, f"{scenario_id} : #8 retiré malgré un chiffre simulé"
+            assert SIMULATION_LABEL in get_spec(scenario_id).result_banner(result)
+        # Aucune metrique de la variante principale ne doit se prétendre « réelle (#8) ».
+        assert f"{REAL_LABEL} (#8)" not in main_keys
 
 
 def test_run_b_falls_back_to_simulation_when_anvil_fails(
@@ -320,7 +353,9 @@ def test_run_b_falls_back_to_simulation_when_anvil_fails(
     result = catalog.run_b(20, DEFAULT_PARAMS, chain_factory=broken)
     assert result.simulated is True
     assert 8 in result.replace_by  # le Ghost reste simule
-    assert "repli" in result.message and "anvil n'a pas démarré" in result.message
+    # Pas de variante on-chain quand anvil echoue.
+    assert all(v.name != "ghost-onchain" for v in result.variants)
+    assert "indisponible" in result.message and "anvil n'a pas démarré" in result.message
     assert SIMULATION_LABEL in result.message
 
 
@@ -330,6 +365,7 @@ def test_default_backend_leaves_b_and_n3_simulated(monkeypatch: pytest.MonkeyPat
         result = runner(20, DEFAULT_PARAMS)
         assert result.simulated is True
         assert 8 in result.replace_by
+        assert all(v.name != "ghost-onchain" for v in result.variants)
 
 
 # --- Test reel (anvil) -------------------------------------------------------
