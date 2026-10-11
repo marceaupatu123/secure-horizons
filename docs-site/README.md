@@ -32,10 +32,12 @@ La navigation est dans `docs.json` ; chaque page est un fichier `.mdx` (slug = c
 | `lidee-cle.mdx` | « La sécurité vit dans le contrat » + décision §0 « pricer le risque ». |
 | `les-trois-volets.mdx` | Montant dérivé on-chain, perte et friction bornées, pare-feu de contagion. |
 | `token-ghost.mdx` | Quarantaine liquide sur tous les transferts, tranches, restitution, swap-id. |
+| `friction-mesuree.mdx` | Friction mesurée de la fenêtre normale W (table 5/10/15/30 min), ≠ budget de quarantaine. |
 | `contamination-par-ratio.mdx` | Le ratio comme prix du risque, propagation, racine de Merkle. |
 | `balise-de-risque.mdx` | La balise de risque publiée et lue par l'aval (#7). |
-| `recuperer-apres-coup.mdx` | Lignage rétroactif : récupérer après coup (#106). |
+| `recuperer-apres-coup.mdx` | Lignage rétroactif : récupérer après coup (#106), plafond lu on-chain (§14). |
 | `les-garde-fous.mdx` | Surveillants, 3 verbes (retarder / détruire / pause), multisig, DORA. |
+| `comment-le-surveillant-sait.mdx` | Provenance d'un mint : demande ↔ mint, recalcul I1/I3, mode Ghost (#104, #8). |
 | `le-parcours-dune-attaque.mdx` | Scénarios A, B, C, D et contrôles suivis pas à pas. |
 | `decisions.mdx` | Ce qui est acté (OPEN_ANSWERS) vs ouvert (OPEN_QUESTIONS). |
 | `promesses-jury.mdx` | Ce qu'on affirme au jury et comment on le mesure. |
