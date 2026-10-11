@@ -454,6 +454,26 @@ pas citer comme chiffres de production (`docs/CLAIMS.md`) :
   jusqu'à l'expiration de l'incident ; seuils > 0 : seule la part suspecte reste bloquée. Choisir
   des seuils > 0 pour la démo ? **Ouvert** (lié à #3, valeurs à mesurer).
 
+## 16. Balise de risque + faux marché de prêt (#7) — _choix provisoires, à valider par @denybs_
+
+> Numérotée §16 (et non §14) à la résolution du conflit de merge : `main` porte déjà une §14
+> (lignage et conversions Ghost, tranchée) et une §15 (Token Ghost). Contenu inchangé.
+
+Choix de l'assistant (2026-10-11, pour Yannis), implémentés dans `contracts/src/RiskBeacon.sol` et
+`contracts/src/MockLendingMarket.sol` selon la spec de denybs sur #7 :
+
+- **État DETRUIT** = `destroyedAt > clearedAt` (une destruction non suivie d'un blanchiment 2/3).
+  Alternative écartée : DETRUIT définitif dès `destroyedAt != 0` (une adresse blanchie resterait
+  bannie à vie).
+- **Prix** : 1 token de garantie = 1 unité de prêt (après mise à l'échelle des décimales), pas
+  d'oracle, pas de liquidation : le marché **constate** la mauvaise créance (scénario C).
+- **Retrait après destruction** : payé au **prorata du solde réel** (pas de course au retrait).
+  Conséquence assumée : sans balise, la perte de la garantie détruite est **mutualisée** sur tous les
+  déposants — c'est exactement la contagion que la balise évite (avec balise, l'emprunt est refusé).
+- **Scénario C mesuré** (`forge test --match-test scenarioC -vv`, paramètres de test, PAS une
+  calibration) : 100 000 M-Ghost 100 % suspects en garantie, LTV 80 %, décote de base 5 % →
+  mauvaise créance **76 000 mUSDC sans balise, 0 avec**.
+
 ## 17. Règlement §10bis (#84) — architecture — _choix de l'agent (2026-10-11, provisoire, à valider en équipe)_
 
 Choix faits par l'assistant de @denybs pour implémenter la décision §10bis (`OPEN_ANSWERS.md`),
