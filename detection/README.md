@@ -70,9 +70,13 @@ propositions **non actées** de `docs/OPEN_QUESTIONS.md` §2 et sont **PROVISOIR
   précédents). L'alerte part à la **clôture** de la tranche : au premier transfert de la tranche
   suivante, ou via `close_slot_if_due(now)` sur un minuteur (à appeler pour rester plus rapide que
   la fenêtre Ghost de 10 min).
-- **Dispersion = indice de Herfindahl** (somme des parts au carré des destinataires). Dans
-  l'`Alert`, `dispersion_score` = 1/HHI (« nombre effectif de destinataires », bas = concentré) ;
-  le HHI brut est dans `reason` et `last_slot_stats`.
+- **Dispersion = indice de Herfindahl** (somme des parts au carré des soldes entrants **nets**).
+  Dans l'`Alert`, `dispersion_score` = 1/HHI (« nombre effectif de destinataires », bas =
+  concentré) ; le HHI brut est dans `reason` et `last_slot_stats`.
+- **Rebonds comptés une fois (#87, PROVISOIRE)** : volume d'une tranche = somme des soldes
+  entrants nets (reçu − envoyé). A → B → C compte une fois ; l'exemple de référence compte 50M et
+  non 100M. Volume brut exposé (`gross_volume`). Limites et effet mesuré :
+  `docs/OPEN_QUESTIONS.md` §2, point 5.
 - **Destinataires distincts** : exposés (`last_slot_stats.distinct_recipients`, `reason`) mais
   **jamais** utilisés seuls : 50M vers 3 adresses neuves puis 4 bridges le font passer de 150 à
   157 seulement (testé), alors que le HHI explose.
