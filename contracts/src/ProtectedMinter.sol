@@ -6,8 +6,9 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {GhostedStable} from "./GhostedStable.sol";
+import {GhostConfig, GhostToken} from "./GhostToken.sol";
 import {GuardianPausable} from "./GuardianPausable.sol";
-import {StableToken} from "./StableToken.sol";
 
 /// @title ProtectedMinter — volet 1 : « une clé de service volée ne doit presque rien valoir ».
 /// @notice La clé `SERVICE_ROLE` n'autorise que « traiter la demande n°X » : `completeSwap(requestId)`
@@ -15,9 +16,12 @@ import {StableToken} from "./StableToken.sol";
 ///         - I1 minted = deposit × rate (conversion 6 -> 18 décimales, arrondi vers le bas, ε = 0) ;
 ///         - I2 la demande existe, est en attente, est traitée exactement une fois ;
 ///         - I3 le destinataire du mint X est le déposant de X ;
-///         - I4 seul `completeSwap` mint (le `StableToken` n'accepte que ce contrat comme minter).
+///         - I4 (révisé, #8) seul `completeSwap` émet du Ghost « mint » (`ghost.issueFromMinter`) ;
+///           M n'est minté que par conversion depuis le Ghost.
 ///         Le taux est figé (snapshot) à la création de la demande. Aucun plafond fixe par opération.
-///         Pause globale par un multisig simulé de 3 guardians (3/3).
+///         Le mint produit du M-Ghost FRAIS au déposant (OPEN_ANSWERS §0bis) : convertible en M
+///         après la fenêtre W, sans anomalie. Pause globale par un multisig simulé de 3 guardians
+///         (3/3), distincte de celle du Ghost (mêmes guardians).
 contract ProtectedMinter is AccessControl, GuardianPausable {
     using SafeERC20 for IERC20;
 
@@ -43,7 +47,10 @@ contract ProtectedMinter is AccessControl, GuardianPausable {
     }
 
     IERC20 public immutable collateral;
-    StableToken public immutable stable;
+    /// @notice Le vrai token M (= `ghost.underlying()`).
+    GhostedStable public immutable stable;
+    /// @notice Le M-Ghost adossé à M, déployé par ce contrat.
+    GhostToken public immutable ghost;
     uint256 public rate;
     uint256 public nextRequestId;
     uint256 public totalDeposited;
@@ -70,9 +77,14 @@ contract ProtectedMinter is AccessControl, GuardianPausable {
     error RequestNotFound(uint256 requestId);
     error RequestNotPending(uint256 requestId);
 
-    constructor(IERC20 collateral_, address admin, address service, uint256 initialRate, address[3] memory guardians_)
-        GuardianPausable(guardians_)
-    {
+    constructor(
+        IERC20 collateral_,
+        address admin,
+        address service,
+        uint256 initialRate,
+        address[3] memory guardians_,
+        GhostConfig memory ghostConfig
+    ) GuardianPausable(guardians_) {
         if (address(collateral_) == address(0) || admin == address(0) || service == address(0)) {
             revert ZeroAddress();
         }
@@ -82,7 +94,10 @@ contract ProtectedMinter is AccessControl, GuardianPausable {
         if (dec != COLLATERAL_DECIMALS) revert UnsupportedCollateralDecimals(dec);
 
         collateral = collateral_;
-        stable = new StableToken("Protected USD (fictif)", "pUSD", address(this));
+        // Déploiement en cascade, tout immuable : minter -> Ghost -> M.
+        GhostToken g = new GhostToken(address(this), admin, guardians_, ghostConfig);
+        ghost = g;
+        stable = GhostedStable(g.underlying());
 
         // Rôles séparés : l'admin (taux, gestion des rôles) n'est pas la clé de service.
         // AccessControl émet RoleGranted pour chaque attribution.
@@ -110,7 +125,7 @@ contract ProtectedMinter is AccessControl, GuardianPausable {
     }
 
     /// @notice « Traiter la demande n°X ». PAS de montant, PAS de destinataire : tout est dérivé
-    ///         de la demande enregistrée on-chain.
+    ///         de la demande enregistrée on-chain. Émet du M-Ghost frais au déposant.
     function completeSwap(uint256 requestId) external onlyRole(SERVICE_ROLE) whenNotPaused {
         SwapRequest storage req = _requests[requestId];
         if (req.status == RequestStatus.None) revert RequestNotFound(requestId);
@@ -123,7 +138,7 @@ contract ProtectedMinter is AccessControl, GuardianPausable {
         uint256 minted = quoteMint(depositAmount, reqRate);
         totalMinted += minted;
 
-        stable.mint(depositor, minted);
+        ghost.issueFromMinter(depositor, minted, requestId);
         emit SwapCompleted(requestId, depositor, depositor, depositAmount, minted, reqRate);
     }
 

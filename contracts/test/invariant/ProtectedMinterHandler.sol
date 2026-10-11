@@ -4,7 +4,8 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {MockUSDC} from "../../src/MockUSDC.sol";
 import {ProtectedMinter} from "../../src/ProtectedMinter.sol";
-import {StableToken} from "../../src/StableToken.sol";
+import {GhostedStable} from "../../src/GhostedStable.sol";
+import {GhostToken} from "../../src/GhostToken.sol";
 
 /// @notice Handler des tests d'invariants. Acteurs : 4 déposants honnêtes + `service`, détenteur
 ///         de la clé `SERVICE_ROLE` VOLÉE (qui peut aussi déposer). L'admin (taux) et les guardians
@@ -20,7 +21,8 @@ contract ProtectedMinterHandler is Test {
 
     ProtectedMinter public minter;
     MockUSDC public usdc;
-    StableToken public stable;
+    GhostedStable public stable;
+    GhostToken public ghost;
     address public service;
     address public admin;
     address[3] public guardians;
@@ -45,6 +47,9 @@ contract ProtectedMinterHandler is Test {
     mapping(address => uint256) public ghost_expectedBalance;
     /// @dev Passe à true si une action interdite (clé volée, rejeu, demande inventée…) réussit.
     bool public ghost_unexpectedSuccess;
+    /// @dev Passe à true si une action « doit réussir » (préconditions calculées ici) revert :
+    ///      avec `fail_on_revert = false`, ce revert serait sinon avalé en silence.
+    bool public ghost_unexpectedRevert;
 
     mapping(bytes32 => uint256) public calls;
 
@@ -52,6 +57,7 @@ contract ProtectedMinterHandler is Test {
         minter = minter_;
         usdc = usdc_;
         stable = minter_.stable();
+        ghost = minter_.ghost();
         service = service_;
         admin = admin_;
         guardians = g;
@@ -76,8 +82,17 @@ contract ProtectedMinterHandler is Test {
         usdc.mint(actor, amount);
         vm.startPrank(actor);
         usdc.approve(address(minter), amount);
-        uint256 id = minter.requestSwap(amount);
+        // Doit réussir : non en pause, montant > 0, quote > 0 (recalculée ici).
+        uint256 id;
+        try minter.requestSwap(amount) returns (uint256 id_) {
+            id = id_;
+        } catch {
+            vm.stopPrank();
+            ghost_unexpectedRevert = true;
+            return;
+        }
         vm.stopPrank();
+        calls["requestSwap_ok"]++;
 
         requestIds.push(id);
         depositorOf[id] = actor;
@@ -96,8 +111,8 @@ contract ProtectedMinterHandler is Test {
         uint256 id = requestIds[idSeed % requestIds.length];
         address depositor = depositorOf[id];
         bool mustFail = minter.paused() || completions[id] > 0;
-        uint256 balBefore = stable.balanceOf(depositor);
-        uint256 supplyBefore = stable.totalSupply();
+        uint256 balBefore = ghost.balanceOf(depositor);
+        uint256 supplyBefore = ghost.supplyValue();
 
         vm.prank(service);
         try minter.completeSwap(id) {
@@ -107,12 +122,14 @@ contract ProtectedMinterHandler is Test {
             }
             calls["completeSwap_ok"]++;
             completions[id]++;
-            mintedObserved[id] = stable.balanceOf(depositor) - balBefore;
-            supplyDelta[id] = stable.totalSupply() - supplyBefore;
+            mintedObserved[id] = ghost.balanceOf(depositor) - balBefore;
+            supplyDelta[id] = ghost.supplyValue() - supplyBefore;
             ghost_sumMintedCompleted += expectedMint[id];
             ghost_expectedBalance[depositor] += expectedMint[id];
         } catch {
+            // Demande existante, en attente, minter actif, rôle détenu : doit réussir.
             if (mustFail) calls["completeSwap_rejected"]++;
+            else ghost_unexpectedRevert = true;
         }
     }
 
@@ -133,6 +150,11 @@ contract ProtectedMinterHandler is Test {
         try stable.mint(service, amount) {
             ghost_unexpectedSuccess = true;
         } catch {}
+        // I4 révisé (#8) : émission directe de Ghost, doit échouer aussi.
+        vm.prank(service);
+        try ghost.issueFromMinter(service, amount, 0) {
+            ghost_unexpectedSuccess = true;
+        } catch {}
     }
 
     /// @notice La clé volée tente l'appel « à la Resolv » avec montant et destinataire.
@@ -142,6 +164,10 @@ contract ProtectedMinterHandler is Test {
         vm.prank(service);
         (bool ok,) =
             address(minter).call(abi.encodeWithSignature("completeSwap(uint256,address,uint256)", id, service, amount));
+        if (ok) ghost_unexpectedSuccess = true;
+        // Variante « destinataire seul » (pas de montant) : doit échouer aussi.
+        vm.prank(service);
+        (ok,) = address(minter).call(abi.encodeWithSignature("completeSwap(uint256,address)", id, service));
         if (ok) ghost_unexpectedSuccess = true;
     }
 
@@ -159,8 +185,13 @@ contract ProtectedMinterHandler is Test {
         calls["adminSetRate"]++;
         newRate = bound(newRate, MIN_RATE, MAX_RATE);
         vm.prank(admin);
-        minter.setRate(newRate);
-        trackedRate = newRate;
+        // Doit réussir : admin honnête, taux > 0 (le setRate n'est pas soumis à la pause).
+        try minter.setRate(newRate) {
+            calls["adminSetRate_ok"]++;
+            trackedRate = newRate;
+        } catch {
+            ghost_unexpectedRevert = true;
+        }
     }
 
     /// @notice Un guardian honnête approuve une pause ou une dépause (peut échouer, sans attente).
@@ -168,11 +199,18 @@ contract ProtectedMinterHandler is Test {
         calls["guardianApprove"]++;
         address g = guardians[guardianSeed % guardians.length];
         vm.prank(g);
+        bool ok;
         if (toPause) {
-            try minter.approvePause() {} catch {}
+            try minter.approvePause() {
+                ok = true;
+            } catch {}
         } else {
-            try minter.approveUnpause() {} catch {}
+            try minter.approveUnpause() {
+                ok = true;
+            } catch {}
         }
+        if (ok) calls["guardianApprove_ok"]++;
+        else calls["guardianApprove_ko"]++;
     }
 
     // ------------------------------------------------------------------ vues pour les invariants

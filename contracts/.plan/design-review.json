@@ -1,0 +1,60 @@
+{
+  "verdict": "CHANGES_REQUESTED",
+  "iteration": 2,
+  "counts": { "HIGH": 1, "MEDIUM": 4, "NIT": 12 },
+  "findings": [
+    {
+      "id": 1,
+      "severity": "HIGH",
+      "title": "Scenario C: bad debt 'without beacon' is 0 by construction",
+      "where": "§8.3 ScenarioC, §5 (useBeacon=false => p.suspect = 0)",
+      "problem": "Bad debt = debt - value(ghost + m - Position.suspect). With useBeacon=false p.suspect is always 0 and debt <= value*ltv, so bad debt is always 0; with the beacon, borrow is refused (debt 0). Headline figure is 0 vs 0, 'with <= without' is vacuous, and 'burned at market == sum suspect' fails for the beacon-less market.",
+      "fix": "Measure from Ghost-side truth, independent of market config: attacker sole depositor (asserted); burnedAtMarket = balance delta around _destroy; recoverableUsdc = ghost.balanceOf(market)/1e12; badDebt = max(0, debt - recoverableUsdc). Assert burnedAtMarket == suspect entering the market as measured by the test (effectiveSuspectOf delta or GhostTransferred.suspectMoved) for both markets; p.suspect equality only for useBeacon=true."
+    },
+    {
+      "id": 2,
+      "severity": "MEDIUM",
+      "title": "Recovery claim (#37) has no 'recovered share' measurement",
+      "where": "§8.2 (c) fuzz excludes destruction; §8.3 D is a single hop",
+      "problem": "Decision #37 verifies affirmation 2 by 'replaying a chain of transfers and measuring the recovered share, including after fragmentation'. No test destroys along a fragmented chain and reports the recovered share.",
+      "fix": "Add testFuzz_recovery_chainAndFanOut(depth<=32, fanOut<=16): seed S, chain + fan-out, confirm 2/3, destroy all holders in MAX_BATCH lots; assertEq(totalSuspectBurned, S); console.log recovered/seeded. Plus test_recovery_partialDetection (a third of holders untargeted), share logged, never hard-asserted."
+    },
+    {
+      "id": 3,
+      "severity": "MEDIUM",
+      "title": "MockLendingMarket divides by zero for M-only positions",
+      "where": "§5 ratioPos = suspect*1e18/ghost; withdraw ceilDiv(ghostAmt*suspect, ghost)",
+      "problem": "p.ghost == 0 (M-only position, the case highlighted by constat 4) makes borrow/haircutBps/collateralValue panic 0x12, and withdrawing only the M leg panics in Math.ceilDiv(0,0).",
+      "fix": "ratioPos = p.ghost == 0 ? 0 : p.suspect*1e18/p.ghost; in withdraw only reduce suspect if ghostAmt > 0, capped by p.suspect. Test: M-only deposit -> borrow within LTV ok, haircutBps == base, M-leg withdraw after unlockAt ok."
+    },
+    {
+      "id": "3bis",
+      "severity": "MEDIUM",
+      "title": "Divergences with data/ghost_ledger.py (#25, PR #82) not listed",
+      "where": "whole design (no mention of data/ghost_ledger.py or data/scenarios_cd.py)",
+      "problem": "The off-chain reference ledger used by scenarios C/D differs on: conversion (all matured, suspicion leaves with it vs partial lock, suspicion never converts), suspicion model (single permanent float vs Sc/Sp with expiry + Clear), delay (free until + lift_delay vs incident-bound, capped, monotone, no lift), destruction (pro-rata tranches vs Sc from newest), rounding (float vs ceilDiv), unbacked mint/deficit, fees, units (6 vs 18 decimals in thresholds), market (one vault per loan vs one mixed address), pool price (0.9 vs fixed fixture), restitution/insurance/pause absent.",
+      "fix": "Add a section 'Ecarts avec data/ghost_ledger.py' with the table (who aligns: data/), copy it to the PR description and notify the data/ owner; do not modify data/. State which side is faithful to OPEN_ANSWERS for conversion-of-suspicion and lift_delay (the design). Optional test_ledgerParity_simpleChain with hard-coded expected values."
+    },
+    {
+      "id": "3ter",
+      "severity": "MEDIUM",
+      "title": "Monitor compatibility: meaning of Transfer logs and mint requestId unspecified",
+      "where": "§2, §3.9, §3.12, §7, §10; monitor/listener.py",
+      "problem": "Listener treats every Transfer(0x0,to) as a mint with UNKNOWN_REQUEST_ID (= 0) and drops to==0x0. With the design, M never emits Transfer(from,to) (transfer = Transfer(from,0x0)), every Transfer(0x0,a) on M is a conversion, and Transfer(0x0,to) on M-Ghost covers mint / M transfer / restitution. The requestId-bearing event (SwapCompleted) is on ProtectedMinter, GhostIssued lacks requestId, and request id 0 exists (nextRequestId starts at 0) colliding with the sentinel.",
+      "fix": "Add indexed requestId to GhostIssued (issueFromMinter(to, amount, requestId)), resolve the id-0 collision (start nextRequestId at 1 or explicit flag), name SwapCompleted as the reference mint event for the dedicated decoder, add a per-address 'monitor reading' table in §3.12 (M-Ghost Transfer(0,to)+GhostIssued(kind); Ghost transfers is_ghost=true; conversions/destructions; M transfers rebuilt from GhostIssued(TRANSFER_M).source; M Transfer(0,a) = conversion never mint), copy to PR for #9/#10, and test_events_monitorMapping with vm.expectEmit."
+    },
+    { "id": 4, "severity": "NIT", "title": "lastReserveInflowAt not set on M-transfer fee", "where": "§3.7/§9-9 vs §3.9", "fix": "In onUnderlyingTransfer: if (fee > 0) lastReserveInflowAt = now." },
+    { "id": 5, "severity": "NIT", "title": "Actor of Extend 2/3 events", "where": "§3.6bis vs §3.4 (msg.sender)", "fix": "_delay(..., bool checkBudget, address actor); delay passes msg.sender, Extend passes address(this)." },
+    { "id": 6, "severity": "NIT", "title": "Watcher cannot read cumulative cap / cooldown", "where": "§3.4, §3.11", "fix": "Add view maxExtensionEnd(a) computing runStart (or now if cooldown elapsed) + factor*W." },
+    { "id": 7, "severity": "NIT", "title": "State friction bound as duty cycle", "where": "§3.4, §10, ★3ter", "fix": "README/★: compromised watcher can delay an account factor*W per (factor+1)*W period indefinitely (6/7 with fixtures)." },
+    { "id": 8, "severity": "NIT", "title": "Extend 2/3 joining the live incident: duration ignored, over-budget blocks watcher until expiry", "where": "§3.6bis", "fix": "Document in §3.6bis/README; add test_extendOverBudget_blocksWatcherUntilExpiry." },
+    { "id": 9, "severity": "NIT", "title": "Risk.incidentId source undefined", "where": "§4", "fix": "DETRUIT -> destroyedIncident; RETARDE -> extensionTag; else valid pendingTag or 0; suspectAmount = effectiveSuspectOf, ratio = ratioOf, windowExpiresAt = extendedUntil." },
+    { "id": 10, "severity": "NIT", "title": "Rounding of thresholds and claim ratios", "where": "§3.5 step 4, §6", "fix": "Ceil ratio for threshold comparison; ratioConfirmed/ratioPending rounded up; pendingTag == 0 = neither confirmed nor live." },
+    { "id": 11, "severity": "NIT", "title": "_moveBuckets before balance check", "where": "§3.9", "fix": "Check balanceOf(from) >= v first (revert ERC20InsufficientBalance), cache B before writes." },
+    { "id": 12, "severity": "NIT", "title": "nextOutgoingMaturity must apply virtual settle", "where": "§3.11, §6", "fix": "View treats maturity <= now as matured; test claim.maturity == now for matured-unsettled bucket." },
+    { "id": 13, "severity": "NIT", "title": "GhostLens fallback interface incomplete", "where": "§1 fallback 2, §6", "fix": "GhostLens implements all of IGhostRisk (forwarding), or pool/beacon receive both addresses." },
+    { "id": 14, "severity": "NIT", "title": "Split proposal-time vs execution-time validation", "where": "§3.13", "fix": "Proposal: stateless checks (batch, lengths, zero, duration bounds, incident id range). Execution: all incl. state (ExceedsReserve, IncidentExpired, cumulative cap, pause)." },
+    { "id": 15, "severity": "NIT", "title": "Market positions not written down after destruction", "where": "§5", "fix": "README limit: sum of positions can exceed market balance; last withdraw reverts." }
+  ],
+  "reviewDoc": "c:\\Users\\dnybs\\hack cyber\\.worktrees\\contracts-ghost/contracts/.plan/design-review.md"
+}
