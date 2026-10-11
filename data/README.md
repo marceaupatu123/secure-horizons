@@ -136,9 +136,13 @@ Pas mesuré ici, et pourquoi :
 - **Seuils de conversion** (ratio, montant absolu) et **seuil de la balise** : dans C et D, le
   soupçon n'est semé qu'à l'alerte, et les adresses semées sont alors retardées ; le seuil ne joue
   qu'après une levée ou une expiration sans destruction, scénario pas encore simulé.
-- **Budget de quarantaine, facteur d'allongement max** : il faut rejouer les alertes dans
-  `response/` avec les soldes Ghost ; à faire une fois un seuil de déclenchement choisi.
 - **Marge de conversion** : barème à décider (§0), rien à mesurer avant.
+
+**Budget de quarantaine et facteur d'allongement** (section « Budget de quarantaine » de la sortie)
+sont désormais **mesurés** : l'alerte B détectée est rejouée dans `response/`
+(`ResponseOrchestrator`) et on relève la part de l'offre placée sous retard (≈ 2× la taille
+d'attaque détectée, graine 42) et le fait que le retard de référence (60 min) couvre la fenêtre
+Ghost (10 min). Détail et lecture dans [`DECISION_SUPPORT_3.md`](DECISION_SUPPORT_3.md) §5.
 
 ## Contamination posée après coup (#85) — `python -m data.late_marking`
 

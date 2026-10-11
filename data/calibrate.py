@@ -11,6 +11,9 @@ selon le protocole de la §5 (`docs/OPEN_ANSWERS.md`) :
    detection **avant conversion** et la marge. Le balayage est repete pour plusieurs **profils
    de trafic legitime** (taille des transferts), dont le resultat depend fortement.
 3. **Surveillant de mint** : alertes sur le trafic normal et les scenarios A et B.
+4. **Budget de quarantaine et facteur d'allongement** : en rejouant l'alerte B dans la reponse
+   graduee (`response/`), la part de l'offre placee sous retard et la question de savoir si le
+   plafond `max_monitor_delay_minutes` suffit a tenir jusqu'a la fenetre Ghost `W` (§9).
 
 Le script **mesure**, il ne choisit pas : le point retenu sur la courbe est une decision
 d'equipe (§5 Q2). Tous les resultats sont des mesures sur simulation, avec des parametres de
@@ -44,7 +47,30 @@ from data.generate import (
 from detection.detector import RuleBasedMonitor
 from detection.inputs import MintContext
 from detection.params import TransferRuleParams
+from response.orchestrator import (
+    PerimeterState,
+    ResponseOrchestrator,
+    ResponsePolicy,
+    _key,
+)
 from shared.models import Alert, MintEvent, MintRequest, TransferEvent
+
+# Guardians FICTIFS pour la reponse graduee rejouee (mesure du budget de quarantaine).
+_QUARANTINE_GUARDIANS = (
+    "0x1111111111111111111111111111111111111111",
+    "0x2222222222222222222222222222222222222222",
+    "0x3333333333333333333333333333333333333333",
+)
+
+
+class _FixedClock:
+    """Horloge fixe pour rejouer la reponse de maniere deterministe (tests/mesure)."""
+
+    def __init__(self, now: datetime) -> None:
+        self._now = now
+
+    def __call__(self) -> datetime:
+        return self._now
 
 
 @dataclass(frozen=True)
@@ -266,6 +292,92 @@ def mint_monitor(config: CalibrationConfig) -> dict[str, dict[str, int]]:
     return results
 
 
+def quarantine_budget(
+    config: CalibrationConfig, transfer_fraction: tuple[float, float]
+) -> list[dict[str, Any]]:
+    """Budget de quarantaine et facteur d'allongement, en rejouant l'alerte dans `response/`.
+
+    Pour chaque taille d'attaque B (part de l'offre), on rejoue le jeu dans le surveillant de
+    transferts au seuil propose (`z volume`/`z HHI` = premieres valeurs 0 FP de la grille), on
+    envoie l'alerte produite a `ResponseOrchestrator.handle_alert`, et on mesure :
+
+    - **budget de quarantaine** : part de l'offre placee sous retard par la reponse (somme des
+      `suspect_amount` des perimetres retardes / offre au moment de l'attaque). C'est la friction
+      *ciblee* du retard, a distinguer de la friction *de fond* du Ghost (`ghost_window_friction`).
+    - **facteur d'allongement** : le plafond `max_monitor_delay_minutes` qu'un surveillant atteint
+      seul suffit-il a maintenir la conversion suspendue jusqu'a la fenetre Ghost `W` (sinon le
+      retard expire avant que le multisig humain ait pu trancher) ? On compare la duree de retard
+      obtenue a `W`.
+
+    Le script **mesure**, il ne choisit pas : la part max toleree et le facteur retenu restent une
+    decision d'equipe (§9). Donnees FICTIVES.
+    """
+    window = config.reference_window
+    policy = ResponsePolicy(guardians=frozenset(_QUARANTINE_GUARDIANS))
+    base = config.params(transfer_fraction=transfer_fraction)
+    normal = generate_normal(base)
+    supply = supply_at(normal, base.attack_at)
+    # Seuil propose (support de decision #3) : z volume le plus eleve de la grille (zone 0 FP),
+    # z HHI median. Indices robustes a toute taille de grille.
+    params = TransferRuleParams(
+        volume_z_threshold=config.volume_z[-1],
+        hhi_z_threshold=config.hhi_z[len(config.hhi_z) // 2],
+    )
+    rows: list[dict[str, Any]] = []
+    for size in config.attack_sizes:
+        scenario = generate_scenario_b(
+            replace(base, attack_deposit_tokens=max(1, int(size * supply / UNIT)))
+        )
+        attack = scenario.manifest["attack"]
+        targets = {
+            a.lower()
+            for a in (attack["attacker"], *attack["fresh_addresses"], attack["exit_point"])
+        }
+        outcomes = replay_transfers(scenario, params)
+        hits = [
+            o
+            for o in outcomes
+            if o.alert is not None and _alert_addresses(o.alert) & targets
+        ]
+        if not hits:
+            rows.append({"attack_size": size, "detected": False})
+            continue
+        alert = min(hits, key=lambda o: o.slot_end).alert
+        clock = _FixedClock(alert.created_at)
+        orchestrator = ResponseOrchestrator(policy, clock=clock)
+        orchestrator.handle_alert(alert)
+        # Perimetres effectivement retardes (sujet + graines) : part de l'offre sous retard.
+        delayed = {_key(alert.subject_address), *(_key(s.address) for s in alert.seeds)}
+        delayed_amount = sum(
+            amount
+            for addr, amount in (
+                (alert.subject_address, alert.suspect_amount),
+                *((s.address, s.suspect_amount) for s in alert.seeds),
+            )
+            if _key(addr) in delayed
+            and orchestrator.perimeter_state(addr) is PerimeterState.DELAYED
+        )
+        delay = orchestrator.active_delay(alert.subject_address)
+        delay_minutes = (
+            (delay.expires_at - alert.created_at).total_seconds() / 60.0
+            if delay is not None and delay.expires_at is not None
+            else 0.0
+        )
+        rows.append(
+            {
+                "attack_size": size,
+                "detected": True,
+                "budget_share": delayed_amount / supply if supply else None,
+                "delay_minutes": delay_minutes,
+                "cap_minutes": policy.max_monitor_delay_minutes,
+                "window_minutes": window,
+                # Le retard tient-il au moins jusqu'a la fin de la fenetre Ghost ?
+                "holds_until_window": delay_minutes >= window,
+            }
+        )
+    return rows
+
+
 def run(config: CalibrationConfig) -> dict[str, Any]:
     """Toutes les mesures, serialisables en JSON."""
     return {
@@ -274,6 +386,9 @@ def run(config: CalibrationConfig) -> dict[str, Any]:
         "config": json.loads(json.dumps(vars(config))),
         "ghost_window_friction": ghost_window_friction(config),
         "trigger_sweep": {name: trigger_sweep(config, fraction) for name, fraction in config.profiles},
+        "quarantine_budget": {
+            name: quarantine_budget(config, fraction) for name, fraction in config.profiles
+        },
         "mint_monitor": mint_monitor(config),
         "late_marking": late_marking_run(),
     }
@@ -304,6 +419,28 @@ def to_markdown(results: dict[str, Any]) -> str:
             lines.append(
                 f"| {row['volume_z']:g} | {row['hhi_z']:g} | {row['fp_slots']}/{row['evaluated_slots']} | {attacks} |"
             )
+    if "quarantine_budget" in results:
+        for profile, rows in results["quarantine_budget"].items():
+            lines += [
+                "",
+                f"Budget de quarantaine et facteur d'allongement, profil `{profile}` : "
+                f"alerte B rejouee dans `response/` (W = {window} min, donnees fictives)",
+                "",
+                "| taille attaque | detectee | part de l'offre sous retard | retard obtenu | "
+                "plafond surveillant | tient jusqu'a W ? |",
+                "|---|---|---|---|---|---|",
+            ]
+            for row in rows:
+                if not row.get("detected"):
+                    lines.append(
+                        f"| {row['attack_size']:.1%} | non | — | — | — | — |"
+                    )
+                    continue
+                lines.append(
+                    f"| {row['attack_size']:.1%} | oui | {row['budget_share']:.2%} | "
+                    f"{row['delay_minutes']:.0f} min | {row['cap_minutes']} min | "
+                    f"{'oui' if row['holds_until_window'] else 'non'} |"
+                )
     lines += ["", "Surveillant de mint (I1, taux 1:1)", "",
               "| jeu | mints | mints d'attaque | alertes sur l'attaque | autres alertes |", "|---|---|---|---|---|"]
     for name, r in results["mint_monitor"].items():

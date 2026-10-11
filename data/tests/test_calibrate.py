@@ -14,6 +14,7 @@ from data.calibrate import (
     false_positives,
     main,
     mint_monitor,
+    quarantine_budget,
     replay_transfers,
     run,
     to_markdown,
@@ -91,3 +92,24 @@ def test_cli_writes_json_and_markdown(tmp_path: Path, capsys) -> None:  # type: 
     assert set(data["trigger_sweep"]) == {"petits_transferts"}
     assert (tmp_path / "calibration.md").read_text() == to_markdown(data)
     assert "Fenetre Ghost" in capsys.readouterr().out
+
+
+def test_quarantine_budget_delays_a_detected_attack() -> None:
+    """L'alerte B rejouee dans response/ place une part positive de l'offre sous retard,
+    et le retard par defaut (60 min) tient jusqu'a la fenetre Ghost (10 min)."""
+    rows = quarantine_budget(SMALL, transfer_fraction=(0.01, 0.1))
+
+    assert rows, "au moins une taille d'attaque mesuree"
+    detected = [r for r in rows if r["detected"]]
+    assert detected, "l'attaque massive de SMALL (50 %) doit etre detectee et retardee"
+    for row in detected:
+        # Budget : part de l'offre sous retard, bornee (0 < part <= 1).
+        assert 0 < row["budget_share"] <= 1
+        # Facteur d'allongement : le retard par defaut couvre la fenetre Ghost.
+        assert row["delay_minutes"] >= row["window_minutes"]
+        assert row["holds_until_window"] is True
+
+
+def test_quarantine_budget_in_full_run() -> None:
+    results = run(SMALL)
+    assert set(results["quarantine_budget"]) == {"petits_transferts"}
