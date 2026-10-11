@@ -34,7 +34,7 @@ Règles :
 | 10bis | Qui porte le risque : M' protégé / pur / chèque, routeur + Ghost de paiement, restitution sans fonds ni frais (#84) | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | Issue #84 |
 | 11 | Contamination posée après coup : recalcul hors chaîne + racine de Merkle contestable (#85) | 2026-10-11 | denybs | Validée en session, à relire par l'équipe | PR #95 |
 | 79 | Champs manquants monitor/detection : `request_id` optionnel (fix collision), `is_ghost` et données I1/I5/I6 gardés en contexte jusqu'aux événements du contrat (#79) | 2026-10-11 | denybs | Validée en session, à relire par l'équipe | Issue #79 |
-| 14 | Lignage et conversions Ghost : plafonnement du soupçon par `balanceOf` du Ghost lu au semis (option (c)) (#104/#106) | 2026-10-11 | marceaupatu123 | Tranché | PR #PRNUM |
+| 14 | Lignage et conversions Ghost : plafonnement du soupçon par `balanceOf` du Ghost lu au semis (option (c)) (#104/#106) | 2026-10-11 | marceaupatu123 | Tranché | PR #132 |
 
 ---
 
