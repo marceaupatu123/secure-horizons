@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict
 
 from dashboard.demo_data import DEMO_EXTENDED_WINDOW, DEMO_NORMAL_WINDOW
 from dashboard.scenarios import ScenarioResult, ScenarioStatus, get_spec
+from dashboard.scenarios.fuji_live import FujiRun, LiveState, address_url
 
 JOURNAL_MAX_ENTRIES = 12
 JOURNAL_DETAIL_MAX_CHARS = 160
@@ -72,6 +73,59 @@ class StoryB(BaseModel):
     banner: str
 
 
+class FujiTx(BaseModel):
+    """Transaction reelle Fuji, prete a afficher."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    who: str
+    label: str
+    url: str
+    success: bool
+
+
+class FujiStep(BaseModel):
+    """Etape du rejeu Fuji et ses transactions."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    txs: list[FujiTx]
+
+
+class FujiLink(BaseModel):
+    """Contrat ou compte avec son lien Snowtrace."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    address: str
+    url: str
+
+
+class FujiStory(BaseModel):
+    """Rejeu en vraies transactions sur Avalanche Fuji (montants en jetons, 18 decimales)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    recorded_at: str
+    tx_count: int
+    steps: list[FujiStep]
+    contracts: list[FujiLink]
+    deposit_tokens: float
+    signed_tokens: float
+    vulnerable_minted_tokens: float
+    vulnerable_collateral_tokens: float
+    protected_minted_tokens: float
+    protected_collateral_tokens: float
+    inflated_rejected: bool
+    attacker_ghost_before_tokens: float
+    attacker_ghost_after_tokens: float
+    observed_mint_count: int
+    live_block: int | None
+    live_matches_record: bool | None
+
+
 class Story(BaseModel):
     """Tout ce que la page anime, calcule a partir des resultats reels."""
 
@@ -80,6 +134,56 @@ class Story(BaseModel):
     seed: int
     a: StoryA
     b: StoryB
+    fuji: FujiStory | None = None
+
+
+TOKEN_UNIT = 10**18
+FUJI_ACTORS: dict[str, str] = {
+    "admin": "🏗️ L'équipe",
+    "attacker": "🕵️ Le pirate (clé volée)",
+    "watcher": "📡 Le surveillant",
+    "guardian1": "👥 Gardien 1",
+    "guardian2": "👥 Gardien 2",
+    "guardian3": "👥 Gardien 3",
+    "whale": "🙂 Un utilisateur honnête",
+}
+
+
+def _tokens(amount: int) -> float:
+    return amount / TOKEN_UNIT
+
+
+def build_fuji_story(run: FujiRun, live: LiveState | None = None) -> FujiStory:
+    """Traduit un rejeu Fuji (et, si fourni, l'etat relu a l'instant) pour la page."""
+    steps: list[FujiStep] = []
+    for record in run.transactions:
+        if not steps or steps[-1].name != record.step:
+            steps.append(FujiStep(name=record.step, txs=[]))
+        steps[-1].txs.append(FujiTx(who=FUJI_ACTORS.get(record.actor, record.actor),
+                                    label=record.label, url=record.url, success=record.success))
+    matches = None
+    if live is not None:
+        matches = (live.vulnerable_minted, live.protected_minted, live.attacker_ghost) == (
+            run.vulnerable_minted, run.protected_minted, run.attacker_ghost_after)
+    return FujiStory(
+        recorded_at=run.finished_at.strftime("%d/%m/%Y %H:%M UTC"),
+        tx_count=len(run.transactions),
+        steps=steps,
+        contracts=[FujiLink(name=name, address=address, url=address_url(address))
+                   for name, address in run.contracts.items()],
+        deposit_tokens=_tokens(run.deposit),
+        signed_tokens=_tokens(run.signed_amount),
+        vulnerable_minted_tokens=_tokens(run.vulnerable_minted),
+        vulnerable_collateral_tokens=_tokens(run.vulnerable_collateral),
+        protected_minted_tokens=_tokens(run.protected_minted),
+        protected_collateral_tokens=_tokens(run.protected_collateral),
+        inflated_rejected=run.protected_inflated_rejected,
+        attacker_ghost_before_tokens=_tokens(run.attacker_ghost_before),
+        attacker_ghost_after_tokens=_tokens(run.attacker_ghost_after),
+        observed_mint_count=len(run.observed_mints),
+        live_block=None if live is None else live.block_number,
+        live_matches_record=matches,
+    )
 
 
 def _value(result: ScenarioResult, variant: str, key: str) -> int | float | None:
@@ -119,7 +223,8 @@ def _require_completed(result: ScenarioResult, scenario_id: str) -> None:
         raise ValueError(f"scénario {scenario_id} non terminé : {result.message}")
 
 
-def build_story(result_a: ScenarioResult, result_b: ScenarioResult) -> Story:
+def build_story(result_a: ScenarioResult, result_b: ScenarioResult,
+                fuji: FujiStory | None = None) -> Story:
     """Extrait les grandeurs mesurees de A et B (ValueError si un scenario n'a pas tourne)."""
     _require_completed(result_a, "A")
     _require_completed(result_b, "B")
@@ -147,7 +252,7 @@ def build_story(result_a: ScenarioResult, result_b: ScenarioResult) -> Story:
         journal=_journal(result_b),
         banner=get_spec("B").result_banner(result_b),
     )
-    return Story(seed=result_a.seed, a=story_a, b=story_b)
+    return Story(seed=result_a.seed, a=story_a, b=story_b, fuji=fuji)
 
 
 def story_json(story: Story) -> str:
@@ -230,12 +335,47 @@ border:1px solid var(--border);overflow:hidden;margin:14px 0}
 </style></head><body><div class="wrap">
 
 <div class="tabs" role="tablist">
- <button class="tab" role="tab" data-t="0" aria-selected="true">🔑 Acte 1 — La clé volée<small>Le pirate a le tampon officiel</small></button>
+ <button class="tab" role="tab" data-t="f" aria-selected="true">⛓️ En vrai sur Avalanche<small>Vraies transactions, vérifiables</small></button>
+ <button class="tab" role="tab" data-t="0" aria-selected="false">🔑 Acte 1 — La clé volée<small>Le pirate a le tampon officiel</small></button>
  <button class="tab" role="tab" data-t="1" aria-selected="false">🕵️ Acte 2 — Le pirate discret<small>Il joue petit pour passer inaperçu</small></button>
  <button class="tab" role="tab" data-t="2" aria-selected="false">📊 Le bilan<small>Ce qu'on a mesuré</small></button>
 </div>
 
-<section class="act on" data-a="0">
+<section class="act on" data-a="f">
+ <h2>La même attaque que Resolv, jouée pour de vrai sur Avalanche</h2>
+ <p class="lead">Ici, rien n'est simulé : nous avons déployé nos contrats sur le réseau de test d'Avalanche
+ (Fuji) et un « pirate » a utilisé une <b>vraie clé volée</b> pour signer un mint de
+ <b id="f-mult">—</b>. Chaque ligne ci-dessous est une transaction réelle : clique pour la vérifier
+ sur l'explorateur public Snowtrace.</p>
+ <div id="f-empty" class="card" style="display:none">Aucun rejeu Fuji enregistré pour l'instant :
+ lancer <code>python -m dashboard.scenarios.fuji_live</code> (compte de test Fuji dans .env).</div>
+ <div id="f-body">
+  <button class="btn" id="run-f">▶ Rejouer la chronologie réelle</button>
+  <span class="badge" id="f-live" style="margin-left:8px"></span>
+  <div class="grid" style="margin-top:14px">
+   <div class="card"><div class="lbl">🔓 Contrat classique — jetons créés pour <span id="f-dep1"></span> USDC déposés</div>
+    <div class="big bad" id="f-vmint">—</div><div class="meter"><i id="f-vbar" style="background:var(--bad)"></i></div>
+    <div class="lbl" id="f-vnote"></div></div>
+   <div class="card"><div class="lbl">🛡️ Secure Horizons — jetons créés pour <span id="f-dep2"></span> USDC déposés</div>
+    <div class="big ok" id="f-pmint">—</div><div class="meter"><i id="f-pbar" style="background:var(--ok)"></i></div>
+    <div class="lbl" id="f-pnote"></div></div>
+  </div>
+  <div class="card" style="margin-top:14px">
+   <div class="ghost"><span class="g" id="f-ghost">👻</span>
+    <div class="win"><div class="lbl">Ghost (ticket) détenu par le pirate</div>
+     <div class="big" id="f-gval">—</div></div></div>
+  </div>
+  <div class="card" style="margin-top:14px"><div class="lbl">Chronologie réelle sur Fuji (<span id="f-count"></span> transactions)</div>
+   <ul class="feed" id="f-feed" style="max-height:330px"></ul></div>
+  <div class="verdict" id="f-verdict"></div>
+  <p class="foot"><b>Contrats déployés :</b> <span id="f-contracts"></span><br>
+  Réseau de test Avalanche Fuji (chain id 43113) : jetons de test sans valeur, attaque reproduite d'après le schéma
+  de l'incident Resolv (qui, lui, a eu lieu sur Ethereum). Le signal de réponse (tentative de mint gonflé rejetée)
+  est une règle de démo ; retarder et détruire passent par les vrais rôles on-chain du contrat Ghost.</p>
+ </div>
+</section>
+
+<section class="act" data-a="0">
  <h2>Que se passe-t-il quand un pirate vole la clé ?</h2>
  <p class="lead">Imagine qu'un cambrioleur vole le <b>tampon officiel</b> d'une banque : tout billet qu'il tamponne
  paraît authentique. C'est exactement ce qui arrive quand la clé de signature d'un protocole est volée.
@@ -324,8 +464,48 @@ function count(el,to,ms,f){if(RM||!ms){el.textContent=f(to);return}var t0=null;
 function later(fn,ms){return setTimeout(fn,RM?0:ms)}
 // Onglets
 var tabs=[].slice.call(document.querySelectorAll('.tab')),acts=[].slice.call(document.querySelectorAll('.act'));
-tabs.forEach(function(t){t.onclick=function(){var k=+t.dataset.t;tabs.forEach(function(x,i){x.setAttribute('aria-selected',i===k)});
- acts.forEach(function(a,i){a.classList.toggle('on',i===k)});if(k===2)bilan()}});
+tabs.forEach(function(t){t.onclick=function(){var k=t.dataset.t;tabs.forEach(function(x){x.setAttribute('aria-selected',x===t)});
+ acts.forEach(function(a){a.classList.toggle('on',a.dataset.a===k)});if(k==='2')bilan()}});
+// En vrai sur Fuji
+var F=S.fuji;
+function link(url,text){var a=document.createElement('a');if(url.indexOf('https://testnet.snowtrace.io/')===0)a.href=url;
+ a.target='_blank';a.rel='noopener noreferrer';a.style.color='var(--accent)';a.textContent=text;return a}
+function tok(n){return fmt(n)}
+if(!F){$('f-empty').style.display='block';$('f-body').style.display='none';$('f-mult').textContent='mille fois son dépôt'}
+else{
+ var mult=F.deposit_tokens?Math.round(F.signed_tokens/F.deposit_tokens):0;
+ $('f-mult').textContent=fmt(mult)+' fois son dépôt';$('f-dep1').textContent=tok(F.deposit_tokens);$('f-dep2').textContent=tok(F.deposit_tokens);
+ $('f-count').textContent=F.tx_count;
+ $('f-live').textContent=F.live_block===null?('rejeu enregistré le '+F.recorded_at):
+  (F.live_matches_record?'✔ état relu à l\u2019instant sur Fuji (bloc '+fmt(F.live_block)+') : identique':'état relu sur Fuji (bloc '+fmt(F.live_block)+')');
+ var cs=$('f-contracts');F.contracts.forEach(function(c,i){if(i)cs.appendChild(document.createTextNode(' · '));cs.appendChild(link(c.url,c.name))});
+ var ff=$('f-feed'),items=[];
+ F.steps.forEach(function(s){var h=document.createElement('li');var b=document.createElement('div');b.className='who';b.style.color='var(--accent)';
+  b.textContent=s.name;h.appendChild(b);ff.appendChild(h);items.push(h);
+  s.txs.forEach(function(t){var li=document.createElement('li'),i=document.createElement('span'),d=document.createElement('div'),w=document.createElement('div'),x=document.createElement('div');
+   i.textContent=t.success?'✅':'⛔';w.className='who';w.textContent=t.who;x.className='det';x.appendChild(document.createTextNode(t.label+' — '));
+   x.appendChild(link(t.url,t.success?'voir la transaction':'voir le rejet on-chain'));d.appendChild(w);d.appendChild(x);li.appendChild(i);li.appendChild(d);ff.appendChild(li);items.push(li)})});
+ var ftimers=[];
+ function resetF(){ftimers.forEach(clearTimeout);ftimers=[];items.forEach(function(li){li.className=''});$('f-vmint').textContent='—';$('f-pmint').textContent='—';
+  $('f-vbar').style.width='0';$('f-pbar').style.width='0';$('f-vnote').textContent='';$('f-pnote').textContent='';$('f-ghost').className='g';
+  $('f-gval').textContent='—';$('f-verdict').className='verdict'}
+ function stepAt(name){var idx=0;for(var k=0;k<items.length;k++){if(items[k].firstChild&&items[k].firstChild.textContent===name){idx=k;break}}return idx}
+ $('run-f').onclick=function(){resetF();var btn=this,per=RM?0:260;btn.disabled=true;
+  items.forEach(function(li,k){ftimers.push(later(function(){li.className='on';li.scrollIntoView({block:'nearest'})},k*per))});
+  var tA=stepAt('Attaque n°1 : contrat classique')*per+4*per,tB=stepAt('Attaque n°2 : contrat Secure Horizons')*per+9*per,
+   tR=stepAt('Réponse : le surveillant retarde, les humains détruisent')*per;
+  ftimers.push(later(function(){count($('f-vmint'),F.vulnerable_minted_tokens,1600,tok);$('f-vbar').style.width='100%';
+   $('f-vnote').textContent='Le contrat a cru la signature : '+fmt(F.vulnerable_minted_tokens-F.vulnerable_collateral_tokens)+' jetons sans aucun argent derrière.'},tA));
+  ftimers.push(later(function(){count($('f-pmint'),F.deposit_tokens,1200,tok);$('f-pbar').style.width=Math.max(0.6,100*F.deposit_tokens/Math.max(F.vulnerable_minted_tokens,1))+'%';
+   $('f-gval').textContent=tok(F.attacker_ghost_before_tokens)+' jetons Ghost';
+   $('f-pnote').textContent=(F.inflated_rejected?'Mint gonflé rejeté par le contrat. ':'')+'Le pirate ne reçoit que son propre dépôt, et en Ghost.'},tB));
+  ftimers.push(later(function(){$('f-ghost').className='g burn';$('f-gval').textContent=tok(F.attacker_ghost_after_tokens)+' jeton Ghost (détruit par 2 gardiens sur 3)'},tR+3*per));
+  ftimers.push(later(function(){var v=$('f-verdict'),ok=F.protected_minted_tokens<=F.protected_collateral_tokens;v.className='verdict '+(ok?'good':'badv')+' on';
+   v.textContent=ok?'🛡️ Sur la vraie blockchain : le contrat classique a créé '+fmt(F.vulnerable_minted_tokens)+' jetons pour '+fmt(F.deposit_tokens)+' USDC. Secure Horizons : chaque jeton reste adossé à un vrai dépôt, et le Ghost du pirate a été détruit.':'Écart détecté entre jetons et dépôts.';
+   btn.disabled=false},items.length*per+300));
+ };
+ resetF();
+}
 // Acte 1
 var A=S.a,prot=false;$('banner-a').textContent=A.banner+' · seed '+S.seed;
 function setSw(p){prot=p;$('sw-v').setAttribute('aria-pressed',!p);$('sw-p').setAttribute('aria-pressed',p);resetA()}
@@ -382,10 +562,12 @@ function bilan(){var loss=(A.protected_loss||0)+(B.protocol_loss||0);count($('k-
 
 
 __all__ = [
+    "FujiStory",
     "JournalLine",
     "Story",
     "StoryA",
     "StoryB",
+    "build_fuji_story",
     "build_story",
     "render_story_html",
     "story_json",

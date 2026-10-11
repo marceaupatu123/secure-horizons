@@ -78,9 +78,29 @@ def test_story_json_ne_peut_pas_fermer_le_script(story):
     assert json.loads(payload)["b"]["journal"][0]["detail"].startswith("</script>")
 
 
-def test_page_rejoue_et_affiche_le_composant():
+def test_page_rejoue_et_affiche_le_composant(monkeypatch):
+    from dashboard.scenarios import fuji_live
+
+    def _offline(*_args, **_kwargs):
+        raise ConnectionError("hors réseau en test")
+
+    monkeypatch.setattr(fuji_live, "read_live_state", _offline)
+    monkeypatch.setattr(fuji_live, "key_available", lambda: False)
     at = AppTest.from_file(PAGE_PATH, default_timeout=60)
     at.run()
     assert not at.exception
     assert at.session_state["story"].seed == DEMO_SEED
     assert FORBIDDEN_WORD not in " ".join(c.value for c in at.caption).lower()
+
+
+
+def test_html_avec_rejeu_fuji(story):
+    from dashboard.scenarios import fuji_live
+    from dashboard.story import build_fuji_story
+
+    run = fuji_live.load_run()
+    if run is None:
+        pytest.skip("aucun rejeu Fuji enregistré")
+    html = render_story_html(story.model_copy(update={"fuji": build_fuji_story(run)}))
+    assert run.transactions[0].tx_hash in html
+    assert FORBIDDEN_WORD not in html.lower()

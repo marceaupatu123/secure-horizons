@@ -25,6 +25,16 @@
   novices. `story.py` extrait les grandeurs mesurées et produit un HTML autonome (sans ressource
   externe, respecte `prefers-reduced-motion`). C'est la page à ouvrir devant un jury ou des
   investisseurs : « Demo interactive » dans la barre latérale.
+- `scenarios/fuji_live.py` : **rejeu en vraies transactions sur Avalanche Fuji** (#148), premier
+  onglet de la démo interactive. Déploie `MockUSDC`, `VulnerableMinter`, `ProtectedMinter` (+ Ghost),
+  joue le schéma de l'attaque Resolv (clé de service volée, mint gonflé ×1000) sur les deux
+  contrats, fait relire les mints par le vrai `monitor.ChainListener`, puis retarde (surveillant) et
+  détruit (2 gardiens sur 3) le Ghost du pirate. ~25 transactions, résultat public dans
+  `fuji_runs/latest.json`, relu en direct sur la chaîne à chaque affichage de la page. Lancer :
+  `python -m dashboard.scenarios.fuji_live` (nécessite `forge build` dans `contracts/` et
+  `GUARDIAN_PRIVATE_KEY` d'un compte de **TEST** Fuji dans `.env` ; les autres rôles sont des comptes
+  de test dérivés de cette clé et approvisionnés par elle). Le signal de réponse (mint gonflé rejeté)
+  est une règle de démo, pas un surveillant du module `detection`.
 
 Aucun chiffre affiché n'est écrit en dur : tout est calculé à partir du jeu synthétique. Ce sont
 des comptages, pas des mesures de performance.

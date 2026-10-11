@@ -1,0 +1,212 @@
+{
+  "chain_id": 43113,
+  "started_at": "2026-10-11T08:34:54.743620Z",
+  "finished_at": "2026-10-11T08:35:37.526992Z",
+  "accounts": {
+    "admin": "0x6d1F263c9B5D09c5FfcD8e954652Eb042d0332fD",
+    "attacker": "0xb7Bb1c57Ec03138037352b8f06cbe6875a938617",
+    "watcher": "0xd0299A785dd4a71eD1b5C700dC4443829F529FaA",
+    "guardian1": "0x33385411B52F315E3D6bac158A33E8E9704928A7",
+    "guardian2": "0x90fDA1717AE9C83c8948C756ecCC4246f407d26D",
+    "guardian3": "0x484ed4e8E1fd6EDD560F7A7c6430c50f7DDe13eE",
+    "whale": "0x0781718957FB80561BE4BA9a5a6007BdF57C455F"
+  },
+  "contracts": {
+    "MockUSDC": "0x4369CF4545C8d66C5aeeF1A71A3cc00f2B5ca06f",
+    "VulnerableMinter": "0xf538aBf585928534f499b0c13290Dac4632d5e18",
+    "ProtectedMinter": "0x95AfF45e8BE8E72Aa43A618A91698171830fBD56",
+    "GhostToken": "0xEa199016C51566d017B6D8BA8107f1c9C2CE462c",
+    "StableToken (vulnérable)": "0x8c7bfEbEB9Ee1edfa294627339Ad29303acAA7B1"
+  },
+  "transactions": [
+    {
+      "step": "Déploiement des contrats sur Fuji",
+      "actor": "admin",
+      "label": "Déploiement du faux USDC de test",
+      "tx_hash": "0xc25ac58243919a884afcdcc561a550e51bef235503c1092fa76488386024a259",
+      "block_number": 59298941,
+      "success": true
+    },
+    {
+      "step": "Déploiement des contrats sur Fuji",
+      "actor": "admin",
+      "label": "Déploiement du contrat classique (vulnérable)",
+      "tx_hash": "0x9beaee64508889860d25df98d90fca97bf04ff14ce57c6f3bb585677a02f9e8e",
+      "block_number": 59298943,
+      "success": true
+    },
+    {
+      "step": "Déploiement des contrats sur Fuji",
+      "actor": "admin",
+      "label": "Déploiement du contrat Secure Horizons",
+      "tx_hash": "0x9712857fdb5a1d6e296ab4e6d18d56284f3bcd7847ba20c61336c350369bfcf3",
+      "block_number": 59298944,
+      "success": true
+    },
+    {
+      "step": "Déploiement des contrats sur Fuji",
+      "actor": "admin",
+      "label": "Le surveillant reçoit son rôle (il peut seulement retarder)",
+      "tx_hash": "0x42b5271d934e66b03aadc8063cf064383a8ed5bc29f756fef6f30ffac312e80b",
+      "block_number": 59298947,
+      "success": true
+    },
+    {
+      "step": "Attaque n°1 : contrat classique",
+      "actor": "attacker",
+      "label": "attacker reçoit 1000 USDC de test",
+      "tx_hash": "0x165d04f262100ddbdc56e41e90cbe7ef8d8940eb2ce4851b6a24a96f6bf761df",
+      "block_number": 59298949,
+      "success": true
+    },
+    {
+      "step": "Attaque n°1 : contrat classique",
+      "actor": "attacker",
+      "label": "attacker autorise le dépôt",
+      "tx_hash": "0x2b19172eacb282c87b659fa5f983f2c530f959f149f2e9a878b896256a7f8485",
+      "block_number": 59298950,
+      "success": true
+    },
+    {
+      "step": "Attaque n°1 : contrat classique",
+      "actor": "attacker",
+      "label": "attacker dépose 1000 USDC (demande n°0)",
+      "tx_hash": "0x34793a8b34d2d0222a254782b4fd6bae475cc61115823e5ff3ef9155591811ee",
+      "block_number": 59298951,
+      "success": true
+    },
+    {
+      "step": "Attaque n°1 : contrat classique",
+      "actor": "attacker",
+      "label": "Clé volée : mint signé de 1000 × le dépôt",
+      "tx_hash": "0x8d8a006715e4bf0c6bdb66ac16a91b250287a397781688ce8c8ee94e2df91e0c",
+      "block_number": 59298952,
+      "success": true
+    },
+    {
+      "step": "Attaque n°2 : contrat Secure Horizons",
+      "actor": "whale",
+      "label": "whale reçoit 10000 USDC de test",
+      "tx_hash": "0x6df08f484783c6e723e7237e125c28b04a07df20b1c10f49999363db3942c96f",
+      "block_number": 59298955,
+      "success": true
+    },
+    {
+      "step": "Attaque n°2 : contrat Secure Horizons",
+      "actor": "whale",
+      "label": "whale autorise le dépôt",
+      "tx_hash": "0x4a93f3e0961e1acedb50498c3b352175672fe83f304adf3f9c5c432cedea8dd2",
+      "block_number": 59298956,
+      "success": true
+    },
+    {
+      "step": "Attaque n°2 : contrat Secure Horizons",
+      "actor": "whale",
+      "label": "whale dépose 10000 USDC (demande n°0)",
+      "tx_hash": "0x622b6a8019523b90c990fde20a7f0325dae8735ec4100adb7036cb7b69800894",
+      "block_number": 59298957,
+      "success": true
+    },
+    {
+      "step": "Attaque n°2 : contrat Secure Horizons",
+      "actor": "attacker",
+      "label": "Un utilisateur honnête est servi normalement",
+      "tx_hash": "0xd900ada75527263515b1130133e26c3e500806d895c0df4e0ca6a20490680ad5",
+      "block_number": 59298958,
+      "success": true
+    },
+    {
+      "step": "Attaque n°2 : contrat Secure Horizons",
+      "actor": "attacker",
+      "label": "attacker reçoit 1000 USDC de test",
+      "tx_hash": "0x911fabad44a8ada6d7f1f74551462521a3d18764486c45f82e1622fc929036e9",
+      "block_number": 59298959,
+      "success": true
+    },
+    {
+      "step": "Attaque n°2 : contrat Secure Horizons",
+      "actor": "attacker",
+      "label": "attacker autorise le dépôt",
+      "tx_hash": "0x35684aeeaedb01dff66efb32e2bfb0357b4900c3e27644a426c9852eaee2940b",
+      "block_number": 59298961,
+      "success": true
+    },
+    {
+      "step": "Attaque n°2 : contrat Secure Horizons",
+      "actor": "attacker",
+      "label": "attacker dépose 1000 USDC (demande n°1)",
+      "tx_hash": "0xd988b0c48da0b67a382062899b901386962d7fc3fcd029536a775e62ad06e42d",
+      "block_number": 59298963,
+      "success": true
+    },
+    {
+      "step": "Attaque n°2 : contrat Secure Horizons",
+      "actor": "attacker",
+      "label": "Clé volée : même mint signé de 1000 × le dépôt (rejeté)",
+      "tx_hash": "0x7838d0ae8f1ce1621a9b3e14b8b523114f60e5243fd19e9877142361f3e0e286",
+      "block_number": 59298965,
+      "success": false
+    },
+    {
+      "step": "Attaque n°2 : contrat Secure Horizons",
+      "actor": "attacker",
+      "label": "Seul appel possible : « traiter la demande n°X » (montant lu dans le coffre)",
+      "tx_hash": "0x302180c147beb3a76b2d4a5c366c592474b0b084cc6a32ed30ef30980f0df5ed",
+      "block_number": 59298966,
+      "success": true
+    },
+    {
+      "step": "Réponse : le surveillant retarde, les humains détruisent",
+      "actor": "watcher",
+      "label": "Le surveillant retarde le Ghost de l'attaquant",
+      "tx_hash": "0x461d6a0256ecf185ded846afbd4b4ca1bba61624ce9d53f35250662595837e30",
+      "block_number": 59298967,
+      "success": true
+    },
+    {
+      "step": "Réponse : le surveillant retarde, les humains détruisent",
+      "actor": "guardian1",
+      "label": "Gardien 1 propose la destruction",
+      "tx_hash": "0x50372247c943d128cf368e758b4733577e4bac681c8ae651721a564c58196ac2",
+      "block_number": 59298970,
+      "success": true
+    },
+    {
+      "step": "Réponse : le surveillant retarde, les humains détruisent",
+      "actor": "guardian2",
+      "label": "Gardien 2 valide : 2 sur 3, le Ghost suspect est détruit",
+      "tx_hash": "0x270204f71cddb9a81117ff865bf73a687c0b20b1eee9642d0ca3ff79955e5884",
+      "block_number": 59298972,
+      "success": true
+    }
+  ],
+  "deposit": 1000000000000000000000,
+  "signed_amount": 1000000000000000000000000,
+  "vulnerable_minted": 1000000000000000000000000,
+  "vulnerable_collateral": 1000000000000000000000,
+  "protected_minted": 10000000000000000000000,
+  "protected_collateral": 11000000000000000000000,
+  "protected_inflated_rejected": true,
+  "attacker_ghost_before": 1000000000000000000000,
+  "attacker_ghost_after": 0,
+  "observed_mints": [
+    {
+      "token": "0x8c7bfEbEB9Ee1edfa294627339Ad29303acAA7B1",
+      "recipient": "0xb7Bb1c57Ec03138037352b8f06cbe6875a938617",
+      "amount": 1000000000000000000000000,
+      "tx_hash": "0x8d8a006715e4bf0c6bdb66ac16a91b250287a397781688ce8c8ee94e2df91e0c"
+    },
+    {
+      "token": "0xEa199016C51566d017B6D8BA8107f1c9C2CE462c",
+      "recipient": "0x0781718957FB80561BE4BA9a5a6007BdF57C455F",
+      "amount": 10000000000000000000000,
+      "tx_hash": "0xd900ada75527263515b1130133e26c3e500806d895c0df4e0ca6a20490680ad5"
+    },
+    {
+      "token": "0xEa199016C51566d017B6D8BA8107f1c9C2CE462c",
+      "recipient": "0xb7Bb1c57Ec03138037352b8f06cbe6875a938617",
+      "amount": 1000000000000000000000,
+      "tx_hash": "0x302180c147beb3a76b2d4a5c366c592474b0b084cc6a32ed30ef30980f0df5ed"
+    }
+  ]
+}
