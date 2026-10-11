@@ -254,6 +254,41 @@ contract AssetVaultTest is Test {
         vault.burnSeedPayment(carol, 10e6, 0);
     }
 
+    /// @notice Une restitution ne peut pas puiser dans l'adossement d'un porteur de Ghost de
+    ///         paiement SANS RAPPORT (autre vente) : l'invariant du coffre tient quoi que publie
+    ///         le multisig. Ici seule la graine `carol` est brûlée ; le porteur honnête `buyer2`
+    ///         reste intégralement adossé et peut convertir.
+    function test_restitute_keepsOtherHolderBacked() public {
+        _lock(carol, 10e6, MATURITY); // graine
+        _lock(buyer2, 10e6, MATURITY); // vente honnête sans rapport
+        assertEq(ghost.totalSupply(), 20e6);
+        assertEq(vault.locked(), 20e6);
+
+        _burnSeed(carol, 10e6, 0); // libère 10 ; offre restante = 10 (buyer2)
+        assertEq(ghost.totalSupply(), 10e6);
+        assertEq(vault.locked(), 20e6);
+
+        bytes32[] memory proof = new bytes32[](0);
+        // Racine abusive payant 20 au voleur : refusée (seul 10 est libéré).
+        bytes32 greedy = _leaf(carol, 20e6, 0);
+        _confirmRoot(greedy);
+        vm.expectRevert(abi.encodeWithSelector(IAssetVault.ExceedsLocked.selector, 20e6, 10e6));
+        vault.restitute(carol, 20e6, 0, proof);
+
+        // Restitution correcte de 10 : le coffre reste adossé pour buyer2.
+        bytes32 ok = _leaf(carol, 10e6, 1);
+        _confirmRoot(ok);
+        vault.restitute(carol, 10e6, 1, proof);
+        assertEq(vault.locked(), 10e6);
+        assertGe(vault.locked(), ghost.totalSupply()); // I-COFFRE préservé
+
+        // buyer2 convertit l'intégralité à l'échéance.
+        vm.warp(MATURITY);
+        vm.prank(buyer2);
+        assertEq(vault.redeem(10e6), 10e6);
+        assertEq(usdc.balanceOf(buyer2), 10e6);
+    }
+
     // ---------------------------------------------------------------- fuzz : invariant du coffre
 
     function testFuzz_coffreInvariant(uint256 seed) public {

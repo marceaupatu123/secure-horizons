@@ -101,7 +101,12 @@ contract AssetVault is IAssetVault, VaultGuardians, ReentrancyGuard {
         if (restitutionRoot == bytes32(0) || !MerkleProof.verify(proof, restitutionRoot, leaf)) {
             revert InvalidProof();
         }
-        if (amount > locked()) revert ExceedsLocked(amount, locked());
+        // La restitution ne peut puiser que dans l'argent LIBÉRÉ par les burns de Ghost de
+        // paiement des graines (`locked - offre restante`). Puiser au-delà laisserait du Ghost de
+        // paiement honnête (d'une autre vente) sans adossement : l'invariant maître
+        // `locked >= assetGhost.totalSupply()` tient alors quoi que publie le multisig.
+        uint256 available = locked() - _assetGhost.totalSupply();
+        if (amount > available) revert ExceedsLocked(amount, available);
         claimed[nonce] = true;
         totalRestituted += amount;
         _asset.safeTransfer(to, amount);
