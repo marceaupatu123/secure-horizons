@@ -1103,9 +1103,26 @@ plusieurs champs spéculatifs. Le passage par contexte explicite reste l'interfa
 
 ### Reste ouvert
 
-- Révision groupée de `shared/` (montant/taux/offre/collatéral/admin) **le jour où monitor décode
-  les événements dédiés du contrat #5**, pas avant — à faire par le propriétaire de `shared/`.
-- Distinction on-chain d'un Ghost (`is_ghost`) : à figer avec le design du contrat Ghost (#8).
+- ~~Révision groupée de `shared/` (montant/taux/offre/collatéral/admin) **le jour où monitor décode
+  les événements dédiés du contrat #5**, pas avant — à faire par le propriétaire de `shared/`.~~
+  → **Faite (#104, 2026-10-11)**. Le monitor décode depuis #116, #128 et #129. Choix de mise en
+  œuvre, par Kiro pour @marceaupatu123 (propriétaire de `shared/`), à relire par @denybs et
+  @Yannis1307 :
+  - `MintEvent` ajoute, en champs optionnels, ce que porte `monitor.protected.MintProvenance` :
+    `depositor`, `deposit_amount`, `rate_wad` (valeur brute du contrat, ×10¹⁸),
+    `provenance_source` (`request`/`completion`), `claimed_minted`, et `via_protected_path`
+    (équivalent de `MintContext.path_unexpected`, I4). `None` = inconnu ; la cohérence des champs
+    est validée par le modèle. Changement non cassant.
+  - `AdminEvent` partagé, avec des champs typés par type d'événement (`role` en bytes32,
+    `old_rate_wad`/`new_rate_wad`) plutôt qu'un dictionnaire libre.
+  - `SupplySnapshot` (I5, I6) : la forme est fixée. Le monitor ne le produit pas encore ;
+    `CONTRACTS.md` le dit.
+  - Le taux reste **brut** (valeur du contrat) : la conversion en base units reste au
+    consommateur, pour qu'un seul module (`detection.provenance.rate_from_wad`) la porte.
+  - Spécification : `docs/CONTRACTS.md` (`MintEvent`, `AdminEvent`, `SupplySnapshot`).
+- ~~Distinction on-chain d'un Ghost (`is_ghost`) : à figer avec le design du contrat Ghost (#8).~~
+  → Figée : le Ghost M' est un **contrat séparé** (#8). Un log venant de ce contrat donne
+  `is_ghost = true` (#129) ; la description de `TransferEvent.is_ghost` a été mise à jour.
 
 ## §11. Contamination posée après coup — comment rattraper le M' déjà propagé (#85)
 
