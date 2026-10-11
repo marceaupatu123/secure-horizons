@@ -171,7 +171,7 @@ flowchart TD
 | [x] | #25 | data : scénarios C et D (contagion + Token Ghost) | `optional`, dépend de #7/#8 _(simulation hors chaîne, PR #82)_ |
 | [x] | #106 | detection : recalcul rétroactif du lignage hors chaîne → `Alert.seeds` | suite de #85 (OPEN_ANSWERS §11, piste b) _(PR #112)_ |
 | [x] | #113 | dashboard : rapport d'incident DORA (#15) sur l'alerte confirmée du scénario B | dépend de #15, #70 _(PR #115)_ |
-| [ ] | #110 | dashboard : brancher C, D et le Ghost de B/N3 sur #7/#8/#25/#65 | `optional` ; suite de #70, attend les briques livrées. |
+| [x] | #110 | dashboard : brancher C, D et le Ghost de B/N3 sur #7/#8/#25/#65 | `optional` ; suite de #70. C et D sur anvil _(PR #143)_, Ghost de B/N3 en variante `ghost-onchain` _(PR #127)_ |
 
 ---
 
