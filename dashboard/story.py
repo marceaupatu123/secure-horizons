@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict
 
 from dashboard.demo_data import DEMO_EXTENDED_WINDOW, DEMO_NORMAL_WINDOW
 from dashboard.scenarios import ScenarioResult, ScenarioStatus, get_spec
+from dashboard.scenarios.fuji_live import FujiRun, LiveState, address_url
 
 JOURNAL_MAX_ENTRIES = 12
 JOURNAL_DETAIL_MAX_CHARS = 160
@@ -72,6 +73,68 @@ class StoryB(BaseModel):
     banner: str
 
 
+class FujiTx(BaseModel):
+    """Transaction reelle Fuji, prete a afficher."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str
+
+
+class FujiStep(BaseModel):
+    """Etape intéressante d'un cas : commande de terminal + effet."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    command: str
+    actor: str
+    contract: str
+    contract_url: str
+    narration: str
+    effect: str
+    outcome: str  # accepted | rejected | defended
+    countdown: bool  # affiche une animation d'attente (échéance 10 min) avant l'effet
+    tx_urls: list[str]
+
+
+class FujiCase(BaseModel):
+    """Un cas de la démo Fuji : un titre, un verdict et ses étapes."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    title: str
+    subtitle: str
+    outcome: str  # bad | good | window | resolved
+    verdict: str
+    steps: list[FujiStep]
+
+
+class FujiLink(BaseModel):
+    """Contrat avec son lien Snowtrace."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    address: str
+    url: str
+
+
+class FujiStory(BaseModel):
+    """Rejeu en vraies transactions sur Avalanche Fuji, raconté en cas étape par étape."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    recorded_at: str
+    tx_count: int
+    step_count: int
+    cases: list[FujiCase]
+    contracts: list[FujiLink]
+    observed_mint_count: int
+    live_block: int | None
+    live_matches_record: bool | None
+
+
 class Story(BaseModel):
     """Tout ce que la page anime, calcule a partir des resultats reels."""
 
@@ -80,6 +143,66 @@ class Story(BaseModel):
     seed: int
     a: StoryA
     b: StoryB
+    fuji: FujiStory | None = None
+
+
+TOKEN_UNIT = 10**18
+FUJI_CASE_META: dict[str, tuple[str, str, str]] = {
+    "mint-passe": ("Le mint passe", "Contrat classique : la clé volée gagne", "bad"),
+    "mint-bloque": ("Le mint est bloqué", "Crypto-Secure : la clé volée ne gagne rien", "good"),
+    "fenetre-reprise": ("La fenêtre de reprise", "Un échange donne du M-Ghost, pas du M-Coin",
+                        "window"),
+    "ghost-vendeur": ("Un vendeur de Ghost pose problème",
+                      "On gèle, on détruit, on rembourse l'honnête", "resolved"),
+}
+FUJI_CASE_VERDICT: dict[str, str] = {
+    "mint-passe": "✗ Sur un contrat classique, la clé volée a réussi : des jetons sans réserve ont "
+                  "été créés.",
+    "mint-bloque": "🛡️ Le mint gonflé est bloqué : la clé volée ne crée rien de plus que le dépôt "
+                   "réel.",
+    "fenetre-reprise": "⏳ Un échange donne d'abord du M-Ghost, PAS du M-Coin. Tant que la fenêtre "
+                       "de sécurité n'est pas écoulée, tout est réversible — c'est le levier de "
+                       "reprise. Au bout des 10 min sans anomalie, le M-Ghost arrive à échéance et "
+                       "vaut du M-Coin 1:1, automatiquement : personne n'a à le décider.",
+    "ghost-vendeur": "🛡️ Problème résolu on-chain : pendant la fenêtre, tout le Ghost suspect est "
+                     "détruit et l'argent gelé rendu à l'acheteur honnête ; le vendeur finit à zéro.",
+}
+FUJI_CASE_ORDER = ("mint-passe", "mint-bloque", "fenetre-reprise", "ghost-vendeur")
+
+
+def _tokens(amount: int) -> float:
+    return amount / TOKEN_UNIT
+
+
+def build_fuji_story(run: FujiRun, live: LiveState | None = None) -> FujiStory:
+    """Traduit un rejeu Fuji (et, si fourni, l'etat relu a l'instant) pour la page."""
+    cases: list[FujiCase] = []
+    for case_id in FUJI_CASE_ORDER:
+        steps = [FujiStep(command=s.command, actor=s.actor_label, contract=s.contract,
+                          contract_url=s.contract_url, narration=s.narration, effect=s.effect,
+                          outcome=s.outcome, countdown=s.command.startswith("⏱"),
+                          tx_urls=list(s.tx_urls))
+                 for s in run.steps if s.case == case_id]
+        if not steps:
+            continue
+        title, subtitle, outcome = FUJI_CASE_META[case_id]
+        cases.append(FujiCase(id=case_id, title=title, subtitle=subtitle, outcome=outcome,
+                              verdict=FUJI_CASE_VERDICT[case_id], steps=steps))
+    matches = None
+    if live is not None:
+        matches = (live.vulnerable_minted, live.seller_usdc_final) == (
+            run.vulnerable_minted, run.seller_usdc_final)
+    return FujiStory(
+        recorded_at=run.finished_at.strftime("%d/%m/%Y %H:%M UTC"),
+        tx_count=len(run.transactions),
+        step_count=len(run.steps),
+        cases=cases,
+        contracts=[FujiLink(name=name, address=address, url=address_url(address))
+                   for name, address in run.contracts.items()],
+        observed_mint_count=len(run.observed_mints),
+        live_block=None if live is None else live.block_number,
+        live_matches_record=matches,
+    )
 
 
 def _value(result: ScenarioResult, variant: str, key: str) -> int | float | None:
@@ -119,7 +242,8 @@ def _require_completed(result: ScenarioResult, scenario_id: str) -> None:
         raise ValueError(f"scénario {scenario_id} non terminé : {result.message}")
 
 
-def build_story(result_a: ScenarioResult, result_b: ScenarioResult) -> Story:
+def build_story(result_a: ScenarioResult, result_b: ScenarioResult,
+                fuji: FujiStory | None = None) -> Story:
     """Extrait les grandeurs mesurees de A et B (ValueError si un scenario n'a pas tourne)."""
     _require_completed(result_a, "A")
     _require_completed(result_b, "B")
@@ -147,7 +271,7 @@ def build_story(result_a: ScenarioResult, result_b: ScenarioResult) -> Story:
         journal=_journal(result_b),
         banner=get_spec("B").result_banner(result_b),
     )
-    return Story(seed=result_a.seed, a=story_a, b=story_b)
+    return Story(seed=result_a.seed, a=story_a, b=story_b, fuji=fuji)
 
 
 def story_json(story: Story) -> str:
@@ -226,16 +350,85 @@ border:1px solid var(--border);overflow:hidden;margin:14px 0}
 .kpi{text-align:center}.kpi .big{font-size:34px}
 .foot{font-size:12px;color:var(--muted);margin-top:14px;line-height:1.5}
 .badge{display:inline-block;font-size:11px;padding:3px 8px;border-radius:20px;background:var(--panel2);color:var(--muted);border:1px solid var(--border)}
+.cases{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 14px}
+.casebtn{flex:1;min-width:150px;text-align:left;padding:10px 12px;border-radius:10px;background:var(--panel2);
+color:var(--text);border:1px solid var(--border);cursor:pointer;font-size:14px;font-weight:600}
+.casebtn small{display:block;color:var(--muted);font-weight:400;font-size:11px;margin-top:2px}
+.casebtn[aria-pressed=true]{border-color:var(--accent);box-shadow:0 0 0 2px #6ea8ff33}
+.casebtn .pill{font-size:10px;padding:1px 7px;border-radius:20px;float:right}
+.pill.bad{background:#ff5c7a22;color:var(--bad)}.pill.good{background:#3ddc9722;color:var(--ok)}
+.pill.resolved{background:#6ea8ff22;color:var(--accent)}.pill.window{background:#ffc35c22;color:var(--warn)}
+.termwrap{display:grid;grid-template-columns:1fr 230px;gap:14px}
+@media(max-width:720px){.termwrap{grid-template-columns:1fr}}
+.term{background:#060b18;border:1px solid var(--border);border-radius:12px;overflow:hidden;min-height:300px;display:flex;flex-direction:column}
+.termbar{display:flex;gap:6px;align-items:center;padding:8px 12px;background:#0d1430;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)}
+.termbar i{width:11px;height:11px;border-radius:50%;display:inline-block}
+.termout{flex:1;padding:12px 14px;font-family:"SF Mono",Consolas,"Liberation Mono",monospace;font-size:13px;line-height:1.6;overflow:auto;max-height:340px}
+.termline{white-space:pre-wrap;word-break:break-word}
+.termcmd{color:var(--text)}.termcmd .pr{color:var(--ok)}
+.termcmd .cur{color:var(--accent)}
+.fx{display:block;margin:2px 0 10px;padding-left:2px}
+.fx.accepted{color:var(--bad)}.fx.rejected{color:var(--ok)}.fx.defended{color:var(--ok)}
+.fx a,.termline a{color:var(--accent)}
+.cmdbtn{display:block;width:100%;text-align:left;margin-top:10px;padding:11px 13px;border-radius:10px;border:1px solid var(--accent);
+background:var(--accent);color:#06102a;cursor:pointer;font-weight:700;font-size:13px}
+.cmdbtn:disabled{opacity:.45;cursor:default}
+.cmdbtn code{display:block;font-size:12px;font-weight:600;margin-top:4px;color:#06102a;opacity:.8;font-family:monospace}
+.cmdbtn.done{background:var(--panel2);color:var(--muted);border-color:var(--border)}
+.cmdbtn.done code{color:var(--muted)}
+.rail{display:flex;flex-direction:column;gap:7px}
+.rail .rlbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.rchip{padding:7px 9px;border-radius:9px;background:var(--panel);border:1px solid var(--border);font-size:12px;transition:all .3s}
+.rchip.active{border-color:var(--accent);box-shadow:0 0 0 2px #6ea8ff33}
+.rchip a{color:var(--accent)}.rchip .rt{display:block;font-size:10px;color:var(--muted)}
+.cd{margin:4px 0 12px;padding:12px;border:1px solid var(--border);border-radius:10px;background:#0d1430}
+.cdtop{display:flex;align-items:center;justify-content:space-between;font-size:16px}
+.cdclock{font-family:monospace;font-weight:800;color:var(--warn);font-variant-numeric:tabular-nums;font-size:22px}
+.cdghost,.cdcoin{font-size:26px;transition:transform .4s,opacity .4s}
+.cdcoin{opacity:.3}.cd.done .cdghost{opacity:.25;transform:scale(.8)}.cd.done .cdcoin{opacity:1;transform:scale(1.25)}
+.cdbar{height:12px;border-radius:7px;background:var(--panel2);overflow:hidden;margin:9px 0 5px}
+.cdbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--ok))}
+.cdnote{font-size:11px;color:var(--muted)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body><div class="wrap">
 
 <div class="tabs" role="tablist">
- <button class="tab" role="tab" data-t="0" aria-selected="true">🔑 Acte 1 — La clé volée<small>Le pirate a le tampon officiel</small></button>
+ <button class="tab" role="tab" data-t="f" aria-selected="true">⛓️ En vrai sur Avalanche<small>Vraies transactions, vérifiables</small></button>
+ <button class="tab" role="tab" data-t="0" aria-selected="false">🔑 Acte 1 — La clé volée<small>Le pirate a le tampon officiel</small></button>
  <button class="tab" role="tab" data-t="1" aria-selected="false">🕵️ Acte 2 — Le pirate discret<small>Il joue petit pour passer inaperçu</small></button>
  <button class="tab" role="tab" data-t="2" aria-selected="false">📊 Le bilan<small>Ce qu'on a mesuré</small></button>
 </div>
 
-<section class="act on" data-a="0">
+<section class="act on" data-a="f">
+ <h2>La même attaque que Resolv, jouée pour de vrai sur Avalanche</h2>
+ <p class="lead">Rien n'est simulé : nos contrats sont déployés sur le réseau de test d'Avalanche (Fuji).
+ Choisis un cas, puis clique sur le bouton de chaque étape : la commande s'écrit dans le terminal
+ et s'exécute pour de vrai. Chaque effet renvoie à sa transaction, vérifiable sur Snowtrace.</p>
+ <div id="f-empty" class="card" style="display:none">Aucun rejeu Fuji enregistré pour l'instant :
+ lancer <code>python -m dashboard.scenarios.fuji_live</code> (compte de test Fuji dans .env).</div>
+ <div id="f-body">
+  <span class="badge" id="f-live"></span>
+  <div class="cases" id="f-cases" role="group" aria-label="Choix du cas"></div>
+  <div class="termwrap">
+   <div class="term">
+    <div class="termbar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>
+     <span style="margin-left:8px" id="f-termtitle">terminal — Avalanche Fuji</span></div>
+    <div class="termout" id="f-termout"></div>
+   </div>
+   <div>
+    <div id="f-next"></div>
+    <div class="rail" style="margin-top:14px"><span class="rlbl">Contrats en jeu</span>
+     <div id="f-rail"></div></div>
+   </div>
+  </div>
+  <div class="verdict" id="f-verdict"></div>
+  <p class="foot">Réseau de test Avalanche Fuji (chain id 43113) : jetons de test sans valeur, schéma reproduit
+  d'après l'incident Resolv (qui a eu lieu sur Ethereum). Dans le cas 3, <b>comment</b> le vendeur est repéré n'est
+  pas divulgué ; geler, détruire et restituer passent par les vrais rôles on-chain des contrats.</p>
+ </div>
+</section>
+
+<section class="act" data-a="0">
  <h2>Que se passe-t-il quand un pirate vole la clé ?</h2>
  <p class="lead">Imagine qu'un cambrioleur vole le <b>tampon officiel</b> d'une banque : tout billet qu'il tamponne
  paraît authentique. C'est exactement ce qui arrive quand la clé de signature d'un protocole est volée.
@@ -324,8 +517,62 @@ function count(el,to,ms,f){if(RM||!ms){el.textContent=f(to);return}var t0=null;
 function later(fn,ms){return setTimeout(fn,RM?0:ms)}
 // Onglets
 var tabs=[].slice.call(document.querySelectorAll('.tab')),acts=[].slice.call(document.querySelectorAll('.act'));
-tabs.forEach(function(t){t.onclick=function(){var k=+t.dataset.t;tabs.forEach(function(x,i){x.setAttribute('aria-selected',i===k)});
- acts.forEach(function(a,i){a.classList.toggle('on',i===k)});if(k===2)bilan()}});
+tabs.forEach(function(t){t.onclick=function(){var k=t.dataset.t;tabs.forEach(function(x){x.setAttribute('aria-selected',x===t)});
+ acts.forEach(function(a){a.classList.toggle('on',a.dataset.a===k)});if(k==='2')bilan()}});
+// En vrai sur Fuji — terminal étape par étape
+var F=S.fuji;
+function link(url,text){var a=document.createElement('a');if(url.indexOf('https://testnet.snowtrace.io/')===0)a.href=url;
+ a.target='_blank';a.rel='noopener noreferrer';a.textContent=text;return a}
+if(!F){$('f-empty').style.display='block';$('f-body').style.display='none';}
+else{
+ $('f-live').textContent=F.live_block===null?('rejeu enregistré le '+F.recorded_at+' · '+F.tx_count+' transactions'):
+  (F.live_matches_record?'✔ état relu à l\u2019instant sur Fuji (bloc '+fmt(F.live_block)+') : identique au rejeu':'état relu sur Fuji (bloc '+fmt(F.live_block)+')');
+ var curCase=null,stepIdx=0,typing=false,out=$('f-termout');
+ // Boutons de cas
+ F.cases.forEach(function(c){var b=document.createElement('button');b.className='casebtn';b.setAttribute('aria-pressed','false');
+  var names={bad:'✗ échec',good:'✓ bloqué',window:'⏳ réversible',resolved:'✓ résolu'};
+  var pill='<span class="pill '+c.outcome+'">'+(names[c.outcome]||'')+'</span>';
+  b.innerHTML=pill+'<b>'+c.title+'</b><small>'+c.subtitle+'</small>';b.onclick=function(){selectCase(c)};$('f-cases').appendChild(b)});
+ function typeCmd(cmd,done){var pr='<span class="pr">fuji$</span> ';var el=document.createElement('div');el.className='termline termcmd';
+  out.appendChild(el);if(RM){el.innerHTML=pr+cmd;done();return}typing=true;var i=0;
+  (function tick(){el.innerHTML=pr+cmd.slice(0,i)+'<span class="cur">▋</span>';i++;
+   if(i<=cmd.length){setTimeout(tick,16)}else{el.innerHTML=pr+cmd;typing=false;out.scrollTop=out.scrollHeight;done()}})()}
+ function printEffect(step){var fx=document.createElement('div');fx.className='fx '+step.outcome;
+  fx.appendChild(document.createTextNode(step.effect+' '));
+  step.tx_urls.forEach(function(u,i){fx.appendChild(link(u,i?'(tx '+(i+1)+')':'↗ voir la transaction'));
+   if(i<step.tx_urls.length-1)fx.appendChild(document.createTextNode(' '))});
+  out.appendChild(fx);out.scrollTop=out.scrollHeight}
+ function renderRail(active){var r=$('f-rail');r.innerHTML='';F.contracts.forEach(function(c){var d=document.createElement('div');
+  d.className='rchip'+(c.name===active?' active':'');var a=link(c.url,c.name);var t=document.createElement('span');t.className='rt';
+  t.textContent=c.address.slice(0,10)+'…';d.appendChild(a);d.appendChild(t);r.appendChild(d)})}
+ function renderNext(){var box=$('f-next');box.innerHTML='';if(!curCase)return;
+  if(stepIdx>=curCase.steps.length){var v=$('f-verdict');v.className='verdict '+(curCase.outcome==='bad'?'badv':'good')+' on';
+   v.textContent=curCase.verdict;
+   return}
+  var s=curCase.steps[stepIdx];var b=document.createElement('button');b.className='cmdbtn';
+  b.innerHTML=s.narration+'<code>▶ '+s.command+'</code>';b.disabled=typing;b.onclick=function(){runStep()};box.appendChild(b)}
+ function playCountdown(done){var box=document.createElement('div');box.className='termline';
+  box.innerHTML='<div class="cd"><div class="cdtop"><span class="cdghost">👻 M-Ghost</span>'+
+   '<span class="cdclock">10:00</span><span class="cdcoin">M-Coin 🪙</span></div>'+
+   '<div class="cdbar"><i></i></div><div class="cdnote">fenêtre de sécurité — aucune anomalie détectée…</div></div>';
+  out.appendChild(box);out.scrollTop=out.scrollHeight;
+  var cd=box.querySelector('.cd'),clk=box.querySelector('.cdclock'),bar=box.querySelector('.cdbar i');
+  if(RM){clk.textContent='0:00';bar.style.width='100%';cd.className='cd done';done();return}
+  typing=true;var dur=5200,t0=null;
+  (function tick(ts){if(!t0)t0=ts;var p=Math.min((ts-t0)/dur,1);bar.style.width=(p*100)+'%';
+   var rem=Math.round(600*(1-p));clk.textContent=Math.floor(rem/60)+':'+String(rem%60).padStart(2,'0');
+   if(p<1){requestAnimationFrame(tick)}else{clk.textContent='0:00';cd.className='cd done';typing=false;done()}})(performance.now())}
+ function runStep(){if(typing||!curCase||stepIdx>=curCase.steps.length)return;var s=curCase.steps[stepIdx];
+  renderRail(s.contract);$('f-next').innerHTML='';
+  typeCmd(s.command,function(){function fin(){printEffect(s);stepIdx++;renderNext()}
+   if(s.countdown){playCountdown(fin)}else{fin()}})}
+ function selectCase(c){curCase=c;stepIdx=0;typing=false;out.innerHTML='';$('f-verdict').className='verdict';
+  [].forEach.call($('f-cases').children,function(b,i){b.setAttribute('aria-pressed',F.cases[i]===c)});
+  var intro=document.createElement('div');intro.className='termline';intro.style.color='var(--muted)';
+  intro.textContent='# '+c.title+' — '+c.subtitle+'. Clique le bouton pour exécuter chaque étape.';
+  out.appendChild(intro);renderRail(null);renderNext()}
+ selectCase(F.cases[0]);
+}
 // Acte 1
 var A=S.a,prot=false;$('banner-a').textContent=A.banner+' · seed '+S.seed;
 function setSw(p){prot=p;$('sw-v').setAttribute('aria-pressed',!p);$('sw-p').setAttribute('aria-pressed',p);resetA()}
@@ -382,10 +629,12 @@ function bilan(){var loss=(A.protected_loss||0)+(B.protocol_loss||0);count($('k-
 
 
 __all__ = [
+    "FujiStory",
     "JournalLine",
     "Story",
     "StoryA",
     "StoryB",
+    "build_fuji_story",
     "build_story",
     "render_story_html",
     "story_json",
