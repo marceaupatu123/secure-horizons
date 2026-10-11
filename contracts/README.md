@@ -376,6 +376,24 @@ change (§0bis-b), pas l'algorithme.
   gelé comme garantie — **volet 3** (#7, PR #111 de @Yannis1307, lit `IGhostRisk`).
 - **Routeur de règlement et M' protégé / pur** (#84, §10bis), au-dessus du Ghost.
 
+## Routage du M' : seuls des contrats autorisés le déplacent (§10bis b′, #145)
+
+Pendant la fenêtre, un M' **non échu** ne bouge que si l'**appelant** du token est autorisé (le
+routeur §10bis, les marchés qui lisent la balise #7). Un transfert direct de wallet à wallet et un
+`transferFrom` par un DEX tiers sont refusés (`UnroutedTransfer`) : le voleur ne peut plus revendre
+son M' contre du vrai actif hors coffre. Le M' déjà échu reste libre. Un don passe par
+`router.sellPure(..., address(0), 0)`. Le contrôle porte sur l'appelant et non sur le destinataire,
+car le routeur livre le M' au wallet de l'acheteur.
+
+- `initRouting(movers)` (admin, **une seule fois**) active le routage avec la liste initiale. C'est
+  irréversible et doit être appelé au déploiement, juste après le routeur. Avant cet appel, aucun
+  contrôle : les tests et rejeux existants gardent les transferts libres.
+- Ensuite, la liste ne change que par les **guardians 2/3** (`proposeAllowedMover` puis
+  `approveAction`). Une seule clé volée ne peut pas autoriser un DEX.
+- Coût assumé, à **mesurer** (`docs/CLAIMS.md`) : pendant la fenêtre, le M' n'est pas utilisable
+  dans la DeFi hors liste.
+- Tests : `test/ghost/GhostRouting.t.sol`.
+
 Détails et arbitrages ouverts : voir `docs/OPEN_QUESTIONS.md` et `docs/CLAIMS.md`.
 
 ## Balise de risque + faux marché de prêt (#7, volet 3)

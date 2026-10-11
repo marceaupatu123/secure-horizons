@@ -113,6 +113,14 @@ contract GhostToken is ERC20, AccessControl, GuardianActions, IGhostRisk, IGhost
     uint256 public insuranceFund;
     /// @notice Dernière entrée dans la réserve (marge ou destruction) : minuterie de la bascule.
     uint64 public lastReserveInflowAt;
+    /// @notice Routage du M' (OPEN_ANSWERS §10bis point 2, option b′, #145) : une fois activé par
+    ///         `initRouting`, un M' NON ÉCHU ne bouge que si l'appelant du token (`msg.sender`) est
+    ///         autorisé (routeur §10bis, marché de prêt #7…). Irréversible. Avant activation, aucun
+    ///         contrôle : le script de déploiement doit appeler `initRouting` juste après le routeur.
+    bool public routingActive;
+    /// @notice Appelants autorisés à déplacer du M' non échu. Après `initRouting`, modifiable
+    ///         seulement par les guardians 2/3 (`proposeAllowedMover`).
+    mapping(address => bool) public isAllowedMover;
 
     // ------------------------------------------------------------------ événements (design §3.12)
 
@@ -178,6 +186,15 @@ contract GhostToken is ERC20, AccessControl, GuardianActions, IGhostRisk, IGhost
     error ExceedsReserve(uint256 amount, uint256 reserve);
     error ClaimDelayNotElapsed(uint64 availableAt);
     error NothingToSweep();
+    error RoutingAlreadyActive();
+    error RoutingNotActive();
+    /// @notice Un M' non échu (échéance `maturity`) a été déplacé par un appelant non autorisé
+    ///         (transfert direct, DEX tiers…) : il doit passer par le routeur §10bis.
+    error UnroutedTransfer(address caller, uint64 maturity);
+
+    event RoutingInitialized(uint256 moverCount);
+    /// @param proposalId 0 pour la liste initiale (`initRouting`), sinon la proposition 2/3.
+    event AllowedMoverSet(address indexed mover, bool allowed, uint256 indexed proposalId);
 
     constructor(address minter_, address admin, address[3] memory guardians_, GhostConfig memory cfg)
         ERC20("M-Ghost (fictif)", "gpUSD")
@@ -326,6 +343,30 @@ contract GhostToken is ERC20, AccessControl, GuardianActions, IGhostRisk, IGhost
         return _propose(ActionKind.Clear, abi.encode(accounts));
     }
 
+    // ================================================================== routage du M' (§10bis b′, #145)
+
+    /// @notice Active le routage, une seule fois, avec la liste initiale des appelants autorisés
+    ///         (routeur §10bis, marchés qui lisent la balise). Ensuite, la liste ne change que par
+    ///         les guardians 2/3 : une clé d'admin volée après activation n'y ajoute rien.
+    function initRouting(address[] calldata movers) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (routingActive) revert RoutingAlreadyActive();
+        _checkBatch(movers.length);
+        _checkNonZero(movers);
+        routingActive = true;
+        for (uint256 i = 0; i < movers.length; i++) {
+            isAllowedMover[movers[i]] = true;
+            emit AllowedMoverSet(movers[i], true, 0);
+        }
+        emit RoutingInitialized(movers.length);
+    }
+
+    /// @notice Propose d'autoriser (ou de retirer) un appelant (2/3, comme les autres actions).
+    function proposeAllowedMover(address mover, bool allowed) external onlyGuardian returns (uint256) {
+        if (!routingActive) revert RoutingNotActive();
+        if (mover == address(0)) revert ZeroAddress();
+        return _propose(ActionKind.Allowlist, abi.encode(mover, allowed));
+    }
+
     // ================================================================== vues (IGhostRisk)
 
     function effectiveSuspectOf(address account) public view returns (uint256) {
@@ -422,6 +463,7 @@ contract GhostToken is ERC20, AccessControl, GuardianActions, IGhostRisk, IGhost
         if (from != address(0) && to != address(0)) {
             _requireNotPaused();
             if (value != 0 && from != to) {
+                if (routingActive && !isAllowedMover[msg.sender]) _requireMaturedOutgoing(from, value);
                 _moveGhost(from, to, value);
                 return;
             }
@@ -576,6 +618,13 @@ contract GhostToken is ERC20, AccessControl, GuardianActions, IGhostRisk, IGhost
         }
     }
 
+    /// @dev Hors appelant autorisé, seul le M' déjà échu peut bouger (règlement virtuel des
+    ///      tranches, comme `nextOutgoingMaturity`) : 0 = tout vient de la part échue.
+    function _requireMaturedOutgoing(address from, uint256 value) private view {
+        uint64 latest = _accounts[from].nextOutgoing(value, slot, _ring);
+        if (latest != 0) revert UnroutedTransfer(msg.sender, latest);
+    }
+
     function _checkDuration(uint64 duration) private view {
         if (duration == 0) revert InvalidDuration();
         if (duration > uint256(maxExtensionFactor) * window) {
@@ -596,8 +645,12 @@ contract GhostToken is ERC20, AccessControl, GuardianActions, IGhostRisk, IGhost
             (address[] memory accounts, uint256[] memory amounts, uint64 duration) =
                 abi.decode(params, (address[], uint256[], uint64));
             _delay(accounts, amounts, duration, false, address(this));
-        } else {
+        } else if (kind == ActionKind.Clear) {
             _clear(proposalId, abi.decode(params, (address[])));
+        } else {
+            (address mover, bool allowed) = abi.decode(params, (address, bool));
+            isAllowedMover[mover] = allowed;
+            emit AllowedMoverSet(mover, allowed, proposalId);
         }
     }
 

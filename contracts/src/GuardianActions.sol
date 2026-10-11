@@ -15,7 +15,8 @@ abstract contract GuardianActions is GuardianPausable {
         Destroy,
         Restitution,
         Extend,
-        Clear
+        Clear,
+        Allowlist
     }
 
     struct Proposal {
