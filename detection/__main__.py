@@ -1,20 +1,13 @@
 """Point d'entree du module detection : `python -m detection`.
 
-Affiche l'etat des surveillants de `detection/detector.py`.
+Branche les surveillants de `detection/detector.py` sur le monitor (LIVE,
+Fuji) ou sur un JSONL synthetique (`--replay`). Voir `detection/pipeline.py`
+et `python -m detection --help`.
 """
 
 from __future__ import annotations
 
-
-def main() -> None:
-    """Point d'entree executable."""
-    print(
-        "detection : surveillants a regles disponibles — mint "
-        "(RuleBasedMonitor.check_mint, #11) et transferts « volume eleve ET "
-        "dispersion effondree » (RuleBasedMonitor.check_transfer, #12) ; "
-        "parametres PROVISOIRES dans detection/params.py."
-    )
-
+from detection.pipeline import main
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

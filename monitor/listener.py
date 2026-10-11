@@ -25,6 +25,12 @@ GAP connu — `TransferEvent.is_ghost` : un `Transfer` ERC-20 ne dit pas si le
 token transfere est un Ghost. La valeur vient de `MonitorConfig.token_is_ghost`
 (defaut PROVISOIRE False) tant que le design du contrat Ghost n'est pas fixe.
 
+Branchement vers `detection` (issue #86) : `stream_event_batches` emet, a
+chaque poll, les mints ET transferts nouveaux dans l'ordre de la chaine (liste
+vide si rien de neuf) pour que le consommateur reprenne la main a chaque poll
+(cloture des tranches a l'heure, meme sans transfert). `read_total_supply` lit
+`totalSupply()` du token (offre utilisee pour normaliser le volume).
+
 Le module produit des `MintEvent` et `TransferEvent` (`docs/CONTRACTS.md`) a
 destination du module `detection`.
 """
@@ -54,8 +60,12 @@ ZERO_ADDRESS_TOPIC = "0x" + "00" * 32
 # demande (voir GAP en tete de module). Ne PAS l'interpreter comme « demande 0 ».
 UNKNOWN_REQUEST_ID = 0
 
+# Selecteur ERC-20 `totalSupply()` = 4 premiers octets de keccak256("totalSupply()").
+TOTAL_SUPPLY_SELECTOR = "0x18160ddd"
+
 RawLog = Mapping[str, Any]
 ChainEvent = TypeVar("ChainEvent", MintEvent, TransferEvent)
+ObservedEvent = MintEvent | TransferEvent
 
 
 class EthLike(Protocol):
@@ -65,6 +75,8 @@ class EthLike(Protocol):
     def block_number(self) -> int: ...
 
     def get_logs(self, filter_params: Any) -> Sequence[RawLog]: ...
+
+    def call(self, transaction: Any) -> Any: ...
 
 
 class Web3Like(Protocol):
@@ -356,16 +368,21 @@ class ChainListener:
         events.sort(key=lambda e: (e.block_number, e.log_index))
         return events
 
-    def _poll(
+    def _poll_batches(
         self,
         fetch: Callable[[int, int], list[ChainEvent]],
         max_polls: int | None,
-    ) -> Iterator[ChainEvent]:
+    ) -> Iterator[list[ChainEvent]]:
         """Boucle de polling commune : lit les blocs nouveaux a chaque tour.
 
         Commence a `config.start_block` (ou au bloc courant si None), puis a
         chaque poll lit les blocs nouveaux jusqu'a la tete moins
         `config.confirmations`, et attend `config.poll_interval_seconds`.
+
+        Yields:
+            Une liste d'evenements par plage de `config.block_batch_size`
+            blocs lue, ou une liste vide si le poll n'a aucun bloc nouveau
+            (le consommateur reprend ainsi la main a chaque poll).
         """
         self._token_address()
         next_block = self._config.start_block
@@ -378,12 +395,23 @@ class ChainListener:
                 for start, end in block_ranges(
                     next_block, head, self._config.block_batch_size
                 ):
-                    yield from fetch(start, end)
+                    yield fetch(start, end)
                 next_block = head + 1
+            else:
+                yield []
             polls += 1
             if max_polls is not None and polls >= max_polls:
                 return
             self._sleep(self._config.poll_interval_seconds)
+
+    def _poll(
+        self,
+        fetch: Callable[[int, int], list[ChainEvent]],
+        max_polls: int | None,
+    ) -> Iterator[ChainEvent]:
+        """Meme boucle que `_poll_batches`, evenement par evenement."""
+        for batch in self._poll_batches(fetch, max_polls):
+            yield from batch
 
     def _to_mint_event(self, log: RawLog, decoder: MintLogDecoder) -> MintEvent | None:
         decoded = decoder.decode(log)
@@ -502,3 +530,66 @@ class ChainListener:
             RuntimeError: si l'adresse du token ou l'URL RPC manque.
         """
         return self._poll(self.fetch_transfer_events, max_polls)
+
+    def fetch_events(self, from_block: int, to_block: int) -> list[ObservedEvent]:
+        """Lit mints ET transferts d'une plage de blocs (bornes incluses).
+
+        Memes decodeurs que `fetch_mint_events` et `fetch_transfer_events`.
+
+        Args:
+            from_block: premier bloc.
+            to_block: dernier bloc (inclus).
+
+        Returns:
+            Mints et transferts melanges, tries par `(block_number, log_index)`.
+
+        Raises:
+            RuntimeError: si l'adresse du token ou l'URL RPC manque.
+        """
+        sources: list[
+            tuple[tuple[str | None, ...], Callable[[RawLog], ObservedEvent | None]]
+        ] = [
+            (decoder.topics, lambda log, d=decoder: self._to_mint_event(log, d))
+            for decoder in self._mint_decoders
+        ]
+        sources.append((ERC20_TRANSFER_TOPICS, self._to_transfer_event))
+        return self._fetch_events(from_block, to_block, sources)  # type: ignore[arg-type]
+
+    def stream_event_batches(
+        self, max_polls: int | None = None
+    ) -> Iterator[list[ObservedEvent]]:
+        """Emet mints ET transferts par lots, au fil de l'eau (polling).
+
+        Meme boucle que `stream_mint_events` (depart, confirmations, pause).
+        Contrairement aux flux par type, un lot (eventuellement VIDE) est emis
+        a chaque poll : le consommateur peut cloturer ses tranches a l'heure
+        meme quand aucun transfert n'arrive.
+
+        Args:
+            max_polls: nombre de polls avant arret (None = infini ; utile en
+                test).
+
+        Yields:
+            Une liste par plage lue (ou vide si rien de neuf), dans l'ordre de
+            la chaine.
+
+        Raises:
+            RuntimeError: si l'adresse du token ou l'URL RPC manque.
+        """
+        return self._poll_batches(self.fetch_events, max_polls)
+
+    def read_total_supply(self) -> int:
+        """Lit `totalSupply()` du token ecoute (appel `eth_call`, bloc `latest`).
+
+        Returns:
+            L'offre totale, base units.
+
+        Raises:
+            RuntimeError: si l'adresse du token ou l'URL RPC manque.
+            ValueError: si la reponse n'est pas un `uint256` ABI (32 octets).
+        """
+        raw = self._eth.call({"to": self._token_address(), "data": TOTAL_SUPPLY_SELECTOR})
+        data = to_hex(raw)
+        if len(data) != 2 + 64:
+            raise ValueError(f"reponse totalSupply() inattendue : {data!r}")
+        return int(data, 16)

@@ -33,6 +33,7 @@ que si volume eleve ET dispersion effondree — jamais sur le volume seul. Voir
 
 from __future__ import annotations
 
+import logging
 import math
 import uuid
 from collections import deque
@@ -58,6 +59,8 @@ from shared.models import (
     MintEvent,
     TransferEvent,
 )
+
+logger = logging.getLogger(__name__)
 
 _SEVERITY_RANK = {
     AlertSeverity.INFO: 0,
@@ -274,9 +277,18 @@ class RuleBasedMonitor:
         self._open_slot = None
         tp = self.transfer_params
         supply = self._circulating_supply
+        slot_start = datetime.fromtimestamp(
+            slot.slot_index * tp.slot_seconds, tz=timezone.utc
+        )
         if supply is None:
             # GAP : sans offre en circulation, pas de ratio normalise (§9) :
             # la tranche n'est ni evaluee ni enregistree.
+            logger.warning(
+                "tranche %s UTC NON evaluee : offre en circulation inconnue "
+                "(%d transferts ni evalues ni ajoutes a la baseline)",
+                f"{slot_start:%Y-%m-%d %H:%M}",
+                len(slot.events),
+            )
             self._known.update(slot.participants())
             self._last_slot_stats = None
             return None
@@ -304,9 +316,14 @@ class RuleBasedMonitor:
                 tp.mad_scale,
                 tp.mad_floor_relative,
             )
-        slot_start = datetime.fromtimestamp(
-            slot.slot_index * tp.slot_seconds, tz=timezone.utc
-        )
+        else:
+            logger.warning(
+                "tranche %s UTC NON evaluee : historique insuffisant (%d/%d "
+                "tranches du meme creneau) ; elle nourrit la baseline sans alerter",
+                f"{slot_start:%Y-%m-%d %H:%M}",
+                len(baseline),
+                tp.min_history_slots,
+            )
         stats = TransferSlotStats(
             slot_start=slot_start,
             slot_end=slot_start + timedelta(seconds=tp.slot_seconds),
