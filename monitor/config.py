@@ -69,6 +69,7 @@ DEFAULT_CHECKPOINT_PATH: str | None = None
 
 ENV_RPC_URL = "FUJI_RPC_URL"
 ENV_TOKEN_ADDRESS = "MONITOR_TOKEN_ADDRESS"
+ENV_MINTER_ADDRESS = "MONITOR_MINTER_ADDRESS"
 ENV_POLL_INTERVAL_SECONDS = "MONITOR_POLL_INTERVAL_SECONDS"
 ENV_BLOCK_BATCH_SIZE = "MONITOR_BLOCK_BATCH_SIZE"
 ENV_CONFIRMATIONS = "MONITOR_CONFIRMATIONS"
@@ -121,11 +122,19 @@ class MonitorConfig:
     rpc_retry_max_seconds: float = DEFAULT_RPC_RETRY_MAX_SECONDS
     rpc_failure_alert_after: int = DEFAULT_RPC_FAILURE_ALERT_AFTER
     checkpoint_path: str | None = DEFAULT_CHECKPOINT_PATH
+    # Adresse du `ProtectedMinter` (#5). Renseignee = mode « contrat protege »
+    # (#104) : decodage de SwapRequested / SwapCompleted / evenements admin et
+    # rattachement de chaque mint a sa demande. None = ecouteur ERC-20 generique.
+    minter_address: str | None = None
 
     def __post_init__(self) -> None:
         if self.token_address is not None:
             object.__setattr__(
                 self, "token_address", normalize_address(self.token_address)
+            )
+        if self.minter_address is not None:
+            object.__setattr__(
+                self, "minter_address", normalize_address(self.minter_address)
             )
         if self.chain_id < 1:
             raise ValueError("chain_id doit etre >= 1")
@@ -222,6 +231,7 @@ def load_monitor_config(
     return MonitorConfig(
         rpc_url=rpc_url,
         token_address=_optional_str(source, ENV_TOKEN_ADDRESS),
+        minter_address=_optional_str(source, ENV_MINTER_ADDRESS),
         poll_interval_seconds=_float_from_env(
             source, ENV_POLL_INTERVAL_SECONDS, DEFAULT_POLL_INTERVAL_SECONDS
         ),
