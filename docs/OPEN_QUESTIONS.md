@@ -1,4 +1,4 @@
-# OPEN_QUESTIONS.md — décisions à prendre en équipe
+﻿# OPEN_QUESTIONS.md — décisions à prendre en équipe
 
 Ce fichier liste les décisions de conception **non tranchées**. Aucune n'est décidée par un
 assistant IA : on les discute et on les acte ici (ajouter la décision + la date sous chaque point).
@@ -410,3 +410,46 @@ d'usage nouveau) — hypothèse qu'un vrai protocole ne vérifie pas.
 **Proposition** : garder les seuils simples pour la démo (confirme OPEN_ANSWERS §1) ; citer la
 prédiction conforme au jury comme piste mesurée, avec sa limite. Une seule graine mesurée : à
 répéter avant toute affirmation chiffrée (`docs/CLAIMS.md`).
+
+## 14. Lignage (#106) et conversions Ghost → M vues par le monitor — → Tranché, voir `docs/OPEN_ANSWERS.md` §14
+
+En mode Ghost (#8), le monitor émet les transferts ordinaires de Ghost en `TransferEvent(is_ghost=True)`. En
+revanche, comme pour tous les tokens depuis #10, il **n'émet pas les burns**, donc pas les conversions
+(`Ghost → 0x0`). Or `detection/lineage.retroactive_seeds` déduit le solde Ghost non converti en rejouant les
+transferts : sans la conversion, un porteur qui a converti garde, dans le rejeu, un solde fictif, et il peut
+recevoir une graine pour du Ghost qu'il n'a plus. La destruction sur la chaîne est plafonnée par le vrai solde,
+donc aucune perte de fonds, mais la restitution et le total « récupéré » sont surestimés.
+
+**→ Tranché, voir `docs/OPEN_ANSWERS.md` §14.** Décision du 2026-10-11 (marceaupatu123) : option **(c)** —
+au moment du semis, `retroactive_seeds` plafonne le soupçon de chaque détenteur par `balanceOf(Ghost, addr)`
+lu on-chain (vérité de la chaîne, le plus simple). **(b)** (flux dédié aux conversions) reste l'évolution
+propre si le coût RPC gêne ; **(a)** (émettre les burns comme transferts) est écartée car elle oblige à filtrer
+de faux transferts dans les règles de détection volume/HHI. Le texte complet des trois options et la limite
+mesurée (une lecture RPC par graine, à documenter dans `docs/CLAIMS.md`) vivent désormais dans `OPEN_ANSWERS` §14.
+
+## 15. Token Ghost (#8) — tests et limites — _choix de l'agent (2026-10-11, provisoire, à valider en équipe)_
+
+Choix faits par l'assistant de @denybs en implémentant le design itération 3
+(`contracts/.plan/design.md`). Aucun ne change une règle du design ; tous sont réversibles.
+
+- **Helpers de test dans `test/utils/GhostBase.sol`** (et non dans `BaseTest.sol` comme écrit au
+  design §8.0) : ils ont besoin d'état (`pm`, `m`, `ghost`), `BaseTest` reste sans état.
+- **Taille des campagnes d'invariants du Ghost** : 48 runs × profondeur 128 sous le profil
+  `default` (config en ligne), pour garder la CI courte ; le profil `deep` n'est pas touché. Un test
+  de fumée déterministe (`test_handlerExercisesEveryPath`) garantit que chaque chemin « doit
+  réussir » du handler est réellement atteint, ce qu'un résumé de campagne aléatoire ne prouve pas.
+- **Reportés à une issue de suivi** (non bloquants pour #8) : `LedgerParity.t.sol` (parité avec
+  `data/ghost_ledger.py`), `ScenarioRecovery.t.sol` (part récupérée après fragmentation),
+  `GhostGas.t.sol` (mesures de gas). Le scénario C relève de #7 (PR #111), le scénario D de #84.
+- **Comportement gardé tel que le design le donne, à confirmer** : s'envoyer du M à soi-même le
+  remet en quarantaine (Ghost frais), puisque « tout transfert » passe par le Ghost (§0bis).
+  Alternative : traiter `from == to` comme un no-op. **Ouvert.**
+
+Limites **mesurées** avec les fixtures (W = 600 s, créneau 60 s, facteur 6, budget 20 %), à ne
+pas citer comme chiffres de production (`docs/CLAIMS.md`) :
+
+- surveillant compromis : retard de **6/7 du temps** au plus sur un même compte (borne de taux,
+  pas de durée) — remède : révoquer `WATCHER_ROLE` (H1) ;
+- seuils de conversion à 0 : **1 wei** de soupçon reçu bloque toute la conversion du destinataire
+  jusqu'à l'expiration de l'incident ; seuils > 0 : seule la part suspecte reste bloquée. Choisir
+  des seuils > 0 pour la démo ? **Ouvert** (lié à #3, valeurs à mesurer).

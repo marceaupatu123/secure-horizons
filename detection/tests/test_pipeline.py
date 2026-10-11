@@ -373,7 +373,14 @@ def test_live_closes_slot_on_clock_without_new_transfer() -> None:
 
 
 def test_live_without_token_exits_cleanly(caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level(logging.WARNING)
+    # On capture sur le logger emetteur (detection.pipeline) et on force sa
+    # propagation : un autre test de la suite peut couper la propagation ou relever
+    # le niveau du logger `detection.*` (cf. conformal_eval), ce qui laissait
+    # caplog vide quand on capturait seulement sur le root logger -> echec non
+    # deterministe selon l'ordre d'execution.
+    pipeline_logger = logging.getLogger("detection.pipeline")
+    pipeline_logger.propagate = True
+    caplog.set_level(logging.WARNING, logger="detection.pipeline")
     pipeline = _demo_pipeline([])
     code = run_live(pipeline, MonitorConfig(rpc_url=None, token_address=None))
     assert code == 0

@@ -166,6 +166,57 @@ def daily_volumes(slots: Iterable[TransferSlotStats], start: datetime) -> list[i
     return [per_day.get(day, 0) for day in range(max(per_day) + 1)] if per_day else []
 
 
+def holdings_at(events: Sequence[Event], at: datetime) -> tuple[dict[str, int], int]:
+    """Soldes nets par adresse (minuscules) issus des evenements jusqu'a `at`, et total minte.
+
+    Solde net = mints recus + transferts recus - envoyes, en vrai token comme en Ghost (la
+    fenetre ne change pas la propriete, seulement la conversion). Le solde INITIAL des
+    utilisateurs du generateur #24 n'est pas expose par son manifeste : pour une adresse
+    ancienne, le solde net est une borne basse ; il est exact pour une adresse neuve.
+    """
+    balances: dict[str, int] = {}
+    minted = 0
+    for event in events:
+        if event_time(event) > at:
+            break
+        if isinstance(event, MintEvent):
+            key = event.recipient.lower()
+            balances[key] = balances.get(key, 0) + event.amount
+            minted += event.amount
+        elif isinstance(event, TransferEvent):
+            sender, recipient = event.sender.lower(), event.recipient.lower()
+            balances[sender] = balances.get(sender, 0) - event.amount
+            balances[recipient] = balances.get(recipient, 0) + event.amount
+    return balances, minted
+
+
+def delayed_supply_share(events: Sequence[Event], actions: Iterable[ResponseAction],
+                         initial_supply: int) -> float | None:
+    """Pic de la part de l'offre detenue par des perimetres en fenetre allongee (§5, §9).
+
+    A chaque debut de retard, somme les soldes nets des perimetres alors retardes et la
+    rapporte a l'offre en circulation au meme instant (offre initiale du manifeste + mints).
+    Mesure de la « friction locale » (`docs/CLAIMS.md`) et, sur du trafic legitime, de la part
+    d'offre inutilement retardee par un faux positif (§5). Borne basse pour une adresse
+    ancienne (voir `holdings_at`). `None` s'il n'y a eu aucun retard.
+    """
+    delays = [a for a in actions
+              if a.action_type == ResponseActionType.DELAY and a.perimeter_address
+              and a.expires_at is not None
+              and a.status in (ResponseActionStatus.APPLIED, ResponseActionStatus.EXPIRED)]
+    if not delays:
+        return None
+    peak = 0.0
+    for start in sorted({a.created_at for a in delays}):
+        active = {a.perimeter_address.lower() for a in delays  # type: ignore[union-attr]
+                  if a.created_at <= start < a.expires_at}  # type: ignore[operator]
+        balances, minted = holdings_at(events, start)
+        supply = initial_supply + minted
+        if supply > 0:
+            peak = max(peak, sum(max(0, balances.get(a, 0)) for a in active) / supply)
+    return peak
+
+
 # --- Reponse #17 ------------------------------------------------------------------
 
 
