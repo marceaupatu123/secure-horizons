@@ -410,3 +410,30 @@ d'usage nouveau) — hypothèse qu'un vrai protocole ne vérifie pas.
 **Proposition** : garder les seuils simples pour la démo (confirme OPEN_ANSWERS §1) ; citer la
 prédiction conforme au jury comme piste mesurée, avec sa limite. Une seule graine mesurée : à
 répéter avant toute affirmation chiffrée (`docs/CLAIMS.md`).
+
+## 15. Token Ghost (#8) — tests et limites — _choix de l'agent (2026-10-11, provisoire, à valider en équipe)_
+
+Choix faits par l'assistant de @denybs en implémentant le design itération 3
+(`contracts/.plan/design.md`). Aucun ne change une règle du design ; tous sont réversibles.
+
+- **Helpers de test dans `test/utils/GhostBase.sol`** (et non dans `BaseTest.sol` comme écrit au
+  design §8.0) : ils ont besoin d'état (`pm`, `m`, `ghost`), `BaseTest` reste sans état.
+- **Taille des campagnes d'invariants du Ghost** : 48 runs × profondeur 128 sous le profil
+  `default` (config en ligne), pour garder la CI courte ; le profil `deep` n'est pas touché. Un test
+  de fumée déterministe (`test_handlerExercisesEveryPath`) garantit que chaque chemin « doit
+  réussir » du handler est réellement atteint, ce qu'un résumé de campagne aléatoire ne prouve pas.
+- **Reportés à une issue de suivi** (non bloquants pour #8) : `LedgerParity.t.sol` (parité avec
+  `data/ghost_ledger.py`), `ScenarioRecovery.t.sol` (part récupérée après fragmentation),
+  `GhostGas.t.sol` (mesures de gas). Le scénario C relève de #7 (PR #111), le scénario D de #84.
+- **Comportement gardé tel que le design le donne, à confirmer** : s'envoyer du M à soi-même le
+  remet en quarantaine (Ghost frais), puisque « tout transfert » passe par le Ghost (§0bis).
+  Alternative : traiter `from == to` comme un no-op. **Ouvert.**
+
+Limites **mesurées** avec les fixtures (W = 600 s, créneau 60 s, facteur 6, budget 20 %), à ne
+pas citer comme chiffres de production (`docs/CLAIMS.md`) :
+
+- surveillant compromis : retard de **6/7 du temps** au plus sur un même compte (borne de taux,
+  pas de durée) — remède : révoquer `WATCHER_ROLE` (H1) ;
+- seuils de conversion à 0 : **1 wei** de soupçon reçu bloque toute la conversion du destinataire
+  jusqu'à l'expiration de l'incident ; seuils > 0 : seule la part suspecte reste bloquée. Choisir
+  des seuils > 0 pour la démo ? **Ouvert** (lié à #3, valeurs à mesurer).

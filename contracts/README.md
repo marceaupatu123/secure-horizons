@@ -17,21 +17,31 @@ contracts/
 ├── DEPLOYMENTS.md          # adresses déployées sur Fuji (aucune pour l'instant)
 ├── src/
 │   ├── MockUSDC.sol        # collatéral FICTIF, 6 décimales, faucet ouvert
-│   ├── StableToken.sol     # stable FICTIF, 18 décimales, mint réservé au minter (immuable)
+│   ├── StableToken.sol     # stable FICTIF du monde SANS protection (VulnerableMinter)
 │   ├── VulnerableMinter.sol# VOLONTAIREMENT vulnérable (démo de l'attaque)
 │   ├── GuardianPausable.sol# pause globale, multisig simulé 3/3
-│   └── ProtectedMinter.sol # volet 1 : montant et destinataire dérivés on-chain
+│   ├── GuardianActions.sol # actions humaines 2/3 (destruction, restitution, Extend, Clear)
+│   ├── ProtectedMinter.sol # volet 1 : montant et destinataire dérivés on-chain -> Ghost frais
+│   ├── GhostToken.sol      # M-Ghost (#8) : quarantaine liquide, soupçon, surveillant, 2/3
+│   ├── GhostedStable.sol   # vrai token M : minté par conversion, tout transfert redevient Ghost
+│   ├── lib/MaturityBuckets.sol  # tranches d'échéance par adresse (anneau N + 1)
+│   └── interfaces/         # IGhostRisk (vues lues par #7/#84), IGhostToken (figées)
 └── test/
-    ├── utils/BaseTest.sol
+    ├── utils/BaseTest.sol, utils/GhostBase.sol   # déploiements + helpers (_mintGhost, _destroy…)
     ├── Tokens.t.sol
     ├── VulnerableMinter.t.sol
     ├── GuardianPausable.t.sol
     ├── ProtectedMinter.t.sol   # un test (ou plus) par invariant I1–I5
+    ├── GhostedStable.t.sol     # M : mint réservé, transfert = burn + Ghost frais, marge d'entrée
     ├── ScenarioA.t.sol         # même attaque rejouée sur les deux contrats
     ├── StolenServiceKey.fuzz.t.sol
+    ├── ghost/                  # une règle du design -> au moins un test (Buckets, Suspicion,
+    │                           #   Convert, Watcher, Guardian, Events)
     └── invariant/
         ├── ProtectedMinterHandler.sol
-        └── ProtectedMinter.invariant.t.sol
+        ├── ProtectedMinter.invariant.t.sol
+        ├── GhostHandler.sol            # modèle d'ombre (tranches, étiquettes, séries)
+        └── Ghost.invariant.t.sol       # invariants (a)–(f), 2 configurations
 ```
 
 ## Installer Foundry (Windows)
@@ -245,13 +255,84 @@ PowerShell : `$env:FOUNDRY_PROFILE="deep"; forge test; Remove-Item Env:FOUNDRY_P
 | `default` | 256 | 256 | 128 | false |
 | `deep` | 1024 | 512 | 256 | false |
 
+## Token Ghost (#8) — quarantaine liquide
+
+**L'idée en une image** : un chèque qu'on peut endosser et faire circuler librement, mais qu'on ne
+peut **encaisser** qu'après un délai `W`, et que la banque peut **annuler** (à hauteur de la part
+volée) si un vol est confirmé avant l'encaissement. Le vrai token **M** est l'argent liquide ; le
+**M-Ghost** est le chèque.
+
+```mermaid
+flowchart LR
+    D[Déposant] -- "USDC" --> PM[ProtectedMinter]
+    PM -- "Ghost frais<br/>échéance ceil(now+W)" --> G[(M-Ghost)]
+    G -- "transfert : garde l'échéance<br/>+ emporte le soupçon" --> G
+    G -- "convert() après W,<br/>sans soupçon valide" --> M[(M réel)]
+    M -- "tout transfert de M :<br/>M brûlé, Ghost frais au destinataire" --> G
+    W[Surveillant] -. "delay() : RETARDER seulement<br/>(borné, auto-expirant)" .-> G
+    H[Guardians 2/3] -. "confirmer / détruire Sc /<br/>restituer / blanchir" .-> G
+```
+
+Règles (design `contracts/.plan/design.md` §3, décisions `docs/OPEN_ANSWERS.md` §0bis et §9) :
+
+1. **Tranches d'échéance** : chaque valeur entrée en Ghost reçoit l'échéance
+   `ceil((t + W) / créneau) × créneau` et la **garde** en circulant (la circulation ne remet
+   jamais le compteur à zéro). Envoi : part échue d'abord, puis tranches les plus anciennes.
+2. **Soupçon par adresse** : montant absolu en deux parts, **confirmé** `Sc` et **en attente**
+   `Sp` (qui s'éteint seul à l'expiration de son incident). Un transfert emporte le **ratio de
+   l'expéditeur**, arrondi vers le haut (sens sûr), et la somme est conservée exactement.
+3. **Conversion** Ghost → M : seulement la part échue, hors fenêtre allongée, sous les seuils de
+   ratio **et** de montant, et jamais la part suspecte (`amount ≤ balanceOf − S`).
+4. **Surveillant** (`WATCHER_ROLE`) : ne peut que **retarder** des adresses (et semer du `Sp`).
+   Bornes : `maxExtensionFactor × W` par incident et par série d'un compte, deux séries séparées
+   d'au moins `W`, budget de quarantaine de l'incident courant. Silence = retour à la normale.
+5. **Guardians 2/3** : confirmer un incident vivant, **détruire exactement `Sc`** (tranches les
+   plus récentes d'abord), restituer à une victime dans la limite de la réserve, retarder hors
+   budget (`Extend`, toujours borné), blanchir (`Clear`). Pause globale **3/3**, rounds séparés.
+6. **Réserve** = `totalIssued − supplyValue − insuranceFund` : nourrie par les destructions et les
+   marges, seule source des restitutions ; bascule au fonds d'assurance après
+   `restitutionClaimDelay` sans nouvelle entrée (`sweepToInsurance`, permissionless).
+
+### Ce qui est vérifié (tests unitaires + invariants, jamais « prouvé »)
+
+| Suite | Ce qui est vérifié |
+|---|---|
+| `test/ghost/GhostBuckets.t.sol` (15) | arrondi au créneau supérieur, rien avant W, échéance gardée au transfert, plus anciennes d'abord, poussière reçue sans effet sur le solde échu, anneau sur 3 fenêtres, `balanceOf == matured + Σ tranches` (fuzz), cas neutres |
+| `test/GhostedStable.t.sol` (9) | M minté seulement par le Ghost ; transfert de M = burn + Ghost frais ; allowance ; pause ; marge d'entrée vers la réserve |
+| `test/ghost/GhostSuspicion.t.sol` (10) | ratio de l'expéditeur, moyenne pondérée, arrondi haut (fuzz), conservation (fuzz), dilution, Sc/Sp, expiration paresseuse |
+| `test/ghost/GhostConvert.t.sol` (12) | chaque condition isolément, seuil arrondi vers le haut, verrou partiel, dispersion d'un Ghost 100 % suspect, marge base + pente, M jamais repris |
+| `test/ghost/GhostWatcher.t.sol` (18) | droits, validation, ouverture/ajout, budget (lot entier), incident plus court qui ne raccourcit pas, borne cumulée des incidents enchaînés, vue `maxExtensionEnd`, fan-out vers 16 adresses |
+| `test/ghost/GhostGuardian.t.sol` (17) | quorum 2/3, `approveAction` ≠ `approve`, pas de résurrection d'incident expiré, destruction exacte, autre incident vivant intact, `Extend`, `Clear`, restitution plafonnée, assurance, pause 3/3 |
+| `test/ghost/GhostEvents.t.sol` (7) | suite exacte des logs (et adresse émettrice) lue par le monitor, id de demande 0 compris |
+| `test/invariant/Ghost.invariant.t.sol` (2 × 9) | (a) rien de convertible avant W ; (b) tranches == modèle d'ombre ; (c) conservation du soupçon et verrou partiel ; (d) destruction exacte ; (e) solvabilité et réserve exacte ; (f) bornes du surveillant ; vivacité ; test de fumée du handler |
+
+Les invariants tournent avec deux fixtures (seuils à 0, et seuils > 0 alignés sur
+`data/ghost_ledger.py`) ; le handler tient un **modèle d'ombre** indépendant (tranches, étiquettes
+d'incident, séries d'extension) et classe chaque action « doit réussir » / « doit échouer ».
+
+### Limites mesurées (fixtures W = 600 s, créneau 60 s, facteur 6 : ce ne sont pas des mesures de production)
+
+- **Friction d'un surveillant compromis** : il peut retarder un même compte `factor × W` sur
+  chaque période de `(factor + 1) × W`, indéfiniment. Mesuré : **6/7 du temps**
+  (`test_frictionDutyCycle`). La borne porte sur un **taux**, pas sur une durée totale ; le
+  remède reste H1 (l'admin révoque `WATCHER_ROLE`).
+- **Poussière avec seuils à 0** : 1 wei de soupçon reçu bloque toute la conversion du
+  destinataire jusqu'à l'expiration de l'incident (`test_dustGriefing_thresholdsZero`). Avec des
+  seuils > 0, seule la part suspecte reste verrouillée.
+- **Compte détecté tard** : un compte qui rejoint l'incident vivant n'est retenu que jusqu'à son
+  `expiresAt` (`test_lateJoin_marginIsRemainingLifetime`). Parade humaine : une confirmation 2/3
+  avant l'expiration fige le soupçon (`Sc`), qui reste verrouillé.
+- Le M obtenu **avant** le gel n'est jamais repris (voulu) : seul du Ghost sans soupçon valide
+  sort.
+- **Pas encore écrits** (suivis en issue) : parité avec `data/ghost_ledger.py`
+  (`LedgerParity.t.sol`), scénario de récupération après fragmentation, mesures de gas
+  (`GhostGas.t.sol`). Tailles mesurées (`forge build --sizes`) : `GhostToken` 21 173 o
+  (limite 24 576), initcode `ProtectedMinter` 33 546 o (limite 49 152).
+
 ## À produire plus tard — _proposé, à valider en équipe_
 
 - **Balise de risque** + **faux marché de prêt** (simulé, fictif) qui cesse d'accepter le token
-  gelé comme garantie — **volet 3, optionnel**.
-- **Contrat ERC20 « Token Ghost »** (quarantaine liquide) : token temporaire **librement
-  échangeable**, convertible 1:1 contre le vrai token après délai sans anomalie, avec une
-  **fonction de destruction réservée au guardian** pour annuler les ghosts d'un lot suspect en cas
-  de gel confirmé — _proposé, à valider_.
+  gelé comme garantie — **volet 3** (#7, PR #111 de @Yannis1307, lit `IGhostRisk`).
+- **Routeur de règlement et M' protégé / pur** (#84, §10bis), au-dessus du Ghost.
 
 Détails et arbitrages ouverts : voir `docs/OPEN_QUESTIONS.md` et `docs/CLAIMS.md`.

@@ -152,7 +152,7 @@ flowchart TD
 |------|-------|-------|------|
 | [x] | #20 | dashboard : vue alertes + réponse (Streamlit) | une fois qu'il y a des alertes. |
 | [x] | #47 | dashboard : outil de génération et rejeu des scénarios de démo (CLI + page Streamlit) | `optional` ; simulation hors chaîne, forme à valider en équipe |
-| [ ] | #8 | contracts : ERC20 Token Ghost + burn guardian | dépend de #5. Spec tranchée : §0bis-b (tranches d'échéance, #35), §0bis-c (réserve de restitution, #36), §9 (ratio) ; tests d'invariants de #33 inclus. |
+| [x] | #8 | contracts : ERC20 Token Ghost + burn guardian | dépend de #5. Spec tranchée : §0bis-b (tranches d'échéance, #35), §0bis-c (réserve de restitution, #36), §9 (ratio) ; tests d'invariants de #33 inclus. _(implémenté, 106 tests dont invariants (a)–(f), branche `feat/8-token-ghost`)_ |
 | [ ] | #7 | contracts : balise de risque + faux marché — volet 3 | **cœur du projet** (§0, §4), plus optionnel ; dépend de #8 (lit le ratio). |
 | [ ] | #65 | contracts : pool simulé M-Ghost/USDC, règlement différé `swap-id` (§10, #43) | dépend de #8 ; sert le scénario D (#25). Devient un cas particulier du routeur §10bis (#84). |
 | [ ] | #84 | contracts : M' protégé / pur / chèque, routeur + Ghost de paiement par actif, restitution (§10bis) | dépend de #8, étend #65 ; conception **débloquée** par #85 (OPEN_ANSWERS §11). |
