@@ -190,8 +190,9 @@ class RuleBasedMonitor:
 
         Args:
             event: le mint observe.
-            context: donnees hors `MintEvent` (depot, taux, offre, collateral,
-                evenements admin, taux de reference). None = rien a verifier.
+            context: donnees hors `MintEvent` (depot, deposant/`requester` pour
+                I3, taux, offre, collateral, evenements admin, taux de
+                reference). None = rien a verifier.
 
         Returns:
             Une `Alert` (« retarder le perimetre ») si une regle est violee,

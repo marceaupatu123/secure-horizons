@@ -177,6 +177,13 @@ def test_no_context_no_alert() -> None:
 ATTACKER = "0x" + "e5" * 20
 
 
+def test_i3_mint_to_depositor_no_alert() -> None:
+    """Mint legitime vers le deposant lui-meme (meme casse) : pas d'alerte I3."""
+    minted = 1_000 * UNIT
+    context = _consistent_context(minted, minted, requester=RECIPIENT)
+    assert RuleBasedMonitor().check_mint(_mint(minted), context) is None
+
+
 def test_i3_recipient_is_requester_no_alert() -> None:
     minted = 1_000 * UNIT
     context = _consistent_context(minted, minted, requester=RECIPIENT.upper().replace("0X", "0x"))
@@ -191,10 +198,15 @@ def test_i3_diverted_one_to_one_mint_alerts() -> None:
     alert = RuleBasedMonitor().check_mint(_mint(minted), context)
     assert alert is not None
     assert alert.kind == AlertKind.MINT
+    assert alert.severity is AlertSeverity.CRITICAL
     assert "I3 viole" in alert.reason
-    assert alert.suspect_amount == minted
+    assert "I1" not in alert.reason  # I1 tient : seul le destinataire trahit
+    assert "retarder" in alert.reason
+    assert alert.subject_address == RECIPIENT
+    assert alert.suspect_amount == minted  # tout le mint est detourne
     assert alert.contamination_ratio == 1.0
     assert [s.address for s in alert.seeds] == [RECIPIENT]
+    assert alert.seeds[0].suspect_amount == minted
 
 
 def test_i3_skipped_without_requester() -> None:
