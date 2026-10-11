@@ -1,8 +1,9 @@
 """CLI des scenarios de demo (#47) : `python -m dashboard.demo list|run <id>`.
 
 Point d'entree unique pour lister et rejouer (seed fixe) les scenarios A, B, C,
-D, N1, N2, N3. Tout est simulation hors chaîne, à remplacer par #n (indique par
-scenario). Seules des grandeurs mesurees sont affichees.
+D, N1, N2, N3. Chaque scenario indique les briques branchees sur le vrai code
+et celles encore en simulation hors chaîne, à remplacer par #n. Seules des
+grandeurs mesurees (comptages, pas des mesures de performance) sont affichees.
 """
 
 from __future__ import annotations
@@ -24,7 +25,6 @@ from dashboard.scenarios import (  # noqa: E402
     get_spec,
     list_specs,
     run_scenario,
-    simulation_banner,
 )
 from dashboard.view_model import MISSING_LABEL, format_base_units  # noqa: E402
 
@@ -52,7 +52,7 @@ def _print_list(disabled: frozenset[str]) -> None:
             "optionnel" if spec.optional else MISSING_LABEL,
             "désactivé" if spec.id in disabled else "activé",
             f"dépend de {_refs(spec.depends_on)}",
-            simulation_banner(spec.replace_by),
+            spec.implementation_label(),
         ]))
 
 
@@ -66,8 +66,8 @@ def format_result(result: ScenarioResult) -> str:
         f"Seed : {result.seed}",
         f"Attendu : {spec.expected}",
     ]
-    if result.simulated:
-        lines.append(f"Bandeau : {simulation_banner(result.replace_by)}")
+    if result.variants:
+        lines.append(f"Bandeau : {spec.result_banner(result)}")
     for variant in result.variants:
         lines.append(f"== {variant.label} ({variant.name}) ==")
         lines += [f"  {m.label} : {format_metric_value(m)}" for m in variant.metrics]
@@ -81,7 +81,7 @@ def format_result(result: ScenarioResult) -> str:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m dashboard.demo",
-        description="Scénarios de démo #47 (simulation hors chaîne).",
+        description="Scénarios de démo #47 (vrai code amont + simulation hors chaîne).",
     )
     sub = parser.add_subparsers(dest="command", required=True)
     list_cmd = sub.add_parser("list", help="Liste les scénarios.")

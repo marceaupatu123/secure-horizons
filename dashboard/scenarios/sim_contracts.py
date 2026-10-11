@@ -95,8 +95,13 @@ class GhostLedger:
         """Retard : aucune conversion de `address` avant `until`."""
         self._held_until[address] = max(until, self._held_until.get(address, until))
 
-    def transfer(self, sender: str, recipient: str, amount: int, at: datetime) -> int:
-        """Deplace jusqu'a `amount` de Ghost (FIFO, ratio conserve) ; nouvelle fenetre chez le destinataire."""
+    def transfer(self, sender: str, recipient: str, amount: int, at: datetime,
+                 keep_window: bool = False) -> int:
+        """Deplace jusqu'a `amount` de Ghost (FIFO, ratio conserve).
+
+        Par defaut : nouvelle fenetre chez le destinataire. `keep_window=True` : le lot
+        garde son echeance d'origine (OPEN_ANSWERS §0bis-b, comme `data/generate.py`).
+        """
         moved = 0
         for lot in self._live(sender, at):
             take = min(lot.amount, amount - moved)
@@ -104,7 +109,7 @@ class GhostLedger:
                 break
             lot.amount -= take
             moved += take
-            self.credit(recipient, take, lot.ratio, at)
+            self.credit(recipient, take, lot.ratio, lot.minted_at if keep_window else at)
         return moved
 
     def convert_after_window(self, at: datetime) -> dict[str, int]:
