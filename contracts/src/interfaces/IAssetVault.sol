@@ -58,6 +58,7 @@ interface IAssetVault {
     error NotRouter(address caller);
     error NotMatured(uint64 maturity);
     error ZeroAmount();
+    error ZeroAddress();
     error InvalidProof();
     error AlreadyClaimed(uint256 nonce);
     error ExceedsLocked(uint256 amount, uint256 locked);
