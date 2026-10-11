@@ -32,6 +32,7 @@ Règles :
 | 9 | Volet 2 : surveillance adaptative, allongement de fenêtre ciblé, contamination par ratio | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | PR #38 |
 | 10 | Lignage d'un swap : `swap-id` sur notre pool, jambe sortante en règlement différé (#43) | 2026-10-10 | denybs | Validée en session, à relire par l'équipe | Issue #43 |
 | 10bis | Qui porte le risque : M' protégé / pur / chèque, routeur + Ghost de paiement, restitution sans fonds ni frais (#84) | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | Issue #84 |
+| 79 | Champs manquants monitor/detection : `request_id` optionnel (fix collision), `is_ghost` et données I1/I5/I6 gardés en contexte jusqu'aux événements du contrat (#79) | 2026-10-11 | denybs | Validée en session, à relire par l'équipe | Issue #79 |
 
 ---
 
@@ -1056,3 +1057,50 @@ M' contre N' entre deux tokens du standard : chaque émetteur règle sa jambe. P
   - restitution totale ≤ argent bloqué du voleur, et somme des restitutions + paiements = entrées ;
   - rejeu des cas 1, 2, 2bis et 3.
 - Friction à **mesurer** (attente de l'actif final, exclusion des protocoles hors standard).
+
+## §79. Champs manquants repérés par monitor/detection (#79)
+
+> Renvoi depuis l'issue #79 (écarts repérés pendant #9/#10/#11). Propriétaire de `shared/` :
+> @marceaupatu123.
+
+### DÉCISION (2026-10-11, denybs) — _validée en session, à relire par l'équipe_
+
+Trois écarts avaient été remontés entre `shared/models.py` et les besoins de monitor/detection.
+Verdict, un par un :
+
+**1. `MintEvent.request_id` — collision de sentinelle (CORRIGÉ).** C'était le seul **bug** :
+un `Transfer` ERC-20 nu ne porte pas l'id de demande, et le monitor mettait la sentinelle
+`UNKNOWN_REQUEST_ID = 0`, qui **entre en collision** avec la vraie demande n°0
+(`data/generate.py` numérote à partir de 0, `MintRequest.request_id` `ge=0`). **Décision :**
+`MintEvent.request_id` devient `int | None` (défaut `None`). `None` = **inconnu**, jamais une
+vraie demande ; une demande réelle garde un entier `ge=0`. Le monitor met `None`
+(`UNKNOWN_REQUEST_ID = None`). detection ne corrèle pas par ce champ tant qu'il peut être `None`
+(c'était déjà le cas). Un événement dédié futur (`Minted` avec id, côté contrat #5) renseignera un
+vrai id sans nouveau changement de modèle. Changement **non cassant** (élargissement du domaine) ;
+`docs/CONTRACTS.md` (ligne `MintEvent`) mis à jour.
+
+**2. `TransferEvent.is_ghost` — gardé par design, tranché avec #8.** `is_ghost` n'est pas
+déductible d'un `Transfer` ERC-20. Le monitor le fixe par **configuration de listener**
+(`MONITOR_TOKEN_IS_GHOST`, un listener par contrat : token réel vs Ghost). **Décision :** on ne
+touche pas à `shared/` pour l'instant — c'est le **design du contrat Ghost (#8)** qui fixera comment
+distinguer un Ghost on-chain (événement dédié, ou contrat Ghost séparé). Jusque-là, la
+configuration de listener est la bonne couche : le champ `is_ghost` du modèle reste correct, seule
+sa **source** est provisoire.
+
+**3. Données des invariants I1/I5/I6 — gardées en contexte explicite par design.** `MintEvent`
+n'a ni montant déposé ni taux (I1) ; aucun modèle partagé ne porte l'offre totale (I5), la valeur
+du collatéral (I6), ni les événements d'administration (`Upgraded`, `RoleGranted`, oracle/taux).
+detection les reçoit aujourd'hui en **paramètres explicites** (`MintContext`, `AdminEvent`,
+`AdminAnnouncement` dans `detection/inputs.py`). **Décision :** on **ne les ajoute pas** à
+`shared/` maintenant. Raison : **aucun contrat ne les émet encore** — les mettre dans le modèle
+partagé serait inventer une forme avant d'avoir la source on-chain. La vraie source sera les
+**événements du contrat protégé (#5)** (`SwapRequested`/`SwapCompleted` portent déjà `depositAmount`
+et `rate` ; `RateChanged`, `RoleGranted`… existent). Quand monitor décodera ces événements dédiés,
+on fera **une seule** révision de `shared/` alignée sur ce qui est réellement émis, plutôt que
+plusieurs champs spéculatifs. Le passage par contexte explicite reste l'interface d'ici là.
+
+### Reste ouvert
+
+- Révision groupée de `shared/` (montant/taux/offre/collatéral/admin) **le jour où monitor décode
+  les événements dédiés du contrat #5**, pas avant — à faire par le propriétaire de `shared/`.
+- Distinction on-chain d'un Ghost (`is_ghost`) : à figer avec le design du contrat Ghost (#8).

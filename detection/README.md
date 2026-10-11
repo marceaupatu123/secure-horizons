@@ -55,9 +55,9 @@ signifie seulement **retarder** le périmètre (§3) ; détruire / pause globale
   `AdminAnnouncement`). Une vérification dont les entrées manquent est sautée.
 - **GAP pour `shared/` (@marceaupatu123)** : `MintEvent` ne porte ni dépôt ni taux ; aucun modèle
   partagé pour l'offre totale, le collatéral, les événements d'administration ni leur annonce.
-- **Pas de corrélation par `request_id`** : le monitor (#9) renseigne la sentinelle provisoire
-  `UNKNOWN_REQUEST_ID = 0`, qui entre en collision avec une vraie demande n°0. Le dépôt est fourni
-  explicitement par l'appelant.
+- **Pas de corrélation par `request_id`** : depuis #79 (OPEN_ANSWERS §79), le monitor met
+  `UNKNOWN_REQUEST_ID = None` (plus `0`, qui entrait en collision avec la vraie demande n°0) ;
+  `MintEvent.request_id` est `int | None`. Le dépôt est fourni explicitement par l'appelant.
 
 ## Surveillant de transferts (#12)
 

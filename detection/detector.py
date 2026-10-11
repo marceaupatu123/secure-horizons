@@ -21,7 +21,7 @@ ne decide jamais d'une destruction ni d'une pause globale (multisig).
 Les parametres (epsilon, delta, facteur I6...) vivent dans `detection/params.py`
 (PROVISOIRE / A MESURER). Les donnees absentes de `MintEvent` arrivent via
 `detection.inputs.MintContext` (GAP documente dans `detection/inputs.py`).
-`MintEvent.request_id` n'est PAS utilise (sentinelle PROVISOIRE de #9).
+`MintEvent.request_id` n'est PAS utilise (optionnel, `None` possible depuis #79).
 
 `RuleBasedMonitor.check_transfer` (#12) suit la DECISION docs/OPEN_ANSWERS.md
 §9 : il agrege les transferts par tranche (5 min PROVISOIRE), normalise le

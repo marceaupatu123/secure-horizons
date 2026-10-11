@@ -34,7 +34,7 @@ def _mint(amount: int) -> MintEvent:
         observed_at=datetime(2026, 10, 10, tzinfo=timezone.utc),
         recipient=RECIPIENT,
         amount=amount,
-        request_id=0,  # sentinelle #9 : ne doit pas etre utilisee
+        request_id=None,  # #79 : request_id optionnel, non utilise par la detection
     )
 
 

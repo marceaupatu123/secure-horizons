@@ -148,10 +148,20 @@ class MintEvent(_StrictModel):
     amount: int = Field(
         ..., gt=0, description="Montant minte en base units (derive on-chain)."
     )
-    request_id: int = Field(
-        ...,
+    request_id: int | None = Field(
+        None,
         ge=0,
-        description="Identifiant de la MintRequest traitee (« demande n°X »).",
+        description=(
+            "Identifiant de la MintRequest traitee (« demande n°X »), ou None "
+            "quand il n'est pas porte par l'observation (un Transfer ERC-20 nu "
+            "ne porte pas l'id de demande). None = INCONNU, jamais une vraie "
+            "demande : les demandes reelles sont numerotees a partir de 0 "
+            "(cf. `data/generate.py`, `MintRequest.request_id` ge=0), donc une "
+            "sentinelle entiere (ex. 0) entrerait en collision. Le decodeur "
+            "ERC-20 du monitor met None ; un evenement dedie (`Minted` avec "
+            "request_id, cote contrat #5) le renseigne. detection ne correle "
+            "pas par ce champ tant qu'il peut etre None."
+        ),
     )
 
 
