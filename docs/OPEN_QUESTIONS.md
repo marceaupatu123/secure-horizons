@@ -1,4 +1,4 @@
-# OPEN_QUESTIONS.md — décisions à prendre en équipe
+﻿# OPEN_QUESTIONS.md — décisions à prendre en équipe
 
 Ce fichier liste les décisions de conception **non tranchées**. Aucune n'est décidée par un
 assistant IA : on les discute et on les acte ici (ajouter la décision + la date sous chaque point).
@@ -426,3 +426,73 @@ lu on-chain (vérité de la chaîne, le plus simple). **(b)** (flux dédié aux 
 propre si le coût RPC gêne ; **(a)** (émettre les burns comme transferts) est écartée car elle oblige à filtrer
 de faux transferts dans les règles de détection volume/HHI. Le texte complet des trois options et la limite
 mesurée (une lecture RPC par graine, à documenter dans `docs/CLAIMS.md`) vivent désormais dans `OPEN_ANSWERS` §14.
+
+## 15. Token Ghost (#8) — tests et limites — _choix de l'agent (2026-10-11, provisoire, à valider en équipe)_
+
+Choix faits par l'assistant de @denybs en implémentant le design itération 3
+(`contracts/.plan/design.md`). Aucun ne change une règle du design ; tous sont réversibles.
+
+- **Helpers de test dans `test/utils/GhostBase.sol`** (et non dans `BaseTest.sol` comme écrit au
+  design §8.0) : ils ont besoin d'état (`pm`, `m`, `ghost`), `BaseTest` reste sans état.
+- **Taille des campagnes d'invariants du Ghost** : 48 runs × profondeur 128 sous le profil
+  `default` (config en ligne), pour garder la CI courte ; le profil `deep` n'est pas touché. Un test
+  de fumée déterministe (`test_handlerExercisesEveryPath`) garantit que chaque chemin « doit
+  réussir » du handler est réellement atteint, ce qu'un résumé de campagne aléatoire ne prouve pas.
+- **Reportés à une issue de suivi** (non bloquants pour #8) : `LedgerParity.t.sol` (parité avec
+  `data/ghost_ledger.py`), `ScenarioRecovery.t.sol` (part récupérée après fragmentation),
+  `GhostGas.t.sol` (mesures de gas). Le scénario C relève de #7 (PR #111), le scénario D de #84.
+- **Comportement gardé tel que le design le donne, à confirmer** : s'envoyer du M à soi-même le
+  remet en quarantaine (Ghost frais), puisque « tout transfert » passe par le Ghost (§0bis).
+  Alternative : traiter `from == to` comme un no-op. **Ouvert.**
+
+Limites **mesurées** avec les fixtures (W = 600 s, créneau 60 s, facteur 6, budget 20 %), à ne
+pas citer comme chiffres de production (`docs/CLAIMS.md`) :
+
+- surveillant compromis : retard de **6/7 du temps** au plus sur un même compte (borne de taux,
+  pas de durée) — remède : révoquer `WATCHER_ROLE` (H1) ;
+- seuils de conversion à 0 : **1 wei** de soupçon reçu bloque toute la conversion du destinataire
+  jusqu'à l'expiration de l'incident ; seuils > 0 : seule la part suspecte reste bloquée. Choisir
+  des seuils > 0 pour la démo ? **Ouvert** (lié à #3, valeurs à mesurer).
+
+## 16. Balise de risque + faux marché de prêt (#7) — _choix provisoires, à valider par @denybs_
+
+> Numérotée §16 (et non §14) à la résolution du conflit de merge : `main` porte déjà une §14
+> (lignage et conversions Ghost, tranchée) et une §15 (Token Ghost). Contenu inchangé.
+
+Choix de l'assistant (2026-10-11, pour Yannis), implémentés dans `contracts/src/RiskBeacon.sol` et
+`contracts/src/MockLendingMarket.sol` selon la spec de denybs sur #7 :
+
+- **État DETRUIT** = `destroyedAt > clearedAt` (une destruction non suivie d'un blanchiment 2/3).
+  Alternative écartée : DETRUIT définitif dès `destroyedAt != 0` (une adresse blanchie resterait
+  bannie à vie).
+- **Prix** : 1 token de garantie = 1 unité de prêt (après mise à l'échelle des décimales), pas
+  d'oracle, pas de liquidation : le marché **constate** la mauvaise créance (scénario C).
+- **Retrait après destruction** : payé au **prorata du solde réel** (pas de course au retrait).
+  Conséquence assumée : sans balise, la perte de la garantie détruite est **mutualisée** sur tous les
+  déposants — c'est exactement la contagion que la balise évite (avec balise, l'emprunt est refusé).
+- **Scénario C mesuré** (`forge test --match-test scenarioC -vv`, paramètres de test, PAS une
+  calibration) : 100 000 M-Ghost 100 % suspects en garantie, LTV 80 %, décote de base 5 % →
+  mauvaise créance **76 000 mUSDC sans balise, 0 avec**.
+
+## 17. Règlement §10bis (#84) — architecture — _choix de l'agent (2026-10-11, provisoire, à valider en équipe)_
+
+Choix faits par l'assistant de @denybs pour implémenter la décision §10bis (`OPEN_ANSWERS.md`),
+sans trancher aucune règle de cette décision. Design détaillé : `contracts/.plan/design-84.md`.
+
+- **Couche séparée au-dessus de `GhostToken`.** Le routeur, les coffres (un par actif) et les
+  Ghost de paiement sont de NOUVEAUX contrats. On ne modifie pas le `GhostToken` de #8 tant que la
+  PR #123 n'est pas mergée, pour ne pas déstabiliser une PR en relecture. Conséquence : le statut
+  de tranche (`PROTEGE`/`PUR`/`CHEQUE`) est porté par le **routeur** (`statusOf`), pas par le
+  Ghost ; et la règle « le M' ne bouge que par le routeur » n'est pas encore imposée dans le Ghost
+  (différée après le merge de #123). **Ouvert** : à l'inverse, tout mettre dans `GhostToken`
+  (statut + restriction de transfert) une fois #123 mergé, si l'équipe préfère.
+- **Restitution par racine de Merkle, pas de prorata on-chain.** Le calcul des parts (point 4 :
+  prorata plafonné par le prix payé, reste au payeur du voleur) est fait **hors chaîne** et publié
+  en racine de Merkle contestable (cohérent avec #85 piste b). Le coffre vérifie une feuille et
+  paie ; il ne recalcule rien. **Ouvert** : faut-il un recalcul on-chain pour les petits lots ?
+- **Interfaces figées en premier** (`IAssetVault`, `ISettlementRouter`, `ISettlementTypes`) pour
+  que @Yannis1307 écrive les tests d'invariants en parallèle, comme pour #8.
+- **Un Ghost de paiement par actif, 1:1, sans oracle ni prix plancher** (reprend §10bis point 2).
+  Son échéance est celle du M' vendu.
+- Enforcement, modif de `GhostToken`, et événements de `docs/CONTRACTS.md` : différés / à proposer
+  aux propriétaires, non faits ici.

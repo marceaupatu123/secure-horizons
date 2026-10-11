@@ -1,4 +1,4 @@
 # Dépendances Foundry installées par `forge install --no-git` (tags figés, voir README.md)
-lib/
+/lib/
 # Notes de travail locales (non versionnées)
 .plan/
