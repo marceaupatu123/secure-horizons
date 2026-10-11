@@ -6,19 +6,19 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {BaseTest} from "./utils/BaseTest.sol";
 import {GuardianPausable} from "../src/GuardianPausable.sol";
 import {ProtectedMinter} from "../src/ProtectedMinter.sol";
-import {StableToken} from "../src/StableToken.sol";
+import {GhostedStable} from "../src/GhostedStable.sol";
 
 /// @notice Pause globale gardée par un multisig simulé 3/3 (docs/OPEN_ANSWERS.md §3).
 contract GuardianPausableTest is BaseTest {
     ProtectedMinter internal minter;
-    StableToken internal stable;
+    GhostedStable internal stable;
 
     event Paused(address account);
     event Unpaused(address account);
 
     function setUp() public {
         _deployUsdc();
-        (minter, stable) = _deployProtected();
+        (minter, stable,) = _deployProtected();
     }
 
     function test_pause_requiresThreeOfThree() public {
@@ -119,10 +119,10 @@ contract GuardianPausableTest is BaseTest {
 
     function test_constructor_rejectsDuplicateOrZeroGuardian() public {
         vm.expectRevert(abi.encodeWithSelector(GuardianPausable.InvalidGuardian.selector, guardian1));
-        new ProtectedMinter(IERC20(address(usdc)), admin, service, INITIAL_RATE, [guardian1, guardian2, guardian1]);
+        new ProtectedMinter(IERC20(address(usdc)), admin, service, INITIAL_RATE, [guardian1, guardian2, guardian1], _ghostConfig());
 
         vm.expectRevert(abi.encodeWithSelector(GuardianPausable.InvalidGuardian.selector, address(0)));
-        new ProtectedMinter(IERC20(address(usdc)), admin, service, INITIAL_RATE, [guardian1, address(0), guardian3]);
+        new ProtectedMinter(IERC20(address(usdc)), admin, service, INITIAL_RATE, [guardian1, address(0), guardian3], _ghostConfig());
     }
 
     function test_guardians_listed() public view {
