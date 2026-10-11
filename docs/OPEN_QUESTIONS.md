@@ -473,3 +473,26 @@ Choix de l'assistant (2026-10-11, pour Yannis), implémentés dans `contracts/sr
 - **Scénario C mesuré** (`forge test --match-test scenarioC -vv`, paramètres de test, PAS une
   calibration) : 100 000 M-Ghost 100 % suspects en garantie, LTV 80 %, décote de base 5 % →
   mauvaise créance **76 000 mUSDC sans balise, 0 avec**.
+
+## 17. Règlement §10bis (#84) — architecture — _choix de l'agent (2026-10-11, provisoire, à valider en équipe)_
+
+Choix faits par l'assistant de @denybs pour implémenter la décision §10bis (`OPEN_ANSWERS.md`),
+sans trancher aucune règle de cette décision. Design détaillé : `contracts/.plan/design-84.md`.
+
+- **Couche séparée au-dessus de `GhostToken`.** Le routeur, les coffres (un par actif) et les
+  Ghost de paiement sont de NOUVEAUX contrats. On ne modifie pas le `GhostToken` de #8 tant que la
+  PR #123 n'est pas mergée, pour ne pas déstabiliser une PR en relecture. Conséquence : le statut
+  de tranche (`PROTEGE`/`PUR`/`CHEQUE`) est porté par le **routeur** (`statusOf`), pas par le
+  Ghost ; et la règle « le M' ne bouge que par le routeur » n'est pas encore imposée dans le Ghost
+  (différée après le merge de #123). **Ouvert** : à l'inverse, tout mettre dans `GhostToken`
+  (statut + restriction de transfert) une fois #123 mergé, si l'équipe préfère.
+- **Restitution par racine de Merkle, pas de prorata on-chain.** Le calcul des parts (point 4 :
+  prorata plafonné par le prix payé, reste au payeur du voleur) est fait **hors chaîne** et publié
+  en racine de Merkle contestable (cohérent avec #85 piste b). Le coffre vérifie une feuille et
+  paie ; il ne recalcule rien. **Ouvert** : faut-il un recalcul on-chain pour les petits lots ?
+- **Interfaces figées en premier** (`IAssetVault`, `ISettlementRouter`, `ISettlementTypes`) pour
+  que @Yannis1307 écrive les tests d'invariants en parallèle, comme pour #8.
+- **Un Ghost de paiement par actif, 1:1, sans oracle ni prix plancher** (reprend §10bis point 2).
+  Son échéance est celle du M' vendu.
+- Enforcement, modif de `GhostToken`, et événements de `docs/CONTRACTS.md` : différés / à proposer
+  aux propriétaires, non faits ici.
