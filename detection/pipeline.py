@@ -76,6 +76,7 @@ from monitor.protected import AdminObservation
 from detection.provenance import (
     admin_event_from_observation,
     correlator_context_provider,
+    event_context_provider,
 )
 from shared.models import Alert, MintEvent, TransferEvent
 
@@ -334,13 +335,14 @@ def run_live(
             )
             return 0
         listener = ChainListener(config)
-    correlator = getattr(listener, "correlator", None)
-    if correlator is not None:
-        # Mode contrat protege (#104) : chaque mint arrive avec sa demande.
-        pipeline.set_mint_context_provider(correlator_context_provider(correlator))
-        logger.info(
-            "detection : mode contrat protege, minter %s", config.minter_address
-        )
+    # Mode contrat protege (#104, #135) : la provenance de la demande vit sur
+    # le MintEvent partage (depositor/deposit_amount/rate_wad/via_protected_path),
+    # renseignee par le monitor. La detection la lit SUR L'EVENEMENT, sans tenir
+    # de reference au correlateur -- marche aussi en rejeu.
+    minter = getattr(config, "minter_address", None)
+    if minter is not None:
+        pipeline.set_mint_context_provider(event_context_provider())
+        logger.info("detection : mode contrat protege, minter %s", minter)
     logger.info("detection : ecoute du token %s ...", config.token_address)
     for batch in listener.stream_event_batches(max_polls=max_polls):
         pipeline.update_circulating_supply(listener.read_total_supply())
