@@ -1,9 +1,15 @@
-# Crypto-Secure — Guardians of Value (Équipe 20)
+# Ghost — Guardians of Value (Équipe 20)
 
 > ESSECKATHON — Track « Fintech Security : Guardians of Value ». Hackathon 48h.
+>
+> 📖 **Doc illustrée en ligne (Mintlify) :** <https://cryptosecure.mintlify.site/>
 
 Ce README explique **tout le projet et tout l'outillage** mis en place. Si tu débarques, lis-le
 en entier une fois : il te dit quoi faire, dans quel ordre, et comment on travaille à plusieurs.
+
+> ℹ️ **Nom.** Le projet s'appelle désormais **Ghost** (le jeton de quarantaine « Token Ghost » lui
+> a donné son nom). L'identifiant du dépôt GitHub reste `marceaupatu123/secure-horizons` : on ne
+> change pas les URLs de clone ni les liens d'issues pour ne rien casser.
 
 ---
 
@@ -12,9 +18,9 @@ en entier une fois : il te dit quoi faire, dans quel ordre, et comment on travai
 Système de défense contre un exploit DeFi, inspiré du hack Resolv (mars 2026 : clé de signature
 compromise, mint de tokens non collatéralisés, puis sortie des fonds).
 
-**Orientation proposée (à valider en équipe)** : comme l'attaquant détient une clé valide, réagir
-*après coup* arrive trop tard. Donc **la sécurité vit dans le contrat** — principe « une clé volée
-ne doit presque rien valoir ». Trois volets :
+**Principe** : comme l'attaquant détient une clé valide, réagir *après coup* arrive trop tard.
+Donc **la sécurité vit dans le contrat** — « une clé volée ne doit presque rien valoir ». Trois
+volets :
 
 1. **Montant dérivé on-chain** : la signature autorise seulement « traiter la demande n°X », et le
    contrat calcule lui-même le montant à émettre à partir du dépôt enregistré. L'attaquant ne peut
@@ -25,13 +31,24 @@ ne doit presque rien valoir ». Trois volets :
 3. **Pare-feu de contagion** : une « balise de risque » où les surveillants publient un gel, et un
    faux marché de prêt qui cesse d'accepter le token gelé.
 
-En renfort : quarantaine (piste « Token Ghost » : jeton temporaire échangeable, converti 1:1 après
-délai sans anomalie, détruit si gel confirmé), **surveillants** multiples (règles, ML, transferts
-anormaux) qui peuvent demander un gel **sans jamais décider seuls**, journal d'audit **DORA** et
-rapport d'incident.
+### Le cœur : la quarantaine liquide « Token Ghost »
 
-Rien n'est encore tranché côté conception : toutes les décisions ouvertes sont dans
-`docs/OPEN_QUESTIONS.md`, l'ordre de travail dans `docs/ROADMAP.md`.
+**Tout transfert** (pas seulement les mints — décision du 2026-10-10) émet un **Token Ghost**
+librement échangeable, converti 1:1 contre le vrai token après un délai sans anomalie, et
+**détruit** si un gel est confirmé. La sécurité du protocole repose sur le **transfert du risque
+vers un marché secondaire spéculatif** : le vrai token n'est jamais émis frauduleusement, et la
+perte éventuelle est assumée par les acheteurs de Tokens Ghost.
+
+Le Ghost portant tous les transferts, il sert aussi à **récupérer des fonds après coup**
+(séquestre à la source, lignée d'origine, saisie/clawback multisig).
+
+En renfort : **surveillants** multiples (règles, ML, transferts anormaux) qui peuvent demander un
+gel **sans jamais décider seuls**, une IA qui ne fait que **retarder** (localement, auto-expirant)
+et ne décide jamais seule d'une destruction ni d'une pause globale (multisig humain), journal
+d'audit **DORA** et rapport d'incident.
+
+Les décisions ouvertes sont dans `docs/OPEN_QUESTIONS.md`, celles déjà tranchées dans
+`docs/OPEN_ANSWERS.md`, l'ordre de travail dans `docs/ROADMAP.md`.
 
 **Toutes les données sont fictives.** Jamais de vraie clé ni de vraies données.
 
@@ -40,7 +57,7 @@ Rien n'est encore tranché côté conception : toutes les décisions ouvertes so
 ## 2. Démarrage rapide (chaque membre, dans l'ordre)
 
 ```bash
-# 1. Cloner
+# 1. Cloner (l'identifiant du dépôt reste "secure-horizons")
 git clone https://github.com/marceaupatu123/secure-horizons.git
 cd secure-horizons
 
@@ -81,24 +98,23 @@ make test        # tous les tests doivent passer (au moins un test de fumée par
 
 | Dossier / fichier | Rôle |
 |-------------------|------|
-| `contracts/` | Smart contracts Solidity (Foundry), cible Avalanche Fuji. Instructions d'install dans son README (Foundry pas encore initialisé). |
-| `monitor/` | Écoute on-chain des événements de mint ET de transfert. |
+| `contracts/` | Smart contracts Solidity (Foundry), cible Avalanche Fuji. Montant dérivé on-chain + garde-fou du taux (`proposeRate` borné, timelock, cancel guardian). |
+| `monitor/` | Écoute on-chain des événements de mint ET de transfert, lit la provenance du mint. |
 | `detection/` | Surveillants d'anomalies (mint et transferts) qui produisent des alertes. |
 | `llm/` | Appels LLM via Amazon Bedrock (API Converse) : explications, rapport d'incident. |
 | `response/` | Orchestration de la réponse graduée (gel, validation humaine, journal). |
-| `dashboard/` | Interface de démo métier (Streamlit). |
-| `shared/` | Code commun : config (`.env`), limiteur Bedrock, modèles de données. **Zone sensible.** |
-| `data/` | Générateur de données synthétiques (fictives, JSONL) : `make data`. Scénarios décrits dans son README. |
+| `dashboard/` | Interface de démo métier (Streamlit) : vitrine + pages de détail (alertes, périmètres/gel, quarantaine Ghost, journal d'audit). |
+| `shared/` | Code commun : config (`.env`), limiteur Bedrock, modèles de données (`MintEvent`, `AdminEvent`, `SupplySnapshot`). **Zone sensible.** |
+| `data/` | Générateur de données synthétiques (fictives, JSONL) + marché du Ghost (décote/commission) + séquestre/saisie : `make data`. |
 | `docs/` | Toute la doc d'équipe (voir §7). |
+| `docs-site/` | Doc grand public illustrée (Mintlify) — en ligne sur <https://cryptosecure.mintlify.site/>. |
 | `tools/` | Outils d'équipe hors modules (ex. dashboard d'avancement). |
 | `.github/` | CI (GitHub Actions), gabarit de PR, CODEOWNERS. |
 | `.githooks/` | Hook git pre-commit anti-secrets. |
 | `.kiro/` | Config Kiro partagée : steering (règles), hooks (automatisations). |
 
 Chaque module a un `README.md` (rôle, propriétaire, comment le lancer) et un dossier `tests/`.
-Chaque `python -m <module>` tourne seul. Déjà implémentés : `response` (`python -m response`,
-démo fictive de la réponse graduée + journal d'audit) et `data` (`python -m data.generate`). Les
-autres affichent encore « à implémenter ».
+Chaque `python -m <module>` tourne seul.
 
 ---
 
@@ -147,11 +163,11 @@ Si tu utilises **Kiro**, ton assistant est configuré pour faire les gestes GitH
 
 ### Suivi du projet (issues + board + roadmap)
 
-- **Issues** : <https://github.com/marceaupatu123/secure-horizons/issues> — 24 tâches, étiquetées
-  par module (`module:*`) et par ordre (`wave:0` … `wave:5`).
+- **Issues** : <https://github.com/marceaupatu123/secure-horizons/issues> — étiquetées par module
+  (`module:*`) et par ordre (`wave:0` … `wave:5`).
 - **Board (Kanban)** : <https://github.com/users/marceaupatu123/projects/5> — Todo / In Progress /
   Done, mis à jour en partie tout seul.
-- **ROADMAP** : `docs/ROADMAP.md` — l'ordre de travail en 6 vagues (quoi faire avant quoi).
+- **ROADMAP** : `docs/ROADMAP.md` — l'ordre de travail en vagues (quoi faire avant quoi).
 
 ### Tableau de bord d'avancement (visuel)
 
@@ -166,19 +182,24 @@ vague, répartition par module, tâches en cours. **Lecture seule** (ne modifie 
 
 ## 7. Toute la documentation
 
-> 🆕 **Nouveau sur le projet et novice en crypto ?** Commence par la doc illustrée dans
-> **`docs-site/`** (Mintlify) : elle explique tout avec des analogies simples. Lance-la avec
-> `cd docs-site && mintlify dev`, ou lis directement les fichiers `.mdx`.
+> 🆕 **Nouveau sur le projet et novice en crypto ?** Commence par la doc illustrée **en ligne** :
+> **<https://cryptosecure.mintlify.site/>** (Mintlify). Elle explique tout avec des analogies
+> simples, en trois onglets : **« Comprendre le projet »**, **« Sous le capot »** et **« Mettre
+> les mains dedans »**. Pour la lancer en local : `cd docs-site && mintlify dev`, ou lis
+> directement les fichiers `.mdx`.
 
 | Fichier | Contenu |
 |---------|---------|
-| `docs-site/` | **Doc grand public illustrée (Mintlify), pour comprendre le projet sans jargon.** |
+| **<https://cryptosecure.mintlify.site/>** | **Doc grand public illustrée (Mintlify), en ligne, pour comprendre le projet sans jargon.** Source : `docs-site/`. |
+| `docs-site/` | Source de la doc Mintlify ci-dessus (`.mdx` + `docs.json`). |
 | `docs/AI_WORKFLOW.md` | **Comment dialoguer avec ton IA sans empiéter sur les autres. À lire en premier.** |
 | `docs/ROADMAP.md` | Ordre de travail en vagues + dépendances entre tâches. |
 | `docs/TEAM.md` | Qui possède quel module, branches, contraintes AWS, checklist de démarrage. |
-| `docs/OPEN_QUESTIONS.md` | Toutes les décisions de conception à trancher en équipe. |
+| `docs/OPEN_QUESTIONS.md` | Les décisions de conception encore à trancher en équipe. |
+| `docs/OPEN_ANSWERS.md` | Les décisions déjà tranchées (datées, avec auteur). |
 | `docs/CONTRACTS.md` | Interfaces entre modules (gabarits à remplir ensemble). **Zone sensible.** |
 | `docs/CLAIMS.md` | Ce qu'on affirmera au jury + comment on le vérifie. Règle : aucun chiffre sans mesure. |
+| `docs/GHOST_MARKET_SEIZURE.md` | Design du marché du Ghost (décote/commission) et de la saisie/clawback. |
 | `CLAUDE.md` | But du projet, conventions de code, règles de collaboration (contexte pour l'IA). |
 
 ---
