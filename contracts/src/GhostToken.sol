@@ -109,6 +109,10 @@ contract GhostToken is ERC20, AccessControl, GuardianActions, IGhostRisk, IGhost
     uint256 public totalSuspectBurned;
     uint256 public totalSuspectExpired;
     uint256 public totalSuspectCleared;
+    /// @notice Fonds d'assurance (compteur comptable, aucun token minté ; emploi hors périmètre).
+    uint256 public insuranceFund;
+    /// @notice Dernière entrée dans la réserve (marge ou destruction) : minuterie de la bascule.
+    uint64 public lastReserveInflowAt;
 
     // ------------------------------------------------------------------ événements (design §3.12)
 
@@ -151,6 +155,7 @@ contract GhostToken is ERC20, AccessControl, GuardianActions, IGhostRisk, IGhost
         uint256 suspectAmount
     );
     event Restituted(address indexed to, uint256 indexed proposalId, uint256 amount);
+    event ReserveSweptToInsurance(uint256 amount, uint256 insuranceFundTotal);
 
     // ------------------------------------------------------------------ erreurs (design §3.13)
 
@@ -171,6 +176,8 @@ contract GhostToken is ERC20, AccessControl, GuardianActions, IGhostRisk, IGhost
     error UnknownIncident(uint256 incidentId);
     error IncidentExpired(uint256 incidentId);
     error ExceedsReserve(uint256 amount, uint256 reserve);
+    error ClaimDelayNotElapsed(uint64 availableAt);
+    error NothingToSweep();
 
     constructor(address minter_, address admin, address[3] memory guardians_, GhostConfig memory cfg)
         ERC20("M-Ghost (fictif)", "gpUSD")
@@ -220,7 +227,10 @@ contract GhostToken is ERC20, AccessControl, GuardianActions, IGhostRisk, IGhost
         uint256 net = amount - fee;
         uint64 m;
         if (net != 0) m = _issue(to, net);
-        totalFees += fee;
+        if (fee != 0) {
+            totalFees += fee;
+            lastReserveInflowAt = uint64(block.timestamp);
+        }
         emit GhostIssued(to, from, 0, net, 0, m, IssueKind.TRANSFER_M);
     }
 
@@ -248,7 +258,10 @@ contract GhostToken is ERC20, AccessControl, GuardianActions, IGhostRisk, IGhost
         uint256 fee = amount * (convertFeeBaseBps + convertFeeSlopeBps * ratio / ONE) / BPS;
         tokenOut = amount - fee;
         acc.matured = matured - amount;
-        totalFees += fee;
+        if (fee != 0) {
+            totalFees += fee;
+            lastReserveInflowAt = uint64(block.timestamp);
+        }
         totalConverted += amount;
         _burn(a, amount);
         GhostedStable(underlying).mint(a, tokenOut);
@@ -377,8 +390,19 @@ contract GhostToken is ERC20, AccessControl, GuardianActions, IGhostRisk, IGhost
     }
 
     function reserve() public view returns (uint256) {
-        uint256 s = supplyValue();
-        return totalIssued > s ? totalIssued - s : 0;
+        uint256 used = supplyValue() + insuranceFund;
+        return totalIssued > used ? totalIssued - used : 0;
+    }
+
+    /// @notice Bascule toute la réserve au fonds d'assurance après `restitutionClaimDelay` sans
+    ///         nouvelle entrée (permissionless ; compteur comptable, design §3.7).
+    function sweepToInsurance() external returns (uint256 amount) {
+        uint256 availableAt = uint256(lastReserveInflowAt) + restitutionClaimDelay;
+        if (block.timestamp < availableAt) revert ClaimDelayNotElapsed(uint64(availableAt));
+        amount = reserve();
+        if (amount == 0) revert NothingToSweep();
+        insuranceFund += amount;
+        emit ReserveSweptToInsurance(amount, insuranceFund);
     }
 
     function supplyValue() public view returns (uint256) {
@@ -612,6 +636,7 @@ contract GhostToken is ERC20, AccessControl, GuardianActions, IGhostRisk, IGhost
         _sc[a] -= amount;
         totalBurned += amount;
         totalSuspectBurned += amount;
+        lastReserveInflowAt = uint64(block.timestamp);
         _burn(a, amount);
     }
 
