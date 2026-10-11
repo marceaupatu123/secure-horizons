@@ -411,7 +411,29 @@ d'usage nouveau) — hypothèse qu'un vrai protocole ne vérifie pas.
 prédiction conforme au jury comme piste mesurée, avec sa limite. Une seule graine mesurée : à
 répéter avant toute affirmation chiffrée (`docs/CLAIMS.md`).
 
-## 14. Balise de risque + faux marché de prêt (#7) — _choix provisoires, à valider par @denybs_
+## 14. Lignage (#106) et conversions Ghost → M vues par le monitor — _question ouverte (Yannis, 2026-10-11)_
+
+En mode Ghost (#8), le monitor émet les transferts ordinaires de Ghost en `TransferEvent(is_ghost=True)`. En
+revanche, comme pour tous les tokens depuis #10, il **n'émet pas les burns**, donc pas les conversions
+(`Ghost → 0x0`). Or `detection/lineage.retroactive_seeds` déduit le solde Ghost non converti en rejouant les
+transferts : sans la conversion, un porteur qui a converti garde, dans le rejeu, un solde fictif, et il peut
+recevoir une graine pour du Ghost qu'il n'a plus. La destruction sur la chaîne est plafonnée par le vrai solde,
+donc aucune perte de fonds, mais la restitution et le total « récupéré » sont surestimés.
+
+Options :
+- **(a)** émettre aussi les burns et conversions de Ghost comme `TransferEvent(recipient=0x0, is_ghost=True)`.
+  Il faut alors vérifier que les règles de transfert de `detection` les ignorent (volume, HHI) ;
+- **(b)** un flux dédié aux conversions (`GhostConverted` est déjà décodé par le monitor), passé à
+  `retroactive_seeds` comme soldes initiaux ou comme sorties ;
+- **(c)** lire `balanceOf` du Ghost au moment du semis et plafonner par ce solde (une lecture RPC par graine).
+
+Proposition (à valider) : **(c)** pour la démo, parce que c'est la vérité de la chaîne et le plus simple, et
+**(b)** si le coût RPC gêne. Aucune option n'est implémentée tant que l'équipe n'a pas tranché.
+
+## 16. Balise de risque + faux marché de prêt (#7) — _choix provisoires, à valider par @denybs_
+
+> Numérotée §16 (et non §14) à la résolution du conflit de merge : `main` porte déjà une §14
+> (lignage et conversions Ghost) et une §15 (Token Ghost). Contenu inchangé.
 
 Choix de l'assistant (2026-10-11, pour Yannis), implémentés dans `contracts/src/RiskBeacon.sol` et
 `contracts/src/MockLendingMarket.sol` selon la spec de denybs sur #7 :

@@ -11,9 +11,14 @@ from typing import Any
 
 import pytest
 
-from monitor.config import MonitorConfig
+from monitor.config import MonitorConfig, load_monitor_config
 from monitor.listener import ERC20_TRANSFER_TOPIC, ChainListener
 from monitor.protected import (
+    GHOST_CONVERTED_TOPIC,
+    GHOST_ISSUED_TOPIC,
+    ISSUE_KIND_MINT,
+    ISSUE_KIND_RESTITUTION,
+    ISSUE_KIND_TRANSFER_M,
     KNOWN_ROLES,
     RATE_CHANGED_TOPIC,
     ROLE_GRANTED_TOPIC,
@@ -22,6 +27,8 @@ from monitor.protected import (
     AdminObservation,
     MintCorrelator,
     decode_admin,
+    decode_ghost_converted,
+    decode_ghost_issued,
     decode_swap_completed,
     decode_swap_requested,
     event_topic,
@@ -318,3 +325,186 @@ def test_sans_minter_le_mode_generique_est_inchange() -> None:
     assert listener.correlator is None
     (mint,) = listener.fetch_events(0, 10)
     assert isinstance(mint, MintEvent) and mint.request_id is None
+
+
+# ------------------------------------------------------------ mode Ghost (#8)
+
+GHOST = "0x" + "33" * 20
+
+
+def ghost_issued(recipient: str, source: str, request_id: int, amount: int, kind: int, *, block: int, index: int, tx: int) -> dict[str, Any]:
+    return _log(
+        GHOST,
+        [
+            GHOST_ISSUED_TOPIC,
+            _addr_topic(recipient),
+            _addr_topic(source),
+            _uint_topic(request_id),
+        ],
+        _data(amount, 0, 1_700_000_000, kind),
+        block,
+        index,
+        tx,
+    )
+
+
+def ghost_converted(holder: str, ghost_amount: int, token_amount: int, fee: int, *, block: int, index: int, tx: int) -> dict[str, Any]:
+    return _log(
+        GHOST,
+        [GHOST_CONVERTED_TOPIC, _addr_topic(holder)],
+        _data(ghost_amount, token_amount, fee, 0),
+        block,
+        index,
+        tx,
+    )
+
+
+def _ghost_listener(logs: list[dict[str, Any]], head: int = 100) -> tuple[ChainListener, FakeEth]:
+    eth = FakeEth(logs, head)
+    config = MonitorConfig(
+        rpc_url=None,
+        token_address=TOKEN,
+        minter_address=MINTER,
+        ghost_address=GHOST,
+        start_block=0,
+    )
+    return ChainListener(config, FakeWeb3(eth), sleep=lambda _: None, now=lambda: FIXED_NOW), eth
+
+
+def test_topics_ghost_sont_les_keccak_des_signatures_du_contrat() -> None:
+    # `IssueKind` est un enum : `uint8` dans la signature canonique.
+    assert GHOST_ISSUED_TOPIC == event_topic(
+        "GhostIssued(address,address,uint256,uint256,uint256,uint64,uint8)"
+    )
+    assert GHOST_CONVERTED_TOPIC == event_topic(
+        "GhostConverted(address,uint256,uint256,uint256,uint256)"
+    )
+
+
+def test_decode_ghost_issued_et_converted() -> None:
+    issued = decode_ghost_issued(
+        ghost_issued(ALICE, MINTER, 4, 10**18, ISSUE_KIND_MINT, block=1, index=0, tx=1)
+    )
+    assert (issued.recipient.lower(), issued.request_id, issued.amount, issued.kind) == (
+        ALICE, 4, 10**18, ISSUE_KIND_MINT,
+    )
+    conv = decode_ghost_converted(ghost_converted(ALICE, 100, 98, 2, block=2, index=0, tx=2))
+    assert (conv.holder.lower(), conv.ghost_amount, conv.token_amount, conv.fee_amount) == (
+        ALICE, 100, 98, 2,
+    )
+
+
+def test_ghost_le_mint_est_ghostissued_rattache_a_sa_demande() -> None:
+    logs = [
+        swap_requested(0, ALICE, 1_000_000, WAD, block=10, index=0, tx=1),
+        ghost_issued(ALICE, MINTER, 0, 10**18, ISSUE_KIND_MINT, block=11, index=0, tx=2),
+        swap_completed(0, ALICE, ALICE, 1_000_000, 10**18, WAD, block=11, index=1, tx=2),
+    ]
+    listener, eth = _ghost_listener(logs)
+    events = listener.fetch_events(0, 100)
+    assert len(eth.calls) == 3  # minter + token + Ghost
+    (mint,) = [e for e in events if isinstance(e, MintEvent)]
+    assert mint.request_id == 0 and mint.amount == 10**18
+    assert listener.correlator is not None
+    prov = listener.correlator.provenance_for(mint.tx_hash, mint.log_index)
+    assert prov is not None and prov.source == "request"
+
+
+def test_ghost_conversion_vers_m_n_est_pas_un_mint() -> None:
+    """Transfer(0x0) sur M + GhostConverted dans la meme tx = conversion (#8)."""
+    logs = [
+        ghost_converted(ALICE, 100, 98, 2, block=20, index=0, tx=5),
+        transfer(ZERO, ALICE, 98, block=20, index=1, tx=5),
+    ]
+    listener, _ = _ghost_listener(logs)
+    events = listener.fetch_events(0, 100)
+    assert [e for e in events if isinstance(e, MintEvent)] == []
+
+
+def test_ghost_m_minte_sans_conversion_reste_un_mint_hors_chemin() -> None:
+    """M credite sans GhostConverted (ou montant different) : I4, sans provenance."""
+    logs = [
+        swap_requested(0, ALICE, 1_000_000, WAD, block=10, index=0, tx=1),
+        # Le traitement est dans la tx, mais il emet du Ghost : il ne doit PAS
+        # servir de provenance au M minte a cote.
+        ghost_issued(ALICE, MINTER, 0, 10**18, ISSUE_KIND_MINT, block=11, index=0, tx=2),
+        swap_completed(0, ALICE, ALICE, 1_000_000, 10**18, WAD, block=11, index=1, tx=2),
+        transfer(ZERO, ATTACKER, 10**24, block=11, index=2, tx=2),
+        # Conversion annoncee pour 98, M credite 500 : pas d'appariement.
+        ghost_converted(BOB, 100, 98, 2, block=12, index=0, tx=3),
+        transfer(ZERO, BOB, 500, block=12, index=1, tx=3),
+    ]
+    listener, _ = _ghost_listener(logs)
+    mints = [e for e in listener.fetch_events(0, 100) if isinstance(e, MintEvent)]
+    assert listener.correlator is not None
+    by_recipient = {m.recipient.lower(): m for m in mints}
+    assert set(by_recipient) == {ALICE, ATTACKER, BOB}
+    legit = by_recipient[ALICE]
+    assert listener.correlator.peek(legit.tx_hash, legit.log_index) is not None
+    for rogue in (by_recipient[ATTACKER], by_recipient[BOB]):
+        assert listener.correlator.is_tracked(rogue.tx_hash, rogue.log_index)
+        assert listener.correlator.peek(rogue.tx_hash, rogue.log_index) is None
+        assert rogue.request_id is None
+
+
+def test_ghost_emission_de_transfert_ou_restitution_n_est_pas_un_mint() -> None:
+    logs = [
+        ghost_issued(BOB, ALICE, 0, 50, ISSUE_KIND_TRANSFER_M, block=30, index=0, tx=7),
+        ghost_issued(BOB, GHOST, 0, 10, ISSUE_KIND_RESTITUTION, block=30, index=1, tx=7),
+    ]
+    listener, _ = _ghost_listener(logs)
+    assert [e for e in listener.fetch_events(0, 100) if isinstance(e, MintEvent)] == []
+
+
+def test_ghost_address_exige_minter_address() -> None:
+    with pytest.raises(ValueError):
+        MonitorConfig(rpc_url=None, token_address=TOKEN, ghost_address=GHOST)
+
+
+def test_config_lit_monitor_ghost_address() -> None:
+    config = load_monitor_config(
+        env={
+            "MONITOR_TOKEN_ADDRESS": TOKEN,
+            "MONITOR_MINTER_ADDRESS": MINTER,
+            "MONITOR_GHOST_ADDRESS": GHOST,
+        }
+    )
+    assert config.ghost_address is not None
+    assert config.ghost_address.lower() == GHOST
+
+
+def ghost_transfer(sender: str, recipient: str, amount: int, *, block: int, index: int, tx: int) -> dict[str, Any]:
+    return _log(
+        GHOST,
+        [ERC20_TRANSFER_TOPIC, _addr_topic(sender), _addr_topic(recipient)],
+        _data(amount),
+        block,
+        index,
+        tx,
+    )
+
+
+def test_ghost_transfert_de_ghost_emis_avec_is_ghost_true() -> None:
+    """Un Transfer ordinaire sur le Ghost est un transfert de Ghost (lignage #106)."""
+    logs = [
+        # Emission : Transfer(0x0) sur le Ghost + GhostIssued(MINT) -> un seul mint.
+        swap_requested(0, ALICE, 1_000_000, WAD, block=10, index=0, tx=1),
+        ghost_transfer(ZERO, ALICE, 10**18, block=11, index=0, tx=2),
+        ghost_issued(ALICE, MINTER, 0, 10**18, ISSUE_KIND_MINT, block=11, index=1, tx=2),
+        swap_completed(0, ALICE, ALICE, 1_000_000, 10**18, WAD, block=11, index=2, tx=2),
+        ghost_transfer(ALICE, BOB, 4 * 10**17, block=12, index=0, tx=3),
+        # Transfert du vrai token (cas generique, hors Ghost) : is_ghost=False.
+        transfer(ALICE, BOB, 5, block=13, index=0, tx=4),
+    ]
+    listener, eth = _ghost_listener(logs)
+    events = listener.fetch_events(0, 100)
+    assert len(eth.calls) == 3  # toujours 3 appels : Transfer lu avec les topics du Ghost
+    mints = [e for e in events if isinstance(e, MintEvent)]
+    transfers = [e for e in events if isinstance(e, TransferEvent)]
+    assert len(mints) == 1
+    assert [(t.recipient.lower(), t.amount, t.is_ghost) for t in transfers] == [
+        (BOB, 4 * 10**17, True),
+        (BOB, 5, False),
+    ]
+    # Ordre de la chaine conserve entre les deux contrats.
+    assert [e.block_number for e in events] == sorted(e.block_number for e in events)
