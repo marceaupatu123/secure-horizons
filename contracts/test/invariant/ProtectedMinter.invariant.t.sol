@@ -5,19 +5,21 @@ import {StdInvariant} from "forge-std/StdInvariant.sol";
 import {console} from "forge-std/console.sol";
 import {BaseTest} from "../utils/BaseTest.sol";
 import {ProtectedMinter} from "../../src/ProtectedMinter.sol";
-import {StableToken} from "../../src/StableToken.sol";
+import {GhostedStable} from "../../src/GhostedStable.sol";
+import {GhostToken} from "../../src/GhostToken.sol";
 import {ProtectedMinterHandler} from "./ProtectedMinterHandler.sol";
 
 /// @notice Volet 2 : perte maximale bornée de la clé de service volée, vérifiée par tests
 ///         d'invariants (pas prouvée). Hypothèses H1–H5 : voir contracts/README.md.
 contract ProtectedMinterInvariantTest is StdInvariant, BaseTest {
     ProtectedMinter internal minter;
-    StableToken internal stable;
+    GhostedStable internal stable;
+    GhostToken internal ghost;
     ProtectedMinterHandler internal handler;
 
     function setUp() public {
         _deployUsdc();
-        (minter, stable) = _deployProtected();
+        (minter, stable, ghost) = _deployProtected();
         handler = new ProtectedMinterHandler(minter, usdc, service, admin, _guardians());
 
         bytes4[] memory selectors = new bytes4[](8);
@@ -35,13 +37,13 @@ contract ProtectedMinterInvariantTest is StdInvariant, BaseTest {
 
     /// @notice Solvabilité : totalSupply ≤ Σ (dépôt × taux) de toutes les demandes créées.
     function invariant_solvency() public view {
-        assertLe(stable.totalSupply(), handler.ghost_sumExpectedAll());
+        assertLe(ghost.supplyValue(), handler.ghost_sumExpectedAll());
     }
 
     /// @notice totalSupply == Σ (dépôt × taux) des demandes complétées == totalMinted.
     function invariant_supplyEqualsCompletedQuotes() public view {
-        assertEq(stable.totalSupply(), handler.ghost_sumMintedCompleted());
-        assertEq(stable.totalSupply(), minter.totalMinted());
+        assertEq(ghost.supplyValue(), handler.ghost_sumMintedCompleted());
+        assertEq(ghost.supplyValue(), minter.totalMinted());
     }
 
     /// @notice Tout le collatéral déposé est détenu par le minter.
@@ -87,14 +89,14 @@ contract ProtectedMinterInvariantTest is StdInvariant, BaseTest {
         uint256 n = handler.actorCount();
         for (uint256 i = 0; i < n; i++) {
             address a = handler.actors(i);
-            assertEq(stable.balanceOf(a), handler.ghost_expectedBalance(a));
+            assertEq(ghost.balanceOf(a), handler.ghost_expectedBalance(a));
         }
     }
 
     /// @notice Borne de la clé de service volée : son solde stable ≤ Σ (dépôt × taux) de SES
     ///         PROPRES dépôts, et aucune action interdite n'a jamais réussi.
     function invariant_stolenKeyBound() public view {
-        assertLe(stable.balanceOf(service), handler.ghost_expectedFromDepositsOf(service));
+        assertLe(ghost.balanceOf(service), handler.ghost_expectedFromDepositsOf(service));
         assertFalse(handler.ghost_unexpectedSuccess());
     }
 

@@ -4,7 +4,8 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {MockUSDC} from "../../src/MockUSDC.sol";
 import {ProtectedMinter} from "../../src/ProtectedMinter.sol";
-import {StableToken} from "../../src/StableToken.sol";
+import {GhostedStable} from "../../src/GhostedStable.sol";
+import {GhostToken} from "../../src/GhostToken.sol";
 
 /// @notice Handler des tests d'invariants. Acteurs : 4 déposants honnêtes + `service`, détenteur
 ///         de la clé `SERVICE_ROLE` VOLÉE (qui peut aussi déposer). L'admin (taux) et les guardians
@@ -20,7 +21,8 @@ contract ProtectedMinterHandler is Test {
 
     ProtectedMinter public minter;
     MockUSDC public usdc;
-    StableToken public stable;
+    GhostedStable public stable;
+    GhostToken public ghost;
     address public service;
     address public admin;
     address[3] public guardians;
@@ -55,6 +57,7 @@ contract ProtectedMinterHandler is Test {
         minter = minter_;
         usdc = usdc_;
         stable = minter_.stable();
+        ghost = minter_.ghost();
         service = service_;
         admin = admin_;
         guardians = g;
@@ -108,8 +111,8 @@ contract ProtectedMinterHandler is Test {
         uint256 id = requestIds[idSeed % requestIds.length];
         address depositor = depositorOf[id];
         bool mustFail = minter.paused() || completions[id] > 0;
-        uint256 balBefore = stable.balanceOf(depositor);
-        uint256 supplyBefore = stable.totalSupply();
+        uint256 balBefore = ghost.balanceOf(depositor);
+        uint256 supplyBefore = ghost.supplyValue();
 
         vm.prank(service);
         try minter.completeSwap(id) {
@@ -119,8 +122,8 @@ contract ProtectedMinterHandler is Test {
             }
             calls["completeSwap_ok"]++;
             completions[id]++;
-            mintedObserved[id] = stable.balanceOf(depositor) - balBefore;
-            supplyDelta[id] = stable.totalSupply() - supplyBefore;
+            mintedObserved[id] = ghost.balanceOf(depositor) - balBefore;
+            supplyDelta[id] = ghost.supplyValue() - supplyBefore;
             ghost_sumMintedCompleted += expectedMint[id];
             ghost_expectedBalance[depositor] += expectedMint[id];
         } catch {
@@ -145,6 +148,11 @@ contract ProtectedMinterHandler is Test {
         calls["stolenKeyMintDirect"]++;
         vm.prank(service);
         try stable.mint(service, amount) {
+            ghost_unexpectedSuccess = true;
+        } catch {}
+        // I4 révisé (#8) : émission directe de Ghost, doit échouer aussi.
+        vm.prank(service);
+        try ghost.issueFromMinter(service, amount, 0) {
             ghost_unexpectedSuccess = true;
         } catch {}
     }

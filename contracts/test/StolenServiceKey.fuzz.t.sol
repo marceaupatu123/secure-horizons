@@ -5,17 +5,19 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
 import {BaseTest} from "./utils/BaseTest.sol";
 import {GuardianPausable} from "../src/GuardianPausable.sol";
 import {ProtectedMinter} from "../src/ProtectedMinter.sol";
-import {StableToken} from "../src/StableToken.sol";
+import {GhostedStable} from "../src/GhostedStable.sol";
+import {GhostToken} from "../src/GhostToken.sol";
 
 /// @notice Fuzz : un attaquant détenant la clé `SERVICE_ROLE` volée contre le ProtectedMinter.
 ///         Hypothèses : clés admin/taux et guardians NON compromises (H1, H2 du README).
 contract StolenServiceKeyFuzzTest is BaseTest {
     ProtectedMinter internal minter;
-    StableToken internal stable;
+    GhostedStable internal stable;
+    GhostToken internal ghost;
 
     function setUp() public {
         _deployUsdc();
-        (minter, stable) = _deployProtected();
+        (minter, stable, ghost) = _deployProtected();
     }
 
     /// @notice Quels que soient le montant et le destinataire voulus, la clé volée obtient
@@ -38,8 +40,8 @@ contract StolenServiceKeyFuzzTest is BaseTest {
 
         vm.prank(attacker);
         minter.completeSwap(id);
-        assertEq(stable.totalSupply(), expected);
-        assertEq(stable.balanceOf(attacker), expected);
+        assertEq(ghost.supplyValue(), expected);
+        assertEq(ghost.balanceOf(attacker), expected);
     }
 
     /// @notice La demande d'une victime traitée par la clé volée va à la victime.
@@ -52,8 +54,8 @@ contract StolenServiceKeyFuzzTest is BaseTest {
         uint256 id = _requestProtected(minter, victim, deposit);
         vm.prank(attacker);
         minter.completeSwap(id);
-        assertEq(stable.balanceOf(victim), deposit * SCALE);
-        assertEq(stable.balanceOf(attacker), 0);
+        assertEq(ghost.balanceOf(victim), deposit * SCALE);
+        assertEq(ghost.balanceOf(attacker), 0);
     }
 
     /// @notice Rejouer une demande déjà traitée échoue à chaque tentative.
@@ -68,13 +70,21 @@ contract StolenServiceKeyFuzzTest is BaseTest {
             vm.expectRevert(abi.encodeWithSelector(ProtectedMinter.RequestNotPending.selector, id));
             minter.completeSwap(id);
         }
-        assertEq(stable.totalSupply(), deposit * SCALE);
+        assertEq(ghost.supplyValue(), deposit * SCALE);
     }
 
     function testFuzz_stolenKey_cannotMintDirectly(uint256 amount) public {
         vm.prank(attacker);
-        vm.expectRevert(abi.encodeWithSelector(StableToken.NotMinter.selector, attacker));
+        vm.expectRevert(abi.encodeWithSelector(GhostedStable.NotMinter.selector, attacker));
         stable.mint(attacker, amount);
+    }
+
+    /// @notice I4 révisé (#8) : la clé volée ne peut pas non plus émettre de Ghost directement.
+    function testFuzz_stolenKey_cannotIssueGhost(uint256 amount, uint256 requestId) public {
+        vm.prank(attacker);
+        vm.expectRevert(abi.encodeWithSelector(GhostToken.NotMinter.selector, attacker));
+        ghost.issueFromMinter(attacker, amount, requestId);
+        assertEq(ghost.supplyValue(), 0);
     }
 
     function testFuzz_stolenKey_cannotChangeRate(uint256 newRate) public {
