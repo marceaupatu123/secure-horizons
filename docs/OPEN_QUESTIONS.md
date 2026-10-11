@@ -122,6 +122,22 @@ risque est transféré vers un marché secondaire spéculatif) :
    - les signaux par transfert (gros montant vers adresse neuve, découpage, sortie rapide,
      concentration vers les sorties, éventail/*fan-out*) **alimentent uniquement** la mesure de
      dispersion ; ce ne sont **pas** des surveillants séparés, pour rester simple.
+5. **Rebonds comptés une fois (#87) — _choix provisoire de l'assistant (2026-10-11, pour Yannis),
+   à valider en équipe_.** Avant, chaque rebond ajoutait son montant : l'exemple de référence
+   (50M → 3 adresses neuves → 4 bridges) comptait **100M**. Règle retenue : volume d'une tranche =
+   **somme des soldes entrants nets positifs** (reçu − envoyé par adresse, dans la tranche). Le
+   Herfindahl est calculé sur les mêmes soldes nets (les relais ne sont plus des destinataires).
+   Le volume brut reste exposé (`gross_volume`).
+   - **Limites** : indifférent à l'ordre dans la tranche ; un aller-retour A → B → A compte 0
+     (le *wash trading* devient invisible au volume) ; deux flux indépendants qui se croisent
+     sur une adresse se compensent.
+   - **Alternative écartée** : suivre chaque montant par lignage (FIFO) — plus juste, mais coûteux
+     et redondant avec le lignage de §10/§11.
+   - **Effet mesuré** (`python -m data.calibrate`, simulation, seed par défaut, profil
+     `gros_transferts`) : l'attaque B à 0,5 % de l'offre est désormais détectée avant conversion
+     pour z HHI ∈ {2, 3}, au prix de 0 à 2 faux positifs de plus sur 864 tranches selon le couple
+     de seuils. Les autres profils et tables ne bougent pas. Mesure sur données fictives
+     (`docs/CLAIMS.md`), pas une garantie.
 
 ## 3. Réponse graduée — automatique vs validation humaine
 

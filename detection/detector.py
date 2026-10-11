@@ -329,10 +329,11 @@ class RuleBasedMonitor:
             slot_end=slot_start + timedelta(seconds=tp.slot_seconds),
             transfer_count=len(slot.events),
             volume=volume,
+            gross_volume=slot.gross_volume,
             circulating_supply=supply,
             volume_ratio=volume_ratio,
             herfindahl=herfindahl,
-            effective_recipients=1 / herfindahl,
+            effective_recipients=1 / herfindahl if herfindahl else 0.0,
             distinct_recipients=len(slot.inflows()),
             new_sender_share=slot.share(lambda e: self._is_new(e.sender.lower())),
             exit_share=slot.share(lambda e: e.recipient.lower() in self._exit_points),
@@ -370,8 +371,10 @@ class RuleBasedMonitor:
             ratio = min(1.0, suspect / seeds_inflow)
         else:
             # Aucun flux issu d'adresses neuves : alerte sur le destinataire
-            # le plus concentre, sans graine (voir SlotAggregate.seeds).
-            subject = max(sorted(inflows), key=lambda a: inflows[a])
+            # le plus concentre (solde net : un relais n'est pas un sujet,
+            # #87), sans graine (voir SlotAggregate.seeds).
+            concentration = slot.net_inflows() or inflows
+            subject = max(sorted(concentration), key=lambda a: concentration[a])
             suspect = 0
             ratio = 0.0
         source = slot.largest_transfer_to(subject.lower())
