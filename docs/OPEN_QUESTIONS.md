@@ -410,3 +410,20 @@ d'usage nouveau) — hypothèse qu'un vrai protocole ne vérifie pas.
 **Proposition** : garder les seuils simples pour la démo (confirme OPEN_ANSWERS §1) ; citer la
 prédiction conforme au jury comme piste mesurée, avec sa limite. Une seule graine mesurée : à
 répéter avant toute affirmation chiffrée (`docs/CLAIMS.md`).
+
+## 14. Balise de risque + faux marché de prêt (#7) — _choix provisoires, à valider par @denybs_
+
+Choix de l'assistant (2026-10-11, pour Yannis), implémentés dans `contracts/src/RiskBeacon.sol` et
+`contracts/src/MockLendingMarket.sol` selon la spec de denybs sur #7 :
+
+- **État DETRUIT** = `destroyedAt > clearedAt` (une destruction non suivie d'un blanchiment 2/3).
+  Alternative écartée : DETRUIT définitif dès `destroyedAt != 0` (une adresse blanchie resterait
+  bannie à vie).
+- **Prix** : 1 token de garantie = 1 unité de prêt (après mise à l'échelle des décimales), pas
+  d'oracle, pas de liquidation : le marché **constate** la mauvaise créance (scénario C).
+- **Retrait après destruction** : payé au **prorata du solde réel** (pas de course au retrait).
+  Conséquence assumée : sans balise, la perte de la garantie détruite est **mutualisée** sur tous les
+  déposants — c'est exactement la contagion que la balise évite (avec balise, l'emprunt est refusé).
+- **Scénario C mesuré** (`forge test --match-test scenarioC -vv`, paramètres de test, PAS une
+  calibration) : 100 000 M-Ghost 100 % suspects en garantie, LTV 80 %, décote de base 5 % →
+  mauvaise créance **76 000 mUSDC sans balise, 0 avec**.
