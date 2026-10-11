@@ -33,3 +33,29 @@ un mint = `Transfer(from = 0x0, to, value)` émis par le contrat token configur�
   `false` = vrai token) tant que le design du contrat Ghost n'est pas fixé.
 - `python -m monitor` n'affiche encore que les mints ; les transferts s'utilisent depuis le code
   (`detection`).
+
+## Branchement vers detection (#86)
+
+- `ChainListener.stream_event_batches()` (et `fetch_events(from, to)`) : mints ET transferts
+  dans l'ordre de la chaîne, un lot par plage lue et un lot **vide** quand un poll n'apporte rien,
+  pour que `detection` clôture ses tranches à l'heure. Consommé par `python -m detection`.
+- `ChainListener.read_total_supply()` : `totalSupply()` ERC-20 du token (`eth_call`), utilisé
+  comme offre pour normaliser le volume (choix PROVISOIRE, voir `detection/README.md`).
+
+## Reprise sur erreur RPC et checkpoint (#74)
+
+- **Reprise** : tout échec d'un appel RPC (tête de chaîne, `eth_getLogs`) est **retenté sans
+  limite**, attente exponentielle `MONITOR_RPC_RETRY_BASE_SECONDS` × 2ⁿ plafonnée à
+  `MONITOR_RPC_RETRY_MAX_SECONDS`. Chaque échec est logué en WARNING ; à partir de
+  `MONITOR_RPC_FAILURE_ALERT_AFTER` échecs consécutifs, en **ERROR « SURVEILLANCE AVEUGLE »**.
+  Le curseur n'avance qu'après une plage lue et rendue : reprise **sans trou ni doublon**.
+- **Log mal formé** (validation `MintEvent`/`TransferEvent`) : logué en ERROR et ignoré, sans
+  couper le flux (erreur déterministe, un retry ne changerait rien).
+- **Réglage manquant** (`FUJI_RPC_URL`, `MONITOR_TOKEN_ADDRESS`) : `MonitorConfigurationError`,
+  **non** retentée.
+- **Checkpoint** : `MONITOR_CHECKPOINT_PATH` (fichier JSON `{"last_block": N}`, écriture
+  atomique). Au démarrage il **prime** sur `MONITOR_START_BLOCK`. Écrit après que le consommateur
+  a repris la main sur le lot : au redémarrage, un lot peut être relu (au moins une fois), jamais
+  sauté. Désactivé par défaut (warning au démarrage) : **un fichier par process**, ne pas le
+  partager entre `python -m monitor` et `python -m detection`.
+- Tous ces défauts sont **provisoires** (voir `docs/OPEN_QUESTIONS.md` §12).

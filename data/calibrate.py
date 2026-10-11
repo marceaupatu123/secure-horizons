@@ -30,6 +30,7 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+from data.late_marking import run as late_marking_run, to_markdown as late_marking_md
 from data.generate import (
     DEFAULT_OUT_DIR,
     GeneratedScenario,
@@ -274,6 +275,7 @@ def run(config: CalibrationConfig) -> dict[str, Any]:
         "ghost_window_friction": ghost_window_friction(config),
         "trigger_sweep": {name: trigger_sweep(config, fraction) for name, fraction in config.profiles},
         "mint_monitor": mint_monitor(config),
+        "late_marking": late_marking_run(),
     }
 
 
@@ -306,6 +308,8 @@ def to_markdown(results: dict[str, Any]) -> str:
               "| jeu | mints | mints d'attaque | alertes sur l'attaque | autres alertes |", "|---|---|---|---|---|"]
     for name, r in results["mint_monitor"].items():
         lines.append(f"| {name} | {r['mints']} | {r['attack_mints']} | {r['alerts_on_attack']} | {r['alerts_elsewhere']} |")
+    if "late_marking" in results:
+        lines += ["", late_marking_md(results["late_marking"]).rstrip()]
     return "\n".join(lines) + "\n"
 
 

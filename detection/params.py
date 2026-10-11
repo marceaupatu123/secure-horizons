@@ -12,8 +12,10 @@ sur des montants). Les montants restent des `int` en base units.
 
 from __future__ import annotations
 
+import os
 import re
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
 
 from shared.models import AlertSeverity
@@ -243,3 +245,99 @@ class TransferRuleParams:
         for address in self.exit_points:
             if not _ADDRESS_RE.match(address):
                 raise ValueError(f"exit_points : adresse EVM invalide {address!r}")
+
+
+# ---------------------------------------------------------------------------
+# Profils de chauffe de la baseline (#86)
+#
+# Le profil par defaut (constantes ci-dessus) compare une tranche aux tranches
+# du MEME creneau des jours precedents et exige MIN_HISTORY_SLOTS = 5 jours
+# d'historique avant toute alerte : inutilisable sur nos donnees synthetiques
+# (24 h par defaut, `data/generate.py`). Le profil DEMO raccourcit la chauffe.
+# ---------------------------------------------------------------------------
+
+# Variable d'environnement de selection du profil (la CLI `--profile` prime).
+ENV_DETECTION_PROFILE = "DETECTION_PROFILE"
+PROFILE_DEFAULT = "default"
+PROFILE_DEMO = "demo"
+
+# DEMO — ne pas utiliser en production, PROVISOIRE. Periode du « meme
+# creneau » = une seule tranche : chaque tranche est comparee aux tranches
+# IMMEDIATEMENT precedentes (plus de saisonnalite jour/nuit dans la baseline).
+DEMO_BASELINE_PERIOD_SECONDS = SLOT_SECONDS
+
+# DEMO — ne pas utiliser en production, PROVISOIRE. Fenetre glissante de 24
+# tranches (2 h avec des tranches de 5 min). Valeur de travail, pas une mesure.
+DEMO_BASELINE_WINDOW_SLOTS = 24
+
+# DEMO — ne pas utiliser en production, PROVISOIRE. Historique minimal de 12
+# tranches (1 h) avant de pouvoir alerter. Valeur de travail, pas une mesure :
+# un essai exploratoire a 12 / 6 (fenetre / historique) a leve des alertes sur
+# le trafic `normal` de certaines graines du generateur (debut de journee peu
+# actif) ; 24 / 12 n'en a pas leve sur les graines 1 a 8 (24 h simulees,
+# defauts du generateur). Ce n'est PAS une mesure : le taux de faux positifs
+# reste A MESURER (#59).
+DEMO_MIN_HISTORY_SLOTS = 12
+
+TRANSFER_PROFILES: dict[str, TransferRuleParams] = {
+    # PROVISOIRE — a valider par l'equipe (constantes ci-dessus).
+    PROFILE_DEFAULT: TransferRuleParams(),
+    # DEMO — ne pas utiliser en production, PROVISOIRE.
+    PROFILE_DEMO: TransferRuleParams(
+        baseline_period_seconds=DEMO_BASELINE_PERIOD_SECONDS,
+        baseline_window_slots=DEMO_BASELINE_WINDOW_SLOTS,
+        min_history_slots=DEMO_MIN_HISTORY_SLOTS,
+    ),
+}
+
+
+def resolve_profile(
+    cli_value: str | None = None, env: Mapping[str, str] | None = None
+) -> str:
+    """Nom du profil actif : `cli_value`, sinon `DETECTION_PROFILE`, sinon
+    `PROFILE_DEFAULT`.
+
+    Args:
+        cli_value: valeur de `--profile` (None = non fournie).
+        env: environnement a lire (defaut : `os.environ`).
+
+    Returns:
+        Le nom du profil, en minuscules.
+
+    Raises:
+        ValueError: si le profil n'existe pas.
+    """
+    source: Mapping[str, str] = os.environ if env is None else env
+    name = (cli_value or source.get(ENV_DETECTION_PROFILE, "").strip() or PROFILE_DEFAULT)
+    name = name.lower()
+    if name not in TRANSFER_PROFILES:
+        raise ValueError(
+            f"profil de detection inconnu {name!r} "
+            f"(attendu : {', '.join(sorted(TRANSFER_PROFILES))})"
+        )
+    return name
+
+
+def transfer_params_for_profile(
+    profile: str, exit_points: Iterable[str] = ()
+) -> TransferRuleParams:
+    """Parametres du surveillant de transferts pour un profil.
+
+    Args:
+        profile: nom de profil (`PROFILE_DEFAULT` ou `PROFILE_DEMO`).
+        exit_points: points de sortie a ajouter (PROVISOIRE, fournis par
+            l'appelant ; vides par defaut).
+
+    Returns:
+        Les parametres du profil, avec ces points de sortie.
+
+    Raises:
+        ValueError: si le profil n'existe pas ou si une adresse est invalide.
+    """
+    if profile not in TRANSFER_PROFILES:
+        raise ValueError(f"profil de detection inconnu {profile!r}")
+    base = TRANSFER_PROFILES[profile]
+    points = frozenset(exit_points)
+    if not points:
+        return base
+    return replace(base, exit_points=base.exit_points | points)

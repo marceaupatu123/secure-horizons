@@ -102,7 +102,7 @@ Le Ghost du générateur suit §0bis-b : un Ghost transféré garde son échéan
 
 `python -m data.calibrate` rejoue 8 jours de trafic dans les surveillants de `detection/` (#11,
 #12) et écrit `data/generated/calibration.{json,md}`. Il **mesure**, il ne choisit pas : le point de
-fonctionnement est une décision d'équipe (§5 Q2). Résultats avec la graine 42 (une seule graine,
+fonctionnement est une décision d'équipe (§5 Q2). Une proposition de valeurs argumentée sur ces mesures est dans [`data/DECISION_SUPPORT_3.md`](DECISION_SUPPORT_3.md) (à valider en équipe). Résultats avec la graine 42 (une seule graine,
 simulation) :
 
 **Fenêtre Ghost W** — part de l'offre immobilisée en Ghost sur le trafic normal (friction) :
@@ -139,6 +139,27 @@ Pas mesuré ici, et pourquoi :
 - **Budget de quarantaine, facteur d'allongement max** : il faut rejouer les alertes dans
   `response/` avec les soldes Ghost ; à faire une fois un seuil de déclenchement choisi.
 - **Marge de conversion** : barème à décider (§0), rien à mesurer avant.
+
+## Contamination posée après coup (#85) — `python -m data.late_marking`
+
+`data/late_marking.py` chiffre la question ouverte de #85 (décision §10bis) sur l'exemple de la
+« chaîne des 40 » : le voleur revend son M' pur de main en main **avant** d'être marqué suspect.
+Comme le ratio de contamination (§9) se transmet au moment du transfert, son ratio valait 0
+pendant les ventes. Le module compare les trois pistes de #85 :
+
+| Piste | M' récupéré (détection à 3 min, W = 10 min) |
+|---|---|
+| (a) lignage d'origine par tranche | 100 % |
+| (b) recalcul rétroactif hors chaîne | 100 % (même couverture que (a) ; diffère sur le coût, pas le montant) |
+| (c) prospectif seul (ratio tel quel) | 0 % |
+
+Le levier n'est pas la piste mais **la vitesse de détection face à l'échéance** : avec lignage
+(a/b), on récupère tout tant que l'alerte précède l'échéance du M' (W = 10 min), et rien au-delà.
+La piste prospective (c) ne récupère jamais rien sur une chaîne déjà propagée. Conclusion pour
+l'équipe : (c) seule ne suffit pas pour l'objectif anti-blanchiment de §10bis ; il faut (a) ou
+(b), et détecter avant l'échéance. Le choix (a) vs (b) est opérationnel (stockage par tranche
+on-chain vs preuve hors chaîne), pas quantitatif. Chiffres repris dans la sortie de `make
+calibrate`.
 
 ## Reste ouvert
 

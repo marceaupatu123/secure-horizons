@@ -33,6 +33,7 @@ que si volume eleve ET dispersion effondree — jamais sur le volume seul. Voir
 
 from __future__ import annotations
 
+import logging
 import math
 import uuid
 from collections import deque
@@ -58,6 +59,8 @@ from shared.models import (
     MintEvent,
     TransferEvent,
 )
+
+logger = logging.getLogger(__name__)
 
 _SEVERITY_RANK = {
     AlertSeverity.INFO: 0,
@@ -179,7 +182,7 @@ class RuleBasedMonitor:
     def check_mint(
         self, event: MintEvent, context: MintContext | None = None
     ) -> Alert | None:
-        """Verifie I1, I5, I6, les evenements admin et l'ecart d'oracle.
+        """Verifie I1, I3, I5, I6, les evenements admin et l'ecart d'oracle.
 
         Aucune regle ne porte sur la taille du mint. Une verification dont les
         entrees manquent dans `context` est sautee. Plusieurs regles
@@ -200,6 +203,7 @@ class RuleBasedMonitor:
             finding
             for finding in (
                 self._check_i1(event, context),
+                self._check_i3(event, context),
                 self._check_oracle(event, context),
                 self._check_i5(event, context),
                 self._check_i6(context),
@@ -274,9 +278,18 @@ class RuleBasedMonitor:
         self._open_slot = None
         tp = self.transfer_params
         supply = self._circulating_supply
+        slot_start = datetime.fromtimestamp(
+            slot.slot_index * tp.slot_seconds, tz=timezone.utc
+        )
         if supply is None:
             # GAP : sans offre en circulation, pas de ratio normalise (§9) :
             # la tranche n'est ni evaluee ni enregistree.
+            logger.warning(
+                "tranche %s UTC NON evaluee : offre en circulation inconnue "
+                "(%d transferts ni evalues ni ajoutes a la baseline)",
+                f"{slot_start:%Y-%m-%d %H:%M}",
+                len(slot.events),
+            )
             self._known.update(slot.participants())
             self._last_slot_stats = None
             return None
@@ -304,18 +317,24 @@ class RuleBasedMonitor:
                 tp.mad_scale,
                 tp.mad_floor_relative,
             )
-        slot_start = datetime.fromtimestamp(
-            slot.slot_index * tp.slot_seconds, tz=timezone.utc
-        )
+        else:
+            logger.warning(
+                "tranche %s UTC NON evaluee : historique insuffisant (%d/%d "
+                "tranches du meme creneau) ; elle nourrit la baseline sans alerter",
+                f"{slot_start:%Y-%m-%d %H:%M}",
+                len(baseline),
+                tp.min_history_slots,
+            )
         stats = TransferSlotStats(
             slot_start=slot_start,
             slot_end=slot_start + timedelta(seconds=tp.slot_seconds),
             transfer_count=len(slot.events),
             volume=volume,
+            gross_volume=slot.gross_volume,
             circulating_supply=supply,
             volume_ratio=volume_ratio,
             herfindahl=herfindahl,
-            effective_recipients=1 / herfindahl,
+            effective_recipients=1 / herfindahl if herfindahl else 0.0,
             distinct_recipients=len(slot.inflows()),
             new_sender_share=slot.share(lambda e: self._is_new(e.sender.lower())),
             exit_share=slot.share(lambda e: e.recipient.lower() in self._exit_points),
@@ -353,8 +372,10 @@ class RuleBasedMonitor:
             ratio = min(1.0, suspect / seeds_inflow)
         else:
             # Aucun flux issu d'adresses neuves : alerte sur le destinataire
-            # le plus concentre, sans graine (voir SlotAggregate.seeds).
-            subject = max(sorted(inflows), key=lambda a: inflows[a])
+            # le plus concentre (solde net : un relais n'est pas un sujet,
+            # #87), sans graine (voir SlotAggregate.seeds).
+            concentration = slot.net_inflows() or inflows
+            subject = max(sorted(concentration), key=lambda a: concentration[a])
             suspect = 0
             ratio = 0.0
         source = slot.largest_transfer_to(subject.lower())
@@ -403,6 +424,26 @@ class RuleBasedMonitor:
                 f"{math.floor(expected)} attendu (epsilon {self.params.i1_epsilon})"
             ),
             recipient_suspect_amount=_excess(event.amount, expected),
+        )
+
+    def _check_i3(self, event: MintEvent, context: MintContext) -> _Finding | None:
+        """I3 : le destinataire du mint est le deposant de la demande (#91).
+
+        Detecte le detournement a 1:1 (scenario B) : bilan global juste, mais
+        la demande d'une victime est mintee vers une autre adresse. Tout le
+        mint est attribue au destinataire comme montant suspect.
+        """
+        if context.requester is None:
+            return None
+        if event.recipient.lower() == context.requester.lower():
+            return None
+        return _Finding(
+            severity=self.params.invariant_severity,
+            reason=(
+                f"I3 viole : mint de {event.amount} vers {event.recipient}, "
+                f"deposant de la demande {context.requester} (detournement ?)"
+            ),
+            recipient_suspect_amount=event.amount,
         )
 
     def _check_oracle(

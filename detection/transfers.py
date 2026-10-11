@@ -7,10 +7,13 @@ docs/OPEN_QUESTIONS.md §2 « Propositions (2026-10-10, Yannis) ».
 
 Mesures d'une tranche :
 
-- `volume_ratio` = volume transfere / offre en circulation (§9 : jamais de
-  volume absolu) ;
-- `herfindahl` (HHI) = somme des parts au carre des destinataires : mesure de
-  dispersion de REFERENCE (§2, proposition 4). 1/HHI = « nombre effectif de
+- `volume_ratio` = volume DEDUPLIQUE / offre en circulation (§9 : jamais de
+  volume absolu). Un montant qui rebondit A -> B -> C dans la tranche n'est
+  compte qu'une fois (#87, regle PROVISOIRE : somme des soldes entrants nets,
+  voir `SlotAggregate.volume`) ;
+- `herfindahl` (HHI) = somme des parts au carre des soldes entrants NETS :
+  mesure de dispersion de REFERENCE (§2, proposition 4), calculee la ou les
+  fonds arrivent (les relais ne comptent pas). 1/HHI = « nombre effectif de
   destinataires », reporte dans `Alert.dispersion_score` (bas = concentre) ;
 - `distinct_recipients` : nombre de destinataires distincts, EXPOSE pour le
   dashboard mais JAMAIS utilise comme indicateur d'attaque (§2, limite
@@ -86,13 +89,16 @@ class TransferSlotStats:
         slot_start: debut de la tranche (UTC).
         slot_end: fin de la tranche (UTC, exclue).
         transfer_count: nombre de transferts agreges.
-        volume: volume transfere, base units.
+        volume: volume deduplique (rebonds comptes une fois, #87), base units.
+        gross_volume: somme brute des montants (chaque rebond recompte),
+            base units, indicatif.
         circulating_supply: offre en circulation utilisee, base units.
-        volume_ratio: volume / offre en circulation.
-        herfindahl: indice de Herfindahl des destinataires (mesure de
-            reference ; proche de 1 = tout part au meme endroit).
+        volume_ratio: volume (deduplique) / offre en circulation.
+        herfindahl: indice de Herfindahl des soldes entrants nets (mesure de
+            reference ; proche de 1 = tout part au meme endroit ; 0 si aucun
+            solde net).
         effective_recipients: 1 / herfindahl (nombre effectif de
-            destinataires ; s'effondre sous attaque).
+            destinataires ; s'effondre sous attaque ; 0 si aucun solde net).
         distinct_recipients: destinataires distincts (indicatif, JAMAIS seul).
         new_sender_share: part du volume envoyee par des adresses neuves
             (aucune transaction avant le debut de la tranche dans nos donnees).
@@ -109,6 +115,7 @@ class TransferSlotStats:
     slot_end: datetime
     transfer_count: int
     volume: int
+    gross_volume: int
     circulating_supply: int
     volume_ratio: float
     herfindahl: float
@@ -145,9 +152,46 @@ class SlotAggregate:
         return set(self._display)
 
     @property
-    def volume(self) -> int:
-        """Volume transfere sur la tranche, base units."""
+    def gross_volume(self) -> int:
+        """Somme brute des montants transferes (chaque rebond recompte), base units."""
         return sum(event.amount for event in self.events)
+
+    def outflows(self) -> dict[str, int]:
+        """Montant envoye par expediteur sur la tranche, base units."""
+        sent: dict[str, int] = defaultdict(int)
+        for event in self.events:
+            sent[event.sender.lower()] += event.amount
+        return dict(sent)
+
+    def net_inflows(self) -> dict[str, int]:
+        """Solde entrant net par adresse (recu - envoye), adresses > 0 seulement.
+
+        Un relais qui recoit puis renvoie le meme montant dans la tranche a un
+        solde net nul et disparait : c'est ce qui deduplique les rebonds (#87).
+        """
+        sent = self.outflows()
+        return {
+            address: received - sent.get(address, 0)
+            for address, received in self.inflows().items()
+            if received > sent.get(address, 0)
+        }
+
+    @property
+    def volume(self) -> int:
+        """Volume DEDUPLIQUE de la tranche (#87) — regle PROVISOIRE, a valider.
+
+        Un meme montant qui transite A -> B -> C dans la tranche n'est compte
+        qu'une fois : volume = somme des soldes entrants nets positifs
+        (= somme des soldes sortants nets positifs, les flux se conservent).
+        Exemple de reference : mint 50M -> 3 adresses neuves -> 4 bridges
+        compte 50M (et non 100M en brut).
+
+        Limites (docs/OPEN_QUESTIONS.md §2) : indifferent a l'ordre des
+        transferts dans la tranche ; un aller-retour A -> B -> A compte 0 ;
+        deux flux independants qui se croisent sur une meme adresse se
+        compensent. Le volume brut reste expose (`gross_volume`).
+        """
+        return sum(self.net_inflows().values())
 
     def inflows(self) -> dict[str, int]:
         """Montant recu par destinataire sur la tranche, base units."""
@@ -157,9 +201,17 @@ class SlotAggregate:
         return dict(received)
 
     def herfindahl(self) -> float:
-        """Indice de Herfindahl des destinataires (calcul exact sur entiers)."""
+        """Indice de Herfindahl sur les soldes entrants NETS (#87).
+
+        Coherent avec `volume` : les relais (solde net nul) ne comptent pas
+        comme destinataires, la concentration se lit la ou les fonds
+        arrivent. Convention : 0.0 si aucun solde net (tranche faite
+        uniquement d'allers-retours).
+        """
         volume = self.volume
-        return sum(a * a for a in self.inflows().values()) / (volume * volume)
+        if volume == 0:
+            return 0.0
+        return sum(a * a for a in self.net_inflows().values()) / (volume * volume)
 
     def max_fan_out(self) -> int:
         """Plus grand nombre de destinataires distincts d'un expediteur."""
@@ -169,8 +221,8 @@ class SlotAggregate:
         return max(len(recipients) for recipients in fan_out.values())
 
     def share(self, predicate: Callable[[TransferEvent], bool]) -> float:
-        """Part du volume des transferts verifiant `predicate`."""
-        return sum(e.amount for e in self.events if predicate(e)) / self.volume
+        """Part du volume BRUT des transferts verifiant `predicate` (descriptif)."""
+        return sum(e.amount for e in self.events if predicate(e)) / self.gross_volume
 
     def largest_transfer_to(self, address: str) -> TransferEvent:
         """Plus gros transfert recu par `address` (minuscules) sur la tranche."""

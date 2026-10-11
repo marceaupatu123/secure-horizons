@@ -50,3 +50,34 @@ jobs:
 
       - name: Run tests
         run: python -m pytest -q
+
+  contracts:
+    # Contrats Foundry (contracts/) : build + tests (profil default), voir contracts/README.md.
+    name: contracts (forge build + forge test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Foundry
+        # Action figée par SHA (= tag v1.9.1), version Foundry figée sur une release stable.
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with:
+          version: v1.8.5
+
+      - name: Show Foundry version
+        run: forge --version
+
+      # lib/ est gitignoré : on installe les dépendances aux tags figés du README.
+      - name: Install contract dependencies
+        run: forge install --no-git foundry-rs/forge-std@v1.17.0 OpenZeppelin/openzeppelin-contracts@v5.4.0
+
+      - name: Build
+        run: forge build
+
+      - name: Test
+        run: forge test

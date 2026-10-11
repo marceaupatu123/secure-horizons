@@ -25,12 +25,19 @@ GAP connu — `TransferEvent.is_ghost` : un `Transfer` ERC-20 ne dit pas si le
 token transfere est un Ghost. La valeur vient de `MonitorConfig.token_is_ghost`
 (defaut PROVISOIRE False) tant que le design du contrat Ghost n'est pas fixe.
 
+Branchement vers `detection` (issue #86) : `stream_event_batches` emet, a
+chaque poll, les mints ET transferts nouveaux dans l'ordre de la chaine (liste
+vide si rien de neuf) pour que le consommateur reprenne la main a chaque poll
+(cloture des tranches a l'heure, meme sans transfert). `read_total_supply` lit
+`totalSupply()` du token (offre utilisee pour normaliser le volume).
+
 Le module produit des `MintEvent` et `TransferEvent` (`docs/CONTRACTS.md`) a
 destination du module `detection`.
 """
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -39,8 +46,21 @@ from typing import Any, Protocol, TypeVar
 
 from web3 import Web3
 
+from monitor.checkpoint import BlockCheckpoint
 from monitor.config import MonitorConfig
 from shared.models import MintEvent, TransferEvent
+
+LOGGER = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
+
+
+class MonitorConfigurationError(RuntimeError):
+    """Reglage manquant (RPC, adresse du token) : erreur NON retentee.
+
+    Toute autre exception levee pendant un poll (RPC injoignable, timeout,
+    reponse invalide) est consideree transitoire et retentee (issue #74).
+    """
 
 # keccak256("Transfer(address,address,uint256)") — topic0 standard ERC-20.
 ERC20_TRANSFER_TOPIC = (
@@ -54,8 +74,12 @@ ZERO_ADDRESS_TOPIC = "0x" + "00" * 32
 # demande (voir GAP en tete de module). Ne PAS l'interpreter comme « demande 0 ».
 UNKNOWN_REQUEST_ID = 0
 
+# Selecteur ERC-20 `totalSupply()` = 4 premiers octets de keccak256("totalSupply()").
+TOTAL_SUPPLY_SELECTOR = "0x18160ddd"
+
 RawLog = Mapping[str, Any]
 ChainEvent = TypeVar("ChainEvent", MintEvent, TransferEvent)
+ObservedEvent = MintEvent | TransferEvent
 
 
 class EthLike(Protocol):
@@ -65,6 +89,8 @@ class EthLike(Protocol):
     def block_number(self) -> int: ...
 
     def get_logs(self, filter_params: Any) -> Sequence[RawLog]: ...
+
+    def call(self, transaction: Any) -> Any: ...
 
 
 class Web3Like(Protocol):
@@ -296,7 +322,7 @@ class ChainListener:
     def _eth(self) -> EthLike:
         if self._web3 is None:
             if not self._config.rpc_url:
-                raise RuntimeError(
+                raise MonitorConfigurationError(
                     "FUJI_RPC_URL manquante : impossible de se connecter au RPC."
                 )
             self._web3 = connect_web3(self._config.rpc_url)
@@ -304,7 +330,7 @@ class ChainListener:
 
     def _token_address(self) -> str:
         if self._config.token_address is None:
-            raise RuntimeError(
+            raise MonitorConfigurationError(
                 "MONITOR_TOKEN_ADDRESS manquante : aucun contrat token a ecouter "
                 "(voir contracts/DEPLOYMENTS.md)."
             )
@@ -350,40 +376,161 @@ class ChainListener:
                     if log.get("removed"):
                         # Log annule par une reorganisation de chaine.
                         continue
-                    event = convert(log)
+                    try:
+                        event = convert(log)
+                    except (ValueError, KeyError, TypeError) as exc:
+                        # Log mal forme (champ manquant, validation pydantic) :
+                        # erreur deterministe, un retry ne changerait rien.
+                        # On le signale et on continue, au lieu de couper
+                        # toute la surveillance (issue #74).
+                        LOGGER.error(
+                            "log ignore (bloc %s, index %s) : %s",
+                            log.get("blockNumber"),
+                            log.get("logIndex"),
+                            exc,
+                        )
+                        continue
                     if event is not None:
                         events.append(event)
         events.sort(key=lambda e: (e.block_number, e.log_index))
         return events
 
-    def _poll(
+    def _poll_batches(
         self,
         fetch: Callable[[int, int], list[ChainEvent]],
         max_polls: int | None,
-    ) -> Iterator[ChainEvent]:
+    ) -> Iterator[list[ChainEvent]]:
         """Boucle de polling commune : lit les blocs nouveaux a chaque tour.
 
-        Commence a `config.start_block` (ou au bloc courant si None), puis a
+        Commence apres le checkpoint s'il existe (`config.checkpoint_path`),
+        sinon a `config.start_block` (ou au bloc courant si None), puis a
         chaque poll lit les blocs nouveaux jusqu'a la tete moins
         `config.confirmations`, et attend `config.poll_interval_seconds`.
+
+        Reprise sur erreur (issue #74) : chaque appel RPC est retente avec
+        attente exponentielle plafonnee, sans limite de tentatives. Le curseur
+        n'avance qu'apres une plage lue ET rendue au consommateur, donc la
+        reprise se fait sans trou ni doublon. Le checkpoint est ecrit au meme
+        moment (semantique « au moins une fois » au redemarrage).
+
+        Yields:
+            Une liste d'evenements par plage de `config.block_batch_size`
+            blocs lue, ou une liste vide si le poll n'a aucun bloc nouveau
+            (le consommateur reprend ainsi la main a chaque poll).
+
+        Raises:
+            MonitorConfigurationError: si l'adresse du token ou l'URL RPC
+                manque (non retente).
         """
         self._token_address()
+        checkpoint = (
+            BlockCheckpoint(self._config.checkpoint_path)
+            if self._config.checkpoint_path
+            else None
+        )
         next_block = self._config.start_block
+        if checkpoint is not None:
+            last = checkpoint.load()
+            if last is not None:
+                next_block = last + 1
+                LOGGER.info("reprise apres le checkpoint : bloc %d", next_block)
+        else:
+            LOGGER.warning(
+                "aucun checkpoint (MONITOR_CHECKPOINT_PATH vide) : les blocs "
+                "produits pendant un arret du monitor ne seront pas relus"
+            )
         polls = 0
         while True:
-            head = self._safe_head()
+            head = self._with_retry(self._safe_head, "lecture de la tete de chaine")
             if next_block is None:
                 next_block = head
             if head >= next_block:
                 for start, end in block_ranges(
                     next_block, head, self._config.block_batch_size
                 ):
-                    yield from fetch(start, end)
-                next_block = head + 1
+                    batch = self._with_retry(
+                        lambda s=start, e=end: fetch(s, e),
+                        f"lecture des blocs {start}-{end}",
+                    )
+                    yield batch
+                    next_block = end + 1
+                    if checkpoint is not None:
+                        self._save_checkpoint(checkpoint, end)
+            else:
+                yield []
             polls += 1
             if max_polls is not None and polls >= max_polls:
                 return
             self._sleep(self._config.poll_interval_seconds)
+
+    def _with_retry(self, call: Callable[[], _T], what: str) -> _T:
+        """Execute `call`, en le retentant sans limite sur erreur transitoire.
+
+        Attente `base * 2**(n-1)` plafonnee a `config.rpc_retry_max_seconds`.
+        Chaque echec est logue en WARNING ; a partir de
+        `config.rpc_failure_alert_after` echecs consecutifs, en ERROR
+        (« surveillance aveugle ») pour qu'un humain soit prevenu plutot que
+        de laisser le monitor se taire.
+
+        Args:
+            call: l'appel a proteger.
+            what: description lisible pour les logs.
+
+        Returns:
+            Le resultat de `call`.
+
+        Raises:
+            MonitorConfigurationError: jamais retentee (reglage manquant).
+        """
+        failures = 0
+        while True:
+            try:
+                result = call()
+            except MonitorConfigurationError:
+                raise
+            except Exception as exc:  # noqa: BLE001 — tout echec RPC est retente
+                failures += 1
+                delay = min(
+                    self._config.rpc_retry_base_seconds * 2 ** (failures - 1),
+                    self._config.rpc_retry_max_seconds,
+                )
+                level = (
+                    logging.ERROR
+                    if failures >= self._config.rpc_failure_alert_after
+                    else logging.WARNING
+                )
+                LOGGER.log(
+                    level,
+                    "%s : echec %d (%s: %s), nouvel essai dans %.1fs%s",
+                    what,
+                    failures,
+                    type(exc).__name__,
+                    exc,
+                    delay,
+                    " — SURVEILLANCE AVEUGLE" if level == logging.ERROR else "",
+                )
+                self._sleep(delay)
+                continue
+            if failures:
+                LOGGER.info("%s : reprise apres %d echec(s)", what, failures)
+            return result
+
+    @staticmethod
+    def _save_checkpoint(checkpoint: BlockCheckpoint, last_block: int) -> None:
+        """Ecrit le checkpoint ; un echec d'ecriture ne coupe pas la surveillance."""
+        try:
+            checkpoint.save(last_block)
+        except OSError as exc:
+            LOGGER.error("checkpoint non ecrit (%s) : %s", checkpoint.path, exc)
+
+    def _poll(
+        self,
+        fetch: Callable[[int, int], list[ChainEvent]],
+        max_polls: int | None,
+    ) -> Iterator[ChainEvent]:
+        """Meme boucle que `_poll_batches`, evenement par evenement."""
+        for batch in self._poll_batches(fetch, max_polls):
+            yield from batch
 
     def _to_mint_event(self, log: RawLog, decoder: MintLogDecoder) -> MintEvent | None:
         decoded = decoder.decode(log)
@@ -502,3 +649,66 @@ class ChainListener:
             RuntimeError: si l'adresse du token ou l'URL RPC manque.
         """
         return self._poll(self.fetch_transfer_events, max_polls)
+
+    def fetch_events(self, from_block: int, to_block: int) -> list[ObservedEvent]:
+        """Lit mints ET transferts d'une plage de blocs (bornes incluses).
+
+        Memes decodeurs que `fetch_mint_events` et `fetch_transfer_events`.
+
+        Args:
+            from_block: premier bloc.
+            to_block: dernier bloc (inclus).
+
+        Returns:
+            Mints et transferts melanges, tries par `(block_number, log_index)`.
+
+        Raises:
+            RuntimeError: si l'adresse du token ou l'URL RPC manque.
+        """
+        sources: list[
+            tuple[tuple[str | None, ...], Callable[[RawLog], ObservedEvent | None]]
+        ] = [
+            (decoder.topics, lambda log, d=decoder: self._to_mint_event(log, d))
+            for decoder in self._mint_decoders
+        ]
+        sources.append((ERC20_TRANSFER_TOPICS, self._to_transfer_event))
+        return self._fetch_events(from_block, to_block, sources)  # type: ignore[arg-type]
+
+    def stream_event_batches(
+        self, max_polls: int | None = None
+    ) -> Iterator[list[ObservedEvent]]:
+        """Emet mints ET transferts par lots, au fil de l'eau (polling).
+
+        Meme boucle que `stream_mint_events` (depart, confirmations, pause).
+        Contrairement aux flux par type, un lot (eventuellement VIDE) est emis
+        a chaque poll : le consommateur peut cloturer ses tranches a l'heure
+        meme quand aucun transfert n'arrive.
+
+        Args:
+            max_polls: nombre de polls avant arret (None = infini ; utile en
+                test).
+
+        Yields:
+            Une liste par plage lue (ou vide si rien de neuf), dans l'ordre de
+            la chaine.
+
+        Raises:
+            RuntimeError: si l'adresse du token ou l'URL RPC manque.
+        """
+        return self._poll_batches(self.fetch_events, max_polls)
+
+    def read_total_supply(self) -> int:
+        """Lit `totalSupply()` du token ecoute (appel `eth_call`, bloc `latest`).
+
+        Returns:
+            L'offre totale, base units.
+
+        Raises:
+            RuntimeError: si l'adresse du token ou l'URL RPC manque.
+            ValueError: si la reponse n'est pas un `uint256` ABI (32 octets).
+        """
+        raw = self._eth.call({"to": self._token_address(), "data": TOTAL_SUPPLY_SELECTOR})
+        data = to_hex(raw)
+        if len(data) != 2 + 64:
+            raise ValueError(f"reponse totalSupply() inattendue : {data!r}")
+        return int(data, 16)

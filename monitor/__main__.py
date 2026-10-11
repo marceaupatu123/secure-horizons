@@ -7,12 +7,19 @@ evenement). Sans adresse de token ni RPC, affiche un message et s'arrete.
 
 from __future__ import annotations
 
+import logging
+
 from monitor.config import ENV_RPC_URL, ENV_TOKEN_ADDRESS, load_monitor_config
 from monitor.listener import ChainListener
 
 
 def main() -> None:
     """Point d'entree executable."""
+    # Les erreurs RPC retentees et la « surveillance aveugle » (issue #74)
+    # passent par `logging` : sans configuration, elles seraient invisibles.
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s : %(message)s"
+    )
     config = load_monitor_config()
     missing = [
         name
