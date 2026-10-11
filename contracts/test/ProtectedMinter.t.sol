@@ -136,6 +136,10 @@ contract ProtectedMinterTest is BaseTest {
         (bool ok,) =
             address(minter).call(abi.encodeWithSignature("completeSwap(uint256,address,uint256)", id, service, 1e30));
         assertFalse(ok);
+        // Variante « destinataire seul » : n'existe pas non plus.
+        vm.prank(service);
+        (ok,) = address(minter).call(abi.encodeWithSignature("completeSwap(uint256,address)", id, service));
+        assertFalse(ok);
         assertEq(stable.totalSupply(), 0);
         assertEq(uint8(minter.getRequest(id).status), uint8(ProtectedMinter.RequestStatus.Pending));
     }

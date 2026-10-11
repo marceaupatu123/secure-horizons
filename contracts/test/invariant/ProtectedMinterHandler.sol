@@ -45,6 +45,9 @@ contract ProtectedMinterHandler is Test {
     mapping(address => uint256) public ghost_expectedBalance;
     /// @dev Passe à true si une action interdite (clé volée, rejeu, demande inventée…) réussit.
     bool public ghost_unexpectedSuccess;
+    /// @dev Passe à true si une action « doit réussir » (préconditions calculées ici) revert :
+    ///      avec `fail_on_revert = false`, ce revert serait sinon avalé en silence.
+    bool public ghost_unexpectedRevert;
 
     mapping(bytes32 => uint256) public calls;
 
@@ -76,8 +79,17 @@ contract ProtectedMinterHandler is Test {
         usdc.mint(actor, amount);
         vm.startPrank(actor);
         usdc.approve(address(minter), amount);
-        uint256 id = minter.requestSwap(amount);
+        // Doit réussir : non en pause, montant > 0, quote > 0 (recalculée ici).
+        uint256 id;
+        try minter.requestSwap(amount) returns (uint256 id_) {
+            id = id_;
+        } catch {
+            vm.stopPrank();
+            ghost_unexpectedRevert = true;
+            return;
+        }
         vm.stopPrank();
+        calls["requestSwap_ok"]++;
 
         requestIds.push(id);
         depositorOf[id] = actor;
@@ -112,7 +124,9 @@ contract ProtectedMinterHandler is Test {
             ghost_sumMintedCompleted += expectedMint[id];
             ghost_expectedBalance[depositor] += expectedMint[id];
         } catch {
+            // Demande existante, en attente, minter actif, rôle détenu : doit réussir.
             if (mustFail) calls["completeSwap_rejected"]++;
+            else ghost_unexpectedRevert = true;
         }
     }
 
@@ -143,6 +157,10 @@ contract ProtectedMinterHandler is Test {
         (bool ok,) =
             address(minter).call(abi.encodeWithSignature("completeSwap(uint256,address,uint256)", id, service, amount));
         if (ok) ghost_unexpectedSuccess = true;
+        // Variante « destinataire seul » (pas de montant) : doit échouer aussi.
+        vm.prank(service);
+        (ok,) = address(minter).call(abi.encodeWithSignature("completeSwap(uint256,address)", id, service));
+        if (ok) ghost_unexpectedSuccess = true;
     }
 
     /// @notice La clé volée tente de changer le taux.
@@ -159,8 +177,13 @@ contract ProtectedMinterHandler is Test {
         calls["adminSetRate"]++;
         newRate = bound(newRate, MIN_RATE, MAX_RATE);
         vm.prank(admin);
-        minter.setRate(newRate);
-        trackedRate = newRate;
+        // Doit réussir : admin honnête, taux > 0 (le setRate n'est pas soumis à la pause).
+        try minter.setRate(newRate) {
+            calls["adminSetRate_ok"]++;
+            trackedRate = newRate;
+        } catch {
+            ghost_unexpectedRevert = true;
+        }
     }
 
     /// @notice Un guardian honnête approuve une pause ou une dépause (peut échouer, sans attente).
@@ -168,11 +191,18 @@ contract ProtectedMinterHandler is Test {
         calls["guardianApprove"]++;
         address g = guardians[guardianSeed % guardians.length];
         vm.prank(g);
+        bool ok;
         if (toPause) {
-            try minter.approvePause() {} catch {}
+            try minter.approvePause() {
+                ok = true;
+            } catch {}
         } else {
-            try minter.approveUnpause() {} catch {}
+            try minter.approveUnpause() {
+                ok = true;
+            } catch {}
         }
+        if (ok) calls["guardianApprove_ok"]++;
+        else calls["guardianApprove_ko"]++;
     }
 
     // ------------------------------------------------------------------ vues pour les invariants

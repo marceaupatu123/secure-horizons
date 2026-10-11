@@ -98,9 +98,18 @@ contract ProtectedMinterInvariantTest is StdInvariant, BaseTest {
         assertFalse(handler.ghost_unexpectedSuccess());
     }
 
+    /// @notice Vivacité : aucune action « doit réussir » n'a revert (le handler n'avale pas en
+    ///         silence les reverts, `fail_on_revert = false`) et aucune action « doit échouer »
+    ///         n'a réussi.
+    function invariant_liveness() public view {
+        assertFalse(handler.ghost_unexpectedRevert());
+        assertFalse(handler.ghost_unexpectedSuccess());
+    }
+
     /// @notice Résumé des appels (affichage seulement, `-vv`).
     function invariant_callSummary() public view {
         console.log("requestSwap", handler.calls("requestSwap"));
+        console.log("requestSwap_ok", handler.calls("requestSwap_ok"));
         console.log("completeSwap", handler.calls("completeSwap"));
         console.log("completeSwap_ok", handler.calls("completeSwap_ok"));
         console.log("completeSwap_rejected", handler.calls("completeSwap_rejected"));
@@ -109,7 +118,10 @@ contract ProtectedMinterInvariantTest is StdInvariant, BaseTest {
         console.log("stolenKeyInflatedCall", handler.calls("stolenKeyInflatedCall"));
         console.log("stolenKeySetRate", handler.calls("stolenKeySetRate"));
         console.log("adminSetRate", handler.calls("adminSetRate"));
+        console.log("adminSetRate_ok", handler.calls("adminSetRate_ok"));
         console.log("guardianApprove", handler.calls("guardianApprove"));
+        console.log("guardianApprove_ok", handler.calls("guardianApprove_ok"));
+        console.log("guardianApprove_ko", handler.calls("guardianApprove_ko"));
         console.log("requests", handler.requestCount());
     }
 }
