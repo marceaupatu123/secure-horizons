@@ -126,6 +126,7 @@ flowchart TD
 | [ ] | #9 | monitor : écoute des mints | #2 — _(Yannis1307, en cours)_ |
 | [ ] | #10 | monitor : écoute des transferts | #2 |
 | [x] | #5 | contrat protégé (montant dérivé on-chain) — volet 1 | #1, #3 _(PR #71)_ |
+| [x] | #79 | shared : champs manquants pour monitor/detection (`request_id` inconnu, `AdminEvent`, `SupplySnapshot`) | #9, #10, #11 _(décision `OPEN_ANSWERS.md` §7)_ |
 
 ## Vague 3 — Logique métier (après vague 2)
 

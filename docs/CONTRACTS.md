@@ -1,8 +1,9 @@
 # CONTRACTS.md — interfaces entre modules
 
 > ⚠️ **Fichier partagé et sensible.** On ne modifie pas ce fichier sans accord explicite de
-> l'équipe (review de 2 propriétaires, cf. `docs/TEAM.md`). Il **spécifie** les 13 modèles
-> partagés de `shared/models.py` : c'est le contrat que l'implémentation suivra. Toute
+> l'équipe (review de 2 propriétaires, cf. `docs/TEAM.md`). Il **spécifie** les 15 modèles
+> partagés de `shared/models.py` (13 d'origine, PR #53 ; `AdminEvent` et `SupplySnapshot` ajoutés
+> par #79) : c'est le contrat que l'implémentation suivra. Toute
 > évolution de schéma passe d'abord par ce fichier, puis par le propriétaire de `shared/`.
 >
 > Chaque interface décrit : son **producteur** (qui l'émet), son **consommateur** (qui la lit),
@@ -71,6 +72,7 @@ tout modèle de contamination), **deux** champs coexistent (cf. `OPEN_ANSWERS.md
 | `ReleaseVerdict` | `release` (lever), `confirm_freeze`, `confirm_destroy`, `global_pause` | `ReleaseDecision` |
 | `QuarantineStatus` | `active`, `extended`, `released`, `burned` | `QuarantineRecord` |
 | `BeaconRiskLevel` | `normal`, `elevated`, `frozen` | `RiskBeaconUpdate` |
+| `AdminEventKind` | `upgraded`, `role_granted`, `role_revoked`, `rate_changed`, `oracle_changed` | `AdminEvent` (#79) |
 
 Les trois verbes de réponse (`delay` / `destroy` / `global_pause`) reprennent exactement les trois
 verbes de `OPEN_ANSWERS.md` §9 (retarder / détruire / pause globale). `delay` est auto-expirant et
@@ -97,7 +99,20 @@ décidable par un surveillant/IA seul ; `destroy` et `global_pause` exigent le m
 | `observed_at` | `datetime` | UTC, ISO 8601 | horodatage d'observation par le monitor |
 | `recipient` | `Address` | regex adresse | adresse créditée par le mint |
 | `amount` | `int` | `gt=0` | montant minté en base units (dérivé on-chain) |
-| `request_id` | `int` | `ge=0` | identifiant de la `MintRequest` traitée (« demande n°X ») |
+| `request_id` | `int \| None` | `ge=0`, défaut `None` | identifiant de la `MintRequest` traitée (« demande n°X »). `None` = **inconnu** (mint vu par un `Transfer` ERC-20 depuis `0x0`) ; jamais de sentinelle (#79) |
+| `depositor` | `Address \| None` | regex adresse, défaut `None` | déposant de la demande (I3 : doit égaler `recipient`) |
+| `deposit_amount` | `int \| None` | `gt=0`, défaut `None` | dépôt de la demande, base units du token déposé (I1) |
+| `rate_wad` | `int \| None` | `gt=0`, défaut `None` | taux appliqué en base units mintées **par base unit déposée**, × 10¹⁸ (`RATE_WAD_SCALE`). Taux effectif = `Fraction(rate_wad, 10**18)` |
+| `token_address` | `Address \| None` | regex adresse, défaut `None` | contrat du token minté (émetteur du mint observé) |
+
+> **Deux sources de `MintEvent`** (`OPEN_ANSWERS.md` §7, #79). (1) L'événement dédié du minter
+> (`ProtectedMinter.SwapCompleted(requestId, depositor, recipient, depositAmount, mintedAmount,
+> rate)`) renseigne tous les champs de la demande : c'est la source normale. Pour
+> `ProtectedMinter` (dépôt 6 déc., token 18 déc.), `rate_wad = rate × 10¹²`. (2) Un `Transfer`
+> ERC-20 depuis `0x0` (chemin de mint non prévu, contrat vulnérable) ne connaît que `recipient` et
+> `amount` : les champs de la demande valent `None`. Avec le Token Ghost (#8), un `Transfer`
+> depuis `0x0` sur M est une **conversion** Ghost → M, pas un mint : le monitor doit alors lire
+> `SwapCompleted` sur le minter.
 
 ### Exemple JSON
 
@@ -110,7 +125,11 @@ décidable par un surveillant/IA seul ; `destroy` et `global_pause` exigent le m
   "observed_at": "2026-10-10T14:30:00Z",
   "recipient": "0x1111111111111111111111111111111111111111",
   "amount": 1000000000000000000,
-  "request_id": 42
+  "request_id": 42,
+  "depositor": "0x1111111111111111111111111111111111111111",
+  "deposit_amount": 1000000,
+  "rate_wad": 1000000000000000000000000000000,
+  "token_address": "0x8888888888888888888888888888888888888888"
 }
 ```
 
@@ -136,7 +155,8 @@ décidable par un surveillant/IA seul ; `destroy` et `global_pause` exigent le m
 | `sender` | `Address` | regex adresse | adresse émettrice |
 | `recipient` | `Address` | regex adresse | adresse réceptrice |
 | `amount` | `int` | `gt=0` | montant transféré en base units |
-| `is_ghost` | `bool` | — | `true` si le token transféré est déjà un Ghost (Ghost d'un Ghost) |
+| `is_ghost` | `bool` | — | `true` si le token transféré est le **Ghost M'**, `false` si c'est le vrai token M. Fixé par le contrat écouté, jamais déduit du log ; il n'existe pas de « Ghost d'un Ghost » (`OPEN_ANSWERS.md` §0bis-b) |
+| `token_address` | `Address \| None` | regex adresse, défaut `None` | contrat émetteur du log (M ou M') ; permet un seul listener pour plusieurs contrats (#79) |
 
 ### Exemple JSON
 
@@ -658,5 +678,87 @@ décidable par un surveillant/IA seul ; `destroy` et `global_pause` exigent le m
   "contamination_ratio": 0.87,
   "suspect_amount": 870000000000000000,
   "decision_id": "rd-0001"
+}
+```
+
+---
+
+## AdminEvent
+
+- **Producteur** : module `monitor` (décodeurs `RoleGranted` / `RoleRevoked` d'AccessControl,
+  `RateChanged` du minter, `Upgraded` d'un proxy, changement d'oracle).
+- **Consommateur** : module `detection` (`check_mint` : tout événement admin **non annoncé** est
+  une alerte, `OPEN_ANSWERS.md` §1 Q2), module `dashboard`.
+- **Description** : événement d'administration observé on-chain. Le surveillant de mint vérifie,
+  hors chaîne et sans dépendre des clés admin, que les hypothèses du volet 1 tiennent (§1). Les
+  détails propres à chaque événement (rôle `bytes32`, ancien et nouveau taux) vont dans `details`.
+  Ajouté par #79 (`OPEN_ANSWERS.md` §7).
+
+### Champs
+
+| Champ | Type | Borne / validation | Description |
+|-------|------|--------------------|-------------|
+| `tx_hash` | `TxHash` | regex hash | transaction ayant émis l'événement |
+| `log_index` | `int` | `ge=0` | index du log |
+| `block_number` | `int` | `ge=0` | numéro de bloc |
+| `chain_id` | `int` | `ge=1` | identifiant de chaîne EVM |
+| `observed_at` | `datetime` | UTC, ISO 8601 | horodatage d'observation par le monitor |
+| `contract_address` | `Address` | regex adresse | contrat émetteur (minter, token, Ghost…) |
+| `kind` | `AdminEventKind` | enum | `upgraded` / `role_granted` / `role_revoked` / `rate_changed` / `oracle_changed` |
+| `subject_address` | `Address \| None` | regex adresse si présent | adresse visée (nouvelle implémentation, compte recevant/perdant le rôle, nouvel oracle) ; `None` pour un changement de taux |
+| `actor` | `Address \| None` | regex adresse si présent | compte ayant déclenché le changement, si le log le porte |
+| `details` | `dict[str, str]` | défaut `{}` | détails clé → valeur (ex. `role`, `old_rate`, `new_rate`) |
+
+### Exemple JSON
+
+```json
+{
+  "tx_hash": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+  "log_index": 0,
+  "block_number": 12345600,
+  "chain_id": 43113,
+  "observed_at": "2026-10-10T14:20:00Z",
+  "contract_address": "0x8888888888888888888888888888888888888888",
+  "kind": "role_granted",
+  "subject_address": "0x9999999999999999999999999999999999999999",
+  "actor": "0x3333333333333333333333333333333333333333",
+  "details": {"role": "0xabababababababababababababababababababababababababababababababab"}
+}
+```
+
+---
+
+## SupplySnapshot
+
+- **Producteur** : module `monitor` (`totalSupply()` de M et du Ghost, lecture du collatéral).
+- **Consommateur** : module `detection` (invariants I5 et I6, `OPEN_ANSWERS.md` §1), module
+  `dashboard`.
+- **Description** : lecture de l'offre et du collatéral à un bloc. I5 compare deux lectures
+  successives de `total_supply` aux mints et burns observés entre elles ; I6 compare la **valeur
+  de l'offre** `total_supply + ghost_supply` (§0bis-c) à `collateral_value`. Ajouté par #79.
+
+### Champs
+
+| Champ | Type | Borne / validation | Description |
+|-------|------|--------------------|-------------|
+| `chain_id` | `int` | `ge=1` | identifiant de chaîne EVM |
+| `block_number` | `int` | `ge=0` | bloc de la lecture |
+| `observed_at` | `datetime` | UTC, ISO 8601 | horodatage de la lecture |
+| `token_address` | `Address` | regex adresse | contrat du token M lu |
+| `total_supply` | `int` | `ge=0` | `totalSupply()` de M, base units |
+| `ghost_supply` | `int \| None` | `ge=0`, défaut `None` | `totalSupply()` du Ghost M' (`None` si pas de Ghost), base units |
+| `collateral_value` | `int \| None` | `ge=0`, défaut `None` | valeur du collatéral **exprimée en base units du token M** (I6) ; `None` = non lue |
+
+### Exemple JSON
+
+```json
+{
+  "chain_id": 43113,
+  "block_number": 12345700,
+  "observed_at": "2026-10-10T14:35:00Z",
+  "token_address": "0x8888888888888888888888888888888888888888",
+  "total_supply": 1000000000000000000000,
+  "ghost_supply": 250000000000000000000,
+  "collateral_value": 1250000000000000000000
 }
 ```

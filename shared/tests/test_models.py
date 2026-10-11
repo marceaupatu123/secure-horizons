@@ -15,6 +15,9 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from shared.models import (
+    RATE_WAD_SCALE,
+    AdminEvent,
+    AdminEventKind,
     Alert,
     AlertSeed,
     AuditLogEntry,
@@ -28,6 +31,7 @@ from shared.models import (
     ReleaseDecision,
     ResponseAction,
     RiskBeaconUpdate,
+    SupplySnapshot,
     TransferEvent,
 )
 
@@ -202,6 +206,40 @@ GHOST_BURN_EVENT: dict[str, Any] = {
     "decision_id": "rd-0001",
 }
 
+ADMIN_EVENT: dict[str, Any] = {
+    "tx_hash": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    "log_index": 0,
+    "block_number": 12345600,
+    "chain_id": 43113,
+    "observed_at": "2026-10-10T14:20:00Z",
+    "contract_address": "0x8888888888888888888888888888888888888888",
+    "kind": "role_granted",
+    "subject_address": "0x9999999999999999999999999999999999999999",
+    "actor": "0x3333333333333333333333333333333333333333",
+    "details": {
+        "role": "0x" + "ab" * 32,
+    },
+}
+
+SUPPLY_SNAPSHOT: dict[str, Any] = {
+    "chain_id": 43113,
+    "block_number": 12345700,
+    "observed_at": "2026-10-10T14:35:00Z",
+    "token_address": "0x8888888888888888888888888888888888888888",
+    "total_supply": 1000000000000000000000,
+    "ghost_supply": 250000000000000000000,
+    "collateral_value": 1250000000000000000000,
+}
+
+# MintEvent issu de `SwapCompleted` : champs de la demande renseignes (#79).
+MINT_EVENT_FULL: dict[str, Any] = {
+    **MINT_EVENT,
+    "depositor": "0x1111111111111111111111111111111111111111",
+    "deposit_amount": 1000000,
+    "rate_wad": 10**12 * RATE_WAD_SCALE,
+    "token_address": "0x8888888888888888888888888888888888888888",
+}
+
 
 def _mutate(base: dict[str, Any], **overrides: Any) -> dict[str, Any]:
     """Copie profonde de `base` avec champs remplaces/ajoutes."""
@@ -225,6 +263,9 @@ VALID_CASES: list[tuple[type[BaseModel], dict[str, Any]]] = [
     (GhostTokenMintEvent, GHOST_MINT_EVENT),
     (GhostTokenRedemptionEvent, GHOST_REDEMPTION_EVENT),
     (GhostTokenBurnEvent, GHOST_BURN_EVENT),
+    (AdminEvent, ADMIN_EVENT),
+    (SupplySnapshot, SUPPLY_SNAPSHOT),
+    (MintEvent, MINT_EVENT_FULL),
 ]
 
 
@@ -277,6 +318,18 @@ INVALID_CASES: list[tuple[type[BaseModel], dict[str, Any]]] = [
     (GhostTokenRedemptionEvent, _mutate(GHOST_REDEMPTION_EVENT, ghost_amount=0)),
     # Adresse mal formee.
     (GhostTokenBurnEvent, _mutate(GHOST_BURN_EVENT, address="0xzzzz")),
+    # Enum d'evenement admin inconnu.
+    (AdminEvent, _mutate(ADMIN_EVENT, kind="minted")),
+    # Details du mauvais type (dict[str, str] attendu).
+    (AdminEvent, _mutate(ADMIN_EVENT, details={"old_rate": 1})),
+    # Offre negative.
+    (SupplySnapshot, _mutate(SUPPLY_SNAPSHOT, total_supply=-1)),
+    # request_id negatif : None pour « inconnu », jamais de sentinelle.
+    (MintEvent, _mutate(MINT_EVENT, request_id=-1)),
+    # Depot nul (gt=0 attendu quand il est connu).
+    (MintEvent, _mutate(MINT_EVENT_FULL, deposit_amount=0)),
+    # Taux nul (gt=0 attendu quand il est connu).
+    (MintEvent, _mutate(MINT_EVENT_FULL, rate_wad=0)),
 ]
 
 
@@ -294,3 +347,42 @@ def test_extra_field_forbidden_on_every_model() -> None:
     for model, example in VALID_CASES:
         with pytest.raises(ValidationError):
             model.model_validate(_mutate(example, champ_inconnu="x"))
+
+
+def test_mint_event_request_fields_default_to_unknown() -> None:
+    """Un mint vu par un `Transfer` ERC-20 n'a pas de demande : None, pas 0 (#79)."""
+    data = copy.deepcopy(MINT_EVENT)
+    del data["request_id"]
+    event = MintEvent.model_validate(data)
+    assert event.request_id is None
+    assert event.depositor is None
+    assert event.deposit_amount is None
+    assert event.rate_wad is None
+    assert event.token_address is None
+
+
+def test_mint_event_rate_wad_scale() -> None:
+    """rate_wad / RATE_WAD_SCALE = base units mintees par base unit deposee."""
+    event = MintEvent.model_validate(MINT_EVENT_FULL)
+    assert event.rate_wad is not None and event.deposit_amount is not None
+    assert event.deposit_amount * event.rate_wad // RATE_WAD_SCALE == event.amount
+
+
+def test_admin_event_kinds_cover_repo_contracts() -> None:
+    """Les evenements admin emis par les contrats du depot ont leur valeur d'enum."""
+    assert {k.value for k in AdminEventKind} >= {
+        "upgraded",
+        "role_granted",
+        "role_revoked",
+        "rate_changed",
+        "oracle_changed",
+    }
+
+
+def test_transfer_event_token_address_optional() -> None:
+    """token_address est optionnel (compatibilite des producteurs existants)."""
+    assert TransferEvent.model_validate(TRANSFER_EVENT).token_address is None
+    event = TransferEvent.model_validate(
+        _mutate(TRANSFER_EVENT, token_address="0x8888888888888888888888888888888888888888")
+    )
+    assert event.token_address == "0x8888888888888888888888888888888888888888"

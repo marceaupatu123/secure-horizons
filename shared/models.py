@@ -1,6 +1,7 @@
 """Modeles de donnees partages (Pydantic STRICT) — contrat de `docs/CONTRACTS.md`.
 
-Ce module implemente EXACTEMENT les 13 modeles specifies dans `docs/CONTRACTS.md`.
+Ce module implemente EXACTEMENT les 15 modeles specifies dans `docs/CONTRACTS.md`
+(13 d'origine, PR #53 ; `AdminEvent` et `SupplySnapshot` ajoutes par #79).
 Les conventions transverses y sont actees (voir aussi `docs/OPEN_ANSWERS.md`
 §0, §0bis, §9) :
 
@@ -114,6 +115,26 @@ class BeaconRiskLevel(str, Enum):
     FROZEN = "frozen"
 
 
+class AdminEventKind(str, Enum):
+    """Evenements d'administration surveilles (OPEN_ANSWERS §1 Q2, §7 #79).
+
+    Liste minimale : ce que les contrats du depot emettent aujourd'hui
+    (`RoleGranted` / `RoleRevoked` d'AccessControl, `RateChanged` du minter)
+    plus les deux cas cites en §1 (upgrade, changement d'oracle).
+    """
+
+    UPGRADED = "upgraded"
+    ROLE_GRANTED = "role_granted"
+    ROLE_REVOKED = "role_revoked"
+    RATE_CHANGED = "rate_changed"
+    ORACLE_CHANGED = "oracle_changed"
+
+
+# Echelle de `MintEvent.rate_wad` : 10**18 = 1 base unit mintee par base unit
+# deposee (OPEN_ANSWERS §7, #79). Taux effectif = Fraction(rate_wad, RATE_WAD_SCALE).
+RATE_WAD_SCALE = 10**18
+
+
 # --- Base stricte commune : interdit tout champ hors schema ---
 
 
@@ -123,7 +144,7 @@ class _StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-# --- Modeles partages (13), conformes a docs/CONTRACTS.md ---
+# --- Modeles partages (15), conformes a docs/CONTRACTS.md ---
 
 
 class MintEvent(_StrictModel):
@@ -131,6 +152,14 @@ class MintEvent(_StrictModel):
 
     Le montant est celui derive on-chain par le contrat (volet 1), pas un
     montant signe par le demandeur.
+
+    Deux sources possibles (OPEN_ANSWERS §7, #79) :
+    - l'evenement dedie du minter (`SwapCompleted`) : tous les champs de la
+      demande sont renseignes (`request_id`, `depositor`, `deposit_amount`,
+      `rate_wad`) ;
+    - un `Transfer` ERC-20 depuis 0x0 (chemin de mint non prevu, contrat
+      vulnerable) : seuls les champs du log sont connus, ceux de la demande
+      valent `None`. `None` veut dire « inconnu », jamais « demande n°0 ».
     """
 
     tx_hash: TxHash = Field(..., description="Hash de la transaction de mint.")
@@ -148,10 +177,33 @@ class MintEvent(_StrictModel):
     amount: int = Field(
         ..., gt=0, description="Montant minte en base units (derive on-chain)."
     )
-    request_id: int = Field(
-        ...,
+    request_id: int | None = Field(
+        None,
         ge=0,
-        description="Identifiant de la MintRequest traitee (« demande n°X »).",
+        description=(
+            "Identifiant de la MintRequest traitee (« demande n°X »). None = "
+            "inconnu (mint observe hors evenement du minter) ; jamais de sentinelle."
+        ),
+    )
+    depositor: Address | None = Field(
+        None,
+        description="Deposant de la demande (I3 : doit egaler `recipient`). None = inconnu.",
+    )
+    deposit_amount: int | None = Field(
+        None,
+        gt=0,
+        description="Depot de la demande, base units du token depose (I1). None = inconnu.",
+    )
+    rate_wad: int | None = Field(
+        None,
+        gt=0,
+        description=(
+            "Taux applique, en base units mintees par base unit deposee, "
+            "x 10**18 (RATE_WAD_SCALE). None = inconnu."
+        ),
+    )
+    token_address: Address | None = Field(
+        None, description="Contrat du token minte (emetteur du mint observe)."
     )
 
 
@@ -161,6 +213,9 @@ class TransferEvent(_StrictModel):
     Tout transfert declenche une emission de Ghost chez le destinataire
     (OPEN_ANSWERS §0bis) ; cet evenement est l'observation brute du transfert,
     pas le Ghost lui-meme.
+
+    `is_ghost` ne se deduit pas du log : il vient du contrat ecoute (le token
+    M ou son Ghost M'). Il n'existe pas de « Ghost d'un Ghost » (§0bis-b).
     """
 
     tx_hash: TxHash = Field(..., description="Hash de la transaction de transfert.")
@@ -177,7 +232,13 @@ class TransferEvent(_StrictModel):
     amount: int = Field(..., gt=0, description="Montant transfere en base units.")
     is_ghost: bool = Field(
         ...,
-        description="True si le token transfere est deja un Ghost (Ghost d'un Ghost).",
+        description=(
+            "True si le token transfere est le Ghost M' (contrat ecoute = Ghost), "
+            "False si c'est le vrai token M."
+        ),
+    )
+    token_address: Address | None = Field(
+        None, description="Contrat emetteur du log (token M ou Ghost M')."
     )
 
 
@@ -606,4 +667,68 @@ class GhostTokenBurnEvent(_StrictModel):
         ...,
         min_length=1,
         description="ReleaseDecision multisig autorisant la destruction.",
+    )
+
+
+class AdminEvent(_StrictModel):
+    """Evenement d'administration observe on-chain (OPEN_ANSWERS §1 Q2, §7).
+
+    Le surveillant de mint verifie que les hypotheses du volet 1 tiennent :
+    un upgrade, un role accorde/retire, un changement de taux ou d'oracle non
+    annonce est une alerte. Les details propres a chaque evenement (role
+    bytes32, ancien/nouveau taux) vont dans `details`.
+    """
+
+    tx_hash: TxHash = Field(..., description="Transaction ayant emis l'evenement.")
+    log_index: int = Field(..., ge=0, description="Index du log.")
+    block_number: int = Field(..., ge=0, description="Numero de bloc.")
+    chain_id: int = Field(..., ge=1, description="Identifiant de chaine EVM.")
+    observed_at: datetime = Field(
+        ..., description="Horodatage d'observation par le monitor (UTC)."
+    )
+    contract_address: Address = Field(
+        ..., description="Contrat emetteur (minter, token, Ghost...)."
+    )
+    kind: AdminEventKind = Field(..., description="Nature de l'evenement.")
+    subject_address: Address | None = Field(
+        None,
+        description=(
+            "Adresse visee : nouvelle implementation, compte recevant/perdant le "
+            "role, nouvel oracle. None si l'evenement n'en vise pas (taux)."
+        ),
+    )
+    actor: Address | None = Field(
+        None, description="Compte ayant declenche le changement, si le log le porte."
+    )
+    details: dict[str, str] = Field(
+        default_factory=dict,
+        description="Details cle->valeur (ex. role, old_rate, new_rate).",
+    )
+
+
+class SupplySnapshot(_StrictModel):
+    """Lecture de l'offre et du collateral a un bloc (invariants I5, I6).
+
+    I5 compare deux lectures successives de `total_supply` aux mints/burns
+    observes entre elles ; I6 compare la valeur de l'offre
+    (`total_supply + ghost_supply`, §0bis-c) a `collateral_value`.
+    """
+
+    chain_id: int = Field(..., ge=1, description="Identifiant de chaine EVM.")
+    block_number: int = Field(..., ge=0, description="Bloc de la lecture.")
+    observed_at: datetime = Field(..., description="Horodatage de la lecture (UTC).")
+    token_address: Address = Field(..., description="Contrat du token M lu.")
+    total_supply: int = Field(..., ge=0, description="`totalSupply()` de M, base units.")
+    ghost_supply: int | None = Field(
+        None,
+        ge=0,
+        description="`totalSupply()` du Ghost M' (None si pas de Ghost), base units.",
+    )
+    collateral_value: int | None = Field(
+        None,
+        ge=0,
+        description=(
+            "Valeur du collateral, exprimee en base units du token M (I6). "
+            "None = non lue."
+        ),
     )

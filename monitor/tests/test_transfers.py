@@ -87,7 +87,8 @@ def test_fetch_converts_only_ordinary_transfers() -> None:
     assert [e.amount for e in events] == [50, 20]
     first = events[0]
     assert isinstance(first, TransferEvent)
-    assert first.model_dump() == {
+    # exclude_none : `token_address` (optionnel, ajoute par #79) reste None ici.
+    assert first.model_dump(exclude_none=True) == {
         "tx_hash": "0x" + "01" * 32,
         "log_index": 1,
         "block_number": 10,

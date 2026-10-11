@@ -230,6 +230,10 @@ Exemple : mint frauduleux de 50M, réparti sur 3 adresses neuves puis envoyé ve
 > identités EVM (adresses/hash validés), montants en entiers base units, timestamps UTC. Le soupçon
 > est porté par `contamination_ratio` (0–1) + `suspect_amount` (int). Détail complet et exemples
 > JSON dans `docs/CONTRACTS.md`. Reste à acter : relecture et merge de la PR.
+>
+> **#79 (champs manquants pour monitor/detection)** → Tranché, voir `docs/OPEN_ANSWERS.md` §7 :
+> `MintEvent.request_id` optionnel (`None` = inconnu, plus de sentinelle), champs de la demande
+> ajoutés, `is_ghost` clarifié, `AdminEvent` et `SupplySnapshot` ajoutés (15 modèles).
 
 - Champs de `MintEvent`, `TransferEvent`, `Alert`, `ResponseAction`, `AuditLogEntry`.
 - Où vivent les modèles (`shared/`), format d'échange (JSON ?), versionnage éventuel.

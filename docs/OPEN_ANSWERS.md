@@ -29,6 +29,7 @@ Règles :
 | 4 | Angle différenciant : anti-contagion (principal) + supervision IA + cadre DORA | 2026-10-10 | Équipe 20 | Tranché en équipe | — |
 | 5 | Mesure de performance : délai de détection, taux de faux positifs, baseline et critères de succès | 2026-10-10 | denybs | Validée en session, à relire par l'équipe | — |
 | 6 | Données synthétiques : format JSONL, scénarios recadrés, générateur reproductible | 2026-10-10 | EnzoFB06 | Tranché (propriétaire `data/`) | — |
+| 7 | Interfaces : champs manquants repérés par monitor/detection (`request_id` inconnu, `is_ghost`, données des invariants) (#79) | 2026-10-11 | Kiro pour Marceau (propriétaire `shared/`) | Tranché par l'assistant sur délégation, à relire par l'équipe | Issue #79 |
 | 9 | Volet 2 : surveillance adaptative, allongement de fenêtre ciblé, contamination par ratio | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | PR #38 |
 | 10 | Lignage d'un swap : `swap-id` sur notre pool, jambe sortante en règlement différé (#43) | 2026-10-10 | denybs | Validée en session, à relire par l'équipe | Issue #43 |
 | 10bis | Qui porte le risque : M' protégé / pur / chèque, routeur + Ghost de paiement, restitution sans fonds ni frais (#84) | 2026-10-10 | Marceau | Validée en session, à relire par l'équipe | Issue #84 |
@@ -704,6 +705,65 @@ jamais inventés (`docs/CLAIMS.md`).
   `shared/`.
 - Implémentation (PR #57) : `--scenario <normal|A|B|all>` ; C et D pas encore générés (#25,
   dépendent de #7 / #8). Sorties dans `data/generated/`, pas encore dans `.gitignore`.
+
+---
+
+## §7. Interfaces — champs manquants repérés par monitor et detection (#79)
+
+### DÉCISION (2026-10-11, Kiro pour Marceau, propriétaire `shared/`) — `None` = inconnu, l'événement du minter comme source normale, deux modèles ajoutés
+
+_Tranché par l'assistant sur délégation explicite de Marceau, à relire par l'équipe._
+
+Contexte : #9, #10 et #11 ont contourné localement trois écarts entre `shared/models.py` et ce
+dont monitor et detection ont besoin (issue #79). Décision pour chacun :
+
+1. **`MintEvent.request_id` devient `int | None`, défaut `None` = inconnu.** Option retenue
+   parmi les trois de #79. La sentinelle `0` est **écartée** : elle entre en collision avec la vraie
+   demande n°0 (`ProtectedMinter.nextRequestId` et `data/generate.py` commencent à 0). Un
+   événement obligatoire côté contrat existe déjà : `ProtectedMinter` émet
+   `SwapCompleted(requestId, depositor, recipient, depositAmount, mintedAmount, rate)` (PR #71).
+   C'est la **source normale** d'un `MintEvent`. Le `Transfer` ERC-20 depuis `0x0` reste lu pour
+   repérer un **chemin de mint non prévu** (I4, I5) ; il n'a pas de demande, donc `None`.
+2. **Champs de la demande ajoutés à `MintEvent`, tous optionnels** : `depositor` (I3),
+   `deposit_amount` (I1), `rate_wad` (I1) et `token_address`. Le taux est transporté en
+   **base units mintées par base unit déposée × 10¹⁸** (`RATE_WAD_SCALE`) : un seul entier, sans
+   float et sans connaître les décimales des deux tokens. Pour `ProtectedMinter`,
+   `rate_wad = rate × 10¹²`.
+   - Alternative écartée : copier le `rate` brut du contrat. Il dépend de `RATE_PRECISION` et des
+     décimales propres à ce contrat, que detection devrait connaître.
+3. **`TransferEvent.is_ghost` est conservé**, avec un sens corrigé : `true` = le contrat écouté
+   est le Ghost M'. Il n'existe pas de « Ghost d'un Ghost » (§0bis-b), l'ancienne description était
+   fausse. Ajout de `token_address` (optionnel) pour qu'un seul listener puisse lire M et M'.
+   - Alternative écartée : déduire `is_ghost` du log. Un `Transfer` ERC-20 ne le dit pas.
+4. **Deux modèles ajoutés** (13 → 15) pour les invariants I5, I6 et les événements admin :
+   - `AdminEvent` + enum `AdminEventKind` (`upgraded`, `role_granted`, `role_revoked`,
+     `rate_changed`, `oracle_changed`). Liste minimale : ce que les contrats du dépôt émettent
+     aujourd'hui, plus les deux cas cités en §1.
+   - `SupplySnapshot` : `total_supply` de M, `ghost_supply` du Ghost, `collateral_value` exprimée
+     en base units de M. Valeur de l'offre = `total_supply + ghost_supply` (§0bis-c).
+   - L'**annonce préalable** d'un changement admin (`AdminAnnouncement` de `detection/`) reste
+     locale : son canal n'est pas tranché (§1).
+
+Compatibilité : tous les champs ajoutés sont optionnels, aucun producteur existant ne casse. Seuls
+deux tests du monitor qui comparaient un `model_dump()` complet ont été ajustés
+(`exclude_none=True`).
+
+#### Conséquences
+
+- **Point d'attention Token Ghost (#8)** : dans le design en cours, tout transfert de M brûle le M
+  de l'expéditeur et émet du Ghost (`GhostedStable._update`). Un `Transfer` depuis `0x0` sur M est
+  alors une **conversion** Ghost → M, pas un mint. Le monitor doit lire `SwapCompleted` (minter) et
+  les événements du Ghost, pas le `Transfer` ERC-20 de M.
+- **monitor** : décoder `SwapCompleted`, `RoleGranted`/`RoleRevoked`/`RateChanged`, produire des
+  `SupplySnapshot` ; retirer `UNKNOWN_REQUEST_ID` (issue de suivi pour @Yannis1307).
+- **detection** : lire `deposit_amount`, `rate_wad`, `depositor` (I3, #91) dans le `MintEvent` ;
+  remplacer `AdminEvent` local par le modèle partagé (même issue de suivi).
+
+### Reste ouvert
+
+- Relecture par l'équipe.
+- Événements du Ghost (`GhostTokenMintEvent`, …) à aligner sur les événements réels de #8
+  (échéance, statut de tranche §10bis, actif du Ghost de paiement) quand le contrat sera mergé.
 
 ---
 
