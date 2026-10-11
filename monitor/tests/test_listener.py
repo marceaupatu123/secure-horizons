@@ -189,6 +189,13 @@ def test_fetch_converts_only_mints_to_mint_event() -> None:
         "recipient": Web3.to_checksum_address(ALICE),
         "amount": 100,
         "request_id": UNKNOWN_REQUEST_ID,
+        # Revision groupee de shared (#104) : Transfer ERC-20 nu, demande inconnue.
+        "depositor": None,
+        "deposit_amount": None,
+        "rate_wad": None,
+        "provenance_source": None,
+        "claimed_minted": None,
+        "via_protected_path": None,
     }
     # Filtre RPC : contrat configure, topic0 Transfer, topic1 = from 0x0.
     assert eth.calls[0]["address"] == Web3.to_checksum_address(TOKEN)
