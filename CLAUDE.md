@@ -17,8 +17,9 @@ le vrai token après un délai sans anomalie (ex. 10 min), et **détruit** si un
 
 ## Principe de conception — _proposé, à valider en équipe_
 
-> La sécurité vit dans le contrat ; la surveillance est un renfort ; l'IA ne décide jamais seule
-> d'un blocage ; on ne promet que ce qu'on mesure.
+> La sécurité vit dans le contrat ; la surveillance est un renfort ; l'IA ne fait que **retarder**
+> (localement, auto-expirant) et ne décide jamais seule d'une **destruction** ni d'une **pause
+> globale** (multisig humain, `docs/OPEN_ANSWERS.md` §3) ; on ne promet que ce qu'on mesure.
 >
 > **Quarantaine liquide (Token Ghost)** : la sécurité du protocole est garantie par le **transfert
 > du risque vers un marché secondaire spéculatif** — le vrai token n'est jamais émis
