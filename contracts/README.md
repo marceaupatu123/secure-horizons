@@ -372,3 +372,15 @@ change (§0bis-b), pas l'algorithme.
 - **Routeur de règlement et M' protégé / pur** (#84, §10bis), au-dessus du Ghost.
 
 Détails et arbitrages ouverts : voir `docs/OPEN_QUESTIONS.md` et `docs/CLAIMS.md`.
+
+## Balise de risque + faux marché de prêt (#7, volet 3)
+
+- `src/RiskBeacon.sol` : façade de **lecture** de `IGhostRisk` (aucune écriture de risque).
+  `riskOf(a)` → ratio, montant suspect, fin de fenêtre, état (`PAUSE_GLOBALE` > `DETRUIT` >
+  `RETARDE` > `NORMAL`), incident. `publish(address[])` permissionless, borné à 64, émet
+  `RiskPublished` pour le monitor.
+- `src/MockLendingMarket.sol` : prêt FICTIF de MockUSDC contre M / M-Ghost. Avec balise : décote
+  `base + slope × ratio` du soupçon **importé au dépôt** (mesuré sur le solde réel du marché),
+  emprunt refusé hors état NORMAL ou au-delà des seuils. Verrou de position `window + slot`.
+- Tests : `test/RiskBeacon.t.sol` contre `test/utils/MockGhostRisk.sol` (en attendant #8), dont le
+  scénario C. Choix provisoires : `docs/OPEN_QUESTIONS.md` §14.
