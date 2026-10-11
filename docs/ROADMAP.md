@@ -16,10 +16,10 @@ collision). Les deux goulots (#2, #4) sont pris en priorité pour débloquer la 
 
 | Membre | Issue en cours | Dossier | Vague |
 |--------|----------------|---------|-------|
-| **marceaupatu123** | #2 champs des modèles | `shared/` | 1 (`blocker`) |
-| **denybs** | #4 Foundry + contrat vulnérable | `contracts/` | 2 |
+| **marceaupatu123** | #2 champs des modèles (fait, PR #53) | `shared/` | 1 (`blocker`) |
+| **denybs** | #4 Foundry + contrat vulnérable (fait, PR #71) | `contracts/` | 2 |
 | **EnzoFB06** | #26 onboarding (fait) | — | 0 |
-| **Yannis1307** | #9 monitor : écoute des mints | `monitor/` | 2 |
+| **Yannis1307** | #9 monitor : écoute des mints (fait, PR #72) | `monitor/` | 2 |
 
 > Dès que #2 est mergée, monitor/detection/response/llm se débloquent : prochaine vague de
 > répartition possible (#10, #11, #12, #14, #17…). Dès que #1 est tranchée, #5 s'ouvre.
@@ -106,7 +106,7 @@ flowchart TD
 |------|-------|-------|------------------|
 | [x] | #28 | setup RPC Fuji + faucet AVAX + BEDROCK_MODEL_ID | `blocker` : sans ça, ni chaîne ni LLM. (fermée via PR #32) |
 | [x] | #26 | onboarding (clone, venv, make install, .env, branche) | chacun doit être opérationnel. _(EnzoFB06, fait)_ |
-| [ ] | #27 | CODEOWNERS + tableau TEAM.md | fige « qui possède quoi » avant de coder. |
+| [x] | #27 | CODEOWNERS + tableau TEAM.md | fige « qui possède quoi » avant de coder. _(PR #41)_ |
 | [x] | #31 | contracts : registre des déploiements Fuji (`DEPLOYMENTS.md`) | consigne staff : tracer les adresses déployées. |
 
 ## Vague 1 — Décisions d'équipe (bloquent le code métier)
@@ -123,19 +123,27 @@ flowchart TD
 | Fait | Issue | Tâche | Dépend de |
 |------|-------|-------|-----------|
 | [x] | #4 | Foundry + contrat vulnérable | #1 _(PR #71)_ |
-| [ ] | #9 | monitor : écoute des mints | #2 — _(Yannis1307, en cours)_ |
-| [ ] | #10 | monitor : écoute des transferts | #2 |
+| [x] | #9 | monitor : écoute des mints | #2 _(PR #72)_ |
+| [x] | #10 | monitor : écoute des transferts | #2 _(PR #75)_ |
 | [x] | #5 | contrat protégé (montant dérivé on-chain) — volet 1 | #1, #3 _(PR #71)_ |
+| [x] | #73 | ci : `forge build` + `forge test` sur chaque PR | #4 _(PR #93)_ |
+| [x] | #74 | monitor : reprise sur erreur RPC + checkpoint du dernier bloc lu | #9, #10 _(PR #96)_ |
+| [x] | #79 | shared : champs manquants repérés par monitor/detection | #9, #10, #11 _(PR #105)_ |
 
 ## Vague 3 — Logique métier (après vague 2)
 
 | Fait | Issue | Tâche | Dépend de |
 |------|-------|-------|-----------|
-| [ ] | #11 | detection : surveillant règles (mint) | #2, #9 |
+| [x] | #11 | detection : surveillant règles (mint) | #2, #9 _(PR #76)_ |
 | [x] | #12 | detection : surveillant transferts anormaux | #2, #10 |
 | [x] | #14 | llm : client Bedrock Converse (rate limiter) | #28 |
 | [x] | #17 | response : orchestration de la réponse graduée | #2, detection _(PR #56, mergée)_ |
 | [x] | #6 | contracts : invariants/fuzzing (perte max bornée) — volet 2 | #5 _(PR #71)_ |
+| [x] | #86 | detection : brancher monitor → detection + baseline de démo configurable | #9, #10, #12 _(PR #94)_ |
+| [x] | #87 | detection : volume compté deux fois à chaque rebond | #12 _(PR #97)_ |
+| [x] | #91 | detection : vérifier I3 (destinataire = déposant) dans `check_mint` | #11 _(PR #100)_ |
+| [x] | #104 | monitor : décoder les événements du contrat #5 + révision groupée de `shared` | #5, #79 _(PR #136)_ |
+| [x] | #131 | contracts : `setRate` non borné (clé de taux volée = mint sans limite) | #5 _(PR #137)_ |
 
 ## Vague 4 — Réponse complète + conformité
 
@@ -153,12 +161,16 @@ flowchart TD
 | [x] | #20 | dashboard : vue alertes + réponse (Streamlit) | une fois qu'il y a des alertes. |
 | [x] | #47 | dashboard : outil de génération et rejeu des scénarios de démo (CLI + page Streamlit) | `optional` ; simulation hors chaîne, forme à valider en équipe |
 | [x] | #70 | dashboard : scénarios branchés sur les vraies implémentations (A sur anvil en opt-in ; B, N1–N3 sur #11/#12/#17/#24) | C et D restent simulés tant que #7/#8/#25/#65 ne sont pas livrés |
-| [x] | #8 | contracts : ERC20 Token Ghost + burn guardian | dépend de #5. Spec tranchée : §0bis-b (tranches d'échéance, #35), §0bis-c (réserve de restitution, #36), §9 (ratio) ; tests d'invariants de #33 inclus. _(implémenté, 106 tests dont invariants (a)–(f), branche `feat/8-token-ghost`)_ |
-| [ ] | #7 | contracts : balise de risque + faux marché — volet 3 | **cœur du projet** (§0, §4), plus optionnel ; dépend de #8 (lit le ratio). |
-| [ ] | #65 | contracts : pool simulé M-Ghost/USDC, règlement différé `swap-id` (§10, #43) | dépend de #8 ; sert le scénario D (#25). Devient un cas particulier du routeur §10bis (#84). |
+| [x] | #8 | contracts : ERC20 Token Ghost + burn guardian | dépend de #5. Spec tranchée : §0bis-b (tranches d'échéance, #35), §0bis-c (réserve de restitution, #36), §9 (ratio) ; tests d'invariants de #33 inclus. _(implémenté, 106 tests dont invariants (a)–(f), PR #123)_ |
+| [x] | #7 | contracts : balise de risque + faux marché — volet 3 | **cœur du projet** (§0, §4), plus optionnel ; dépend de #8 (lit le ratio). _(PR #111)_ |
+| [x] | #65 | contracts : pool simulé M-Ghost/USDC, règlement différé `swap-id` (§10, #43) | dépend de #8 ; sert le scénario D (#25). Devient un cas particulier du routeur §10bis (#84). _(issue fermée)_ |
+| [x] | #124 | contracts : Ghost — parité registre, scénario de récupération, mesures de gas | suite de #8 _(PR #126)_ |
 | [x] | #84 | contracts : M' protégé / pur / chèque, routeur + Ghost de paiement par actif, restitution (§10bis) | **Fait** : couche de règlement mergée (#130) ; enforcement routeur tranché option (b), OPEN_ANSWERS §10bis-router (#139). |
 | [x] | #13 | detection : surveillant ML / prédiction conforme | `optional` |
 | [x] | #25 | data : scénarios C et D (contagion + Token Ghost) | `optional`, dépend de #7/#8 _(simulation hors chaîne, PR #82)_ |
+| [x] | #106 | detection : recalcul rétroactif du lignage hors chaîne → `Alert.seeds` | suite de #85 (OPEN_ANSWERS §11, piste b) _(PR #112)_ |
+| [x] | #113 | dashboard : rapport d'incident DORA (#15) sur l'alerte confirmée du scénario B | dépend de #15, #70 _(PR #115)_ |
+| [ ] | #110 | dashboard : brancher C, D et le Ghost de B/N3 sur #7/#8/#25/#65 | `optional` ; suite de #70, attend les briques livrées. |
 
 ---
 

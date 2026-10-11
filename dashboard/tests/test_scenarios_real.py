@@ -187,7 +187,8 @@ def test_market_config_tuple_matches_contract_struct() -> None:
 def test_run_c_on_real_anvil(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(real_contracts.CONTRACTS_BACKEND_ENV, real_contracts.BACKEND_ANVIL)
     result = catalog.run_c(20, DEFAULT_PARAMS)
-    assert result.replace_by == [8], result.message  # seul le M-Ghost (#8) reste simule
+    # Le M-Ghost est desormais le vrai GhostToken (#8) : plus rien de simule sur C.
+    assert result.simulated is False and result.replace_by == [], result.message
     without = result.metric("without_beacon", "bad_debt").value
     with_beacon = result.metric("with_beacon", "bad_debt").value
     assert without is not None and without > 0

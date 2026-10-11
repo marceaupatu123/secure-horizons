@@ -91,6 +91,8 @@ jobs:
           grep -q "Bandeau : implémentation réelle : #4, #5" scenario_a.txt
           python -m dashboard.demo run C --seed 20 | tee scenario_c.txt
           grep -q "Bandeau : implémentation réelle : #7" scenario_c.txt
+          python -m dashboard.demo run D --seed 20 | tee scenario_d.txt
+          grep -q "Bandeau : implémentation réelle : #8, #84" scenario_d.txt
           python -m pytest -q dashboard/tests -k "real_anvil" -rs
 
   contracts:

@@ -1,0 +1,113 @@
+---
+title: "Comment le surveillant sait POURQUOI"
+description: "La provenance d'un mint : relier chaque création de jetons à sa vraie demande, sans croire le contrat sur parole."
+---
+
+<Note>
+Cette page explique la **provenance** : comment le surveillant rattache chaque création de jetons
+(« mint ») à la **demande qui l'a déclenchée**, et pourquoi il **recalcule tout lui-même** au lieu
+de croire le contrat surveillé sur parole. Expliqué simplement.
+</Note>
+
+## Le problème : « qu'est-ce qui s'est passé » ≠ « pourquoi »
+
+Quand des jetons sont créés sur la blockchain, un événement public dit **QU'un** mint a eu lieu :
+*qui* a reçu *combien*. Mais il ne dit pas **POURQUOI** : quelle demande, quel dépôt, quel
+déposant, quel taux ?
+
+**Analogie** : un **ticket de caisse illisible**. Tu vois qu'il y a eu une vente et le montant,
+mais pas la liste des articles. Impossible de vérifier si le prix est juste sans retrouver le
+détail de la commande.
+
+Or le **Volet 1** repose justement sur une vérification : *le montant créé doit correspondre au
+vrai dépôt* (`minted = dépôt × taux`, règle **I1**) et *le destinataire doit être le déposant*
+(règle **I3**). Pour vérifier ça, le surveillant a besoin du **détail de la commande**, pas
+seulement du total.
+
+## La solution : relier le mint à sa demande
+
+Le contrat protégé laisse une trace complète dans ses propres **événements** :
+
+<CardGroup cols={2}>
+  <Card title="La demande (SwapRequested)" icon="file-pen">
+    Enregistrée **au moment du dépôt**, avant tout traitement : qui dépose, combien, à quel taux.
+  </Card>
+  <Card title="Le traitement (SwapCompleted)" icon="circle-check">
+    Au moment du mint : relie la demande n°X au jeton réellement créé.
+  </Card>
+</CardGroup>
+
+Le surveillant **recoud** les deux : il part du mint réel, retrouve la demande de la **même
+transaction**, et reconstitue toute l'histoire.
+
+## La règle d'or : ne jamais croire le surveillé sur parole
+
+<Warning>
+Le contrat qu'on surveille pourrait être **bugué ou remplacé** par l'attaquant. S'il affirme
+« tout va bien », on ne le croit pas : on **recalcule**.
+</Warning>
+
+**Analogie** : un **contrôleur des impôts**. Il ne se contente pas de la phrase « j'ai bien tout
+déclaré » écrite par la personne contrôlée. Il reprend les chiffres **à la source** et refait le
+calcul lui-même.
+
+<Steps>
+  <Step title="La vérité du montant = le vrai transfert de jetons">
+    Le surveillant prend le montant et le destinataire **réellement crédités** (le transfert du
+    token), pas ce que le contrat prétend avoir fait dans `SwapCompleted`.
+  </Step>
+  <Step title="La vérité du dépôt = la demande d'origine">
+    Le dépôt, le déposant et le taux viennent de la **demande** (`SwapRequested`), écrite **avant**
+    le traitement, dans une autre transaction : difficile à falsifier après coup.
+  </Step>
+  <Step title="Le surveillant refait le calcul">
+    Il recalcule lui-même I1 (montant = dépôt × taux) et I3 (destinataire = déposant). Si ça ne
+    colle pas → **alerte**.
+  </Step>
+</Steps>
+
+<Note>
+Cas limite assumé : si la demande a été créée **avant** que le surveillant commence à écouter, il
+n'a pas vu `SwapRequested`. Il se rabat alors sur les champs de `SwapCompleted`, **marqués comme
+moins fiables** (`source="completion"`).
+</Note>
+
+## Le cas le plus suspect : un mint sans demande
+
+Si un mint apparaît **sans aucune demande** rattachée dans sa transaction, c'est qu'il est passé
+par un **chemin non prévu** (règle **I4**). Le surveillant lève alors une **alerte critique** :
+personne ne devrait pouvoir créer des jetons par une porte dérobée.
+
+C'est exactement ce qu'une **clé volée** essaierait de provoquer, et c'est là que la provenance
+referme la porte.
+
+## Avec le Token Ghost : le vestiaire et son ticket
+
+Quand le **Token Ghost** est actif, la création de valeur passe **uniquement** par l'émission de
+Ghost frais (`GhostIssued`, type *MINT*). Du vrai jeton qui apparaît n'est alors légitime que s'il
+correspond à une **conversion** (`GhostConverted`) : **même porteur, même montant**. Ce n'est pas
+un nouveau mint, c'est un Ghost qui a fini sa quarantaine.
+
+**Analogie** : au **vestiaire**, on ne te rend un manteau que contre **ton ticket**. Un manteau qui
+sort sans ticket correspondant, c'est un vol, même s'il ressemble à tous les autres.
+
+<Warning>
+Du vrai jeton créé **sans conversion correspondante** reste un mint **sans provenance** → alerte
+critique (I4), exactement comme ci-dessus.
+</Warning>
+
+## Ce qu'on mesure
+
+Le décodage des événements et la reconstitution de la provenance sont **vérifiés par des tests**
+(`detection/tests/test_provenance.py`, `monitor/tests/test_protected.py`) : demande bien
+rattachée, recalcul I1/I3 correct, mint sans provenance → alerte. Vérifié par tests, pas
+« prouvé ».
+
+<CardGroup cols={2}>
+  <Card title="Les trois volets" icon="layer-group" href="/les-trois-volets">
+    La provenance alimente le Volet 1 : le montant est dérivé du vrai dépôt.
+  </Card>
+  <Card title="Le module detection" icon="magnifying-glass" href="/modules/detection">
+    Les invariants I1 à I6 vérifiés un par un.
+  </Card>
+</CardGroup>

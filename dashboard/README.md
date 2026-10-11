@@ -42,8 +42,8 @@ brique n'est pas disponible afficherait « non disponible (dépend de #X) ».
 |----------|---------------------|--------------------------------|---------------|
 | A | Le vulnérable se fait vider, le protégé borne la perte. | contrats Foundry #4/#5 sur anvil local, **opt-in** (`SH_DEMO_CONTRACTS_BACKEND=anvil`) | tout, par défaut (repli automatique si Foundry absent) |
 | B | Détection + alerte + allongement de fenêtre Ghost. | trafic #24, surveillants #11/#12, réponse #17 ; démo on-chain séparée des contrats Ghost #8, **opt-in** (`SH_DEMO_CONTRACTS_BACKEND=anvil`) | Ghost (#8) dans la variante principale |
-| C (optionnel) | Moins de pertes en aval quand la balise est lue. | `RiskBeacon` + `MockLendingMarket` #7 sur anvil local, **opt-in** (`SH_DEMO_CONTRACTS_BACKEND=anvil`) | M-Ghost (#8, remplacé par `MockGhostRisk`) ; tout, par défaut |
-| D (optionnel) | Pertes côté protocole ≈ zéro (à vérifier) vs pertes côté spéculateurs. | — | tout (#8, #25) |
+| C (optionnel) | Moins de pertes en aval quand la balise est lue. | `RiskBeacon` + `MockLendingMarket` #7 **et le vrai M-Ghost `GhostToken` #8** sur anvil local, **opt-in** (`SH_DEMO_CONTRACTS_BACKEND=anvil`) : tout vient de la chaîne | tout, par défaut (repli automatique si Foundry absent) |
+| D (optionnel) | Pertes côté protocole ≈ zéro (à vérifier) vs pertes côté spéculateurs. | vrai M-Ghost #8 + couche de règlement §10bis #84 (`SettlementRouter`, `AssetVault`, `AssetGhost`) sur anvil local, **opt-in** (`SH_DEMO_CONTRACTS_BACKEND=anvil`) | tout, par défaut (pool simulé ; repli automatique si Foundry absent) |
 | N1 | Zéro alerte, zéro gel. | trafic #24, surveillants #11/#12, réponse #17 | rien |
 | N2 | Pas de déclenchement (volume élevé sans dispersion effondrée). | trafic #24, surveillants #11/#12, réponse #17 | rien |
 | N3 | La fenêtre revient seule à la normale, aucun gel définitif. | trafic #24 (+ burst injecté), #11/#12, #17 ; démo on-chain séparée des contrats Ghost #8, **opt-in** (`SH_DEMO_CONTRACTS_BACKEND=anvil`) | Ghost (#8) dans la variante principale |
@@ -64,11 +64,40 @@ le rejeu échoue, A retombe sur la simulation et le message le dit. Le job CI `s
 rejoue ce chemin sur chaque PR.
 
 Le même backend rejoue **C** sur la balise de risque et le faux marché de prêt de #7
-(`RiskBeacon`, `MockLendingMarket`) : un emprunteur légitime et l'attaquant (Ghost 100 % suspect)
-empruntent sur deux marchés, sans et avec lecture de la balise, puis la garantie suspecte du
-marché est détruite. Le M-Ghost est `MockGhostRisk` (`contracts/test/utils/`) tant que #8 n'est
-pas livré, d'où le bandeau « à remplacer par #8 ». Paramètres du marché : `lending_ltv` et
+(`RiskBeacon`, `MockLendingMarket`) **et sur le vrai M-Ghost `GhostToken` (#8)** : un emprunteur
+légitime (Ghost propre) et l'attaquant (Ghost 100 % suspect) empruntent sur deux marchés, sans et
+avec lecture de la balise, puis la garantie suspecte du marché est détruite. Le soupçon n'est plus
+posé par un setter de test : il vient de la vraie chaîne de sécurité (le surveillant `delay`
+l'attaquant, le soupçon **suit la valeur** jusqu'au marché au dépôt, les guardians 2/3 détruisent
+la garantie suspecte détenue par le marché). Comme **tout** vient alors de la chaîne, le bandeau
+« simulation hors chaîne » **disparaît** sur ce chemin (`replace_by` vide, bandeau
+« implémentation réelle : #7, #8 »). Paramètres du marché : `lending_ltv` et
 `beacon_ratio_threshold` de `scenarios/config.py`, décotes du test de #7 (provisoires).
+
+### Rejouer D sur les vrais contrats (anvil, #110)
+
+Par défaut, **D** rejoue la revente du Ghost suspect à un **pool simulé** (produit constant,
+`sim_contracts.ConstantProductPool`), bandeau « simulation hors chaîne, à remplacer par #8, #25,
+#84 ». Avec le même opt-in (`SH_DEMO_CONTRACTS_BACKEND=anvil`), D est rejoué sur le **vrai M-Ghost
+`GhostToken` (#8) + la couche de règlement §10bis (#84 : `SettlementRouter`, `AssetVault`,
+`AssetGhost`)** (`scenarios/real_settlement.py`), avec repli automatique sur la simulation :
+
+```bash
+# Foundry v1.8.5 + contracts/lib installé (voir ci-dessus), puis :
+SH_DEMO_CONTRACTS_BACKEND=anvil python -m dashboard.demo run D
+```
+
+Le cas rejoué est le **§10bis cas 2bis** (prix qui montent), modelé sur
+`contracts/test/ScenarioSettlement.t.sol` : le voleur vend son M' frauduleux à un intermédiaire
+via le routeur (l'acheteur bloque du vrai USDC au coffre, le voleur ne reçoit que du **Ghost de
+paiement**), l'intermédiaire le revend plus cher à l'acheteur final (M' devenu « pur »), puis la
+destruction 2/3 brûle le M' suspect, brûle le Ghost de paiement du voleur et restitue à l'acheteur
+final l'argent bloqué du voleur par racine de Merkle. Lectures on-chain : **perte protocole = 0**
+(aucun vrai M émis contre du suspect, §10bis), **perte spéculateur > 0** (la marge que l'acheteur
+final a payée au-dessus de l'argent bloqué du voleur), le **voleur garde 0**, le coffre est vidé.
+Comme tout vient de la chaîne sur ce chemin, le bandeau devient « implémentation réelle : #8, #84 ».
+Si Foundry ou `contracts/lib` manquent, ou si le rejeu échoue, D retombe sur le pool simulé et le
+message le dit (la CI ne dépend jamais d'anvil).
 
 ### Démontrer la partie Ghost de B et N3 sur les vrais contrats (anvil, #110)
 
@@ -133,10 +162,11 @@ dans la variante `ghost-onchain`) :
 - Une **offre de fond** légitime (10 000 Ghost, comme `dave` dans `GhostWatcher.t.sol`) est émise
   d'abord : sans elle, retarder le seul porteur dépasserait le budget de quarantaine (2000 bps).
 
-Le job CI `scenario A (anvil)` exécute aussi les tests anvil de B/N3
-(`dashboard/tests/test_scenarios_real_ghost.py`, sélectionnés par `-k "real_anvil"`), dont un test
+Le job CI `scenario A (anvil)` exécute aussi les tests anvil de B/N3, **de C et de D**
+(`dashboard/tests/test_scenarios_real_*.py`, sélectionnés par `-k "real_anvil"`), dont un test
 qui **verrouille l'honnêteté** : tant qu'un chiffre Ghost de la variante principale est simulé, #8
-doit rester dans `replace_by`.
+doit rester dans `replace_by`. Il vérifie aussi que les bandeaux on-chain de C (« implémentation
+réelle : #7, #8 ») et de D (« implémentation réelle : #8, #84 ») apparaissent bien.
 
 À garder en tête :
 

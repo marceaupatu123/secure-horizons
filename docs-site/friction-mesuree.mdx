@@ -1,0 +1,78 @@
+---
+title: "La friction mesurée"
+description: "Combien la quarantaine Token Ghost immobilise vraiment, en chiffres mesurés plutôt qu'en promesses."
+---
+
+<Note>
+Cette page met un **chiffre** sur la friction du Token Ghost : quelle part de l'argent est, à un
+instant donné, encore « en quarantaine » et donc pas encore utilisable comme vrai jeton. Tout est
+**mesuré par simulation sur données fictives**, jamais postulé : *on ne promet que ce qu'on
+mesure*.
+</Note>
+
+## Pourquoi il y a une friction
+
+Faire passer **tous** les transferts par une fenêtre Ghost a un prix : à chaque instant, une part
+de l'argent n'est pas encore convertie, elle **attend** la fin de sa fenêtre.
+
+**Analogie** : un **vestiaire de restaurant**. Les manteaux (l'argent) ne sont pas perdus, mais
+tant qu'ils sont au vestiaire, personne ne les porte. La friction, c'est **la part des manteaux qui
+sont au vestiaire** à un moment donné.
+
+## Ce que la mesure dit
+
+Sur du trafic **légitime** simulé (pas d'attaque), part de l'offre immobilisée en Ghost selon la
+durée de la fenêtre normale W :
+
+| Fenêtre W | Médiane immobilisée | Pointe (p95) |
+|-----------|---------------------|--------------|
+| 5 min     | 1,6 %               | 3,2 %        |
+| **10 min** | **3,2 %**          | **5,7 %**    |
+| 15 min    | 4,6 %               | 7,8 %        |
+| 30 min    | 8,7 %               | 13,5 %       |
+
+<Note>
+À la fenêtre proposée (**10 min**), environ **3,2 % de l'offre** est en quarantaine en médiane,
+une friction jugée **supportable**. À 30 min, on dépasserait 13 % en pointe : trop cher pour les
+usages légitimes.
+</Note>
+
+## Le compromis, en une image
+
+<CardGroup cols={2}>
+  <Card title="Fenêtre courte" icon="gauge-high">
+    Moins de friction (moins de manteaux au vestiaire)… mais **moins de temps** pour détecter une
+    fraude avant conversion.
+  </Card>
+  <Card title="Fenêtre longue" icon="gauge-low">
+    Plus de marge pour attraper une fraude… mais **plus d'argent immobilisé** pour tout le monde.
+  </Card>
+</CardGroup>
+
+**Analogie** : le **délai de rétractation** d'un achat. Plus il est long, plus tu es protégé
+contre une erreur, mais plus ton argent reste bloqué avant d'être définitivement encaissé.
+
+## À ne pas confondre : friction normale et budget de quarantaine
+
+Ces chiffres décrivent la fenêtre **normale**, celle que **tout le monde** subit. Le
+[budget de quarantaine](/glossaire) est autre chose : la part **maximale** de l'offre que les
+surveillants ont le droit de mettre en fenêtre **allongée** pendant un incident (et le facteur
+d'allongement, *de combien* ils allongent). Celui-là n'est **pas encore mesuré** : il faut d'abord
+rejouer les alertes avec les soldes Ghost.
+
+## La limite honnête
+
+<Warning>
+Ces chiffres viennent d'une **simulation sur données fictives** (une seule graine aléatoire pour
+l'instant). Ils donnent un **ordre de grandeur argumenté**, pas une vérité universelle. La fenêtre
+de 10 min est **proposée**, à valider en équipe : voir `data/DECISION_SUPPORT_3.md` et
+[nos promesses au jury](/promesses-jury).
+</Warning>
+
+Le résultat dépend aussi d'une hypothèse qu'**aucune simulation ne peut deviner** : quelle part de
+son argent un utilisateur normal déplace typiquement. Tant que l'équipe ne pose pas ce profil, les
+seuils restent **conditionnels**.
+
+<Card title="D'où vient cette friction" icon="ghost" href="/token-ghost">
+  La quarantaine liquide et pourquoi tous les transferts passent par le Ghost.
+</Card>

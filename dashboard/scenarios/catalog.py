@@ -30,7 +30,7 @@ from dashboard.demo_data import (
     _Builder,
     _fake_address,
 )
-from dashboard.scenarios import real_contracts, real_ghost
+from dashboard.scenarios import real_contracts, real_ghost, real_settlement
 from dashboard.scenarios.config import SimulationParams
 from dashboard.scenarios.models import (
     SIMULATION_LABEL,
@@ -98,12 +98,16 @@ LEGIT_RATIO = 0.0
 
 _REAL_PIPELINE = (11, 12, 17, 24)
 DEPENDS_ON: dict[str, tuple[int, ...]] = {
-    "A": (4, 5), "B": _REAL_PIPELINE, "C": (7, 25), "D": (8, 25),
+    "A": (4, 5), "B": _REAL_PIPELINE, "C": (7, 8, 25), "D": (8, 25, 84),
     "N1": _REAL_PIPELINE, "N2": _REAL_PIPELINE, "N3": _REAL_PIPELINE,
 }
 # Briques encore simulees (bandeau « simulation hors chaîne, à remplacer par #… »).
+# C et D listent AUSSI leurs briques opt-in (#8 pour C ; #8, #84 pour D) : sur le chemin SIMULÉ,
+# ces briques sont bien simulees, donc elles doivent apparaitre dans `replace_by` pour que le
+# bandeau n'annonce jamais « réel » une brique que seul le backend anvil utilise. Le chemin anvil
+# vide `replace_by` (`_run_c_anvil` / `_run_d_anvil`), ce qui recredite ces briques en réelles.
 REPLACE_BY: dict[str, tuple[int, ...]] = {
-    "A": (4, 5), "B": (8,), "C": (7, 25), "D": (8, 25),
+    "A": (4, 5), "B": (8,), "C": (7, 8, 25), "D": (8, 25, 84),
     "N1": (), "N2": (), "N3": (8,),
 }
 # Briques toujours branchees sur le vrai code.
@@ -113,8 +117,12 @@ IMPLEMENTED_BY: dict[str, tuple[int, ...]] = {
 # Briques branchees sur le vrai code seulement via un backend optionnel (repli simulation).
 # Pour B et N3, la partie Ghost (#8) est rejouee sur les vrais contrats Token Ghost quand
 # `SH_DEMO_CONTRACTS_BACKEND=anvil` (real_ghost.py), avec repli automatique sur la simulation.
-# Pour C, la balise de risque et le faux marche de pret (#7) sont rejoues sur anvil (real_contracts.py).
-OPT_IN_BY: dict[str, tuple[int, ...]] = {"A": (4, 5), "B": (8,), "C": (7,), "N3": (8,)}
+# Pour C, la balise de risque et le faux marche de pret (#7) ET le M-Ghost (#8) sont rejoues sur
+# anvil (real_contracts.py) : tout vient de la chaine, aucune brique de C n'y reste simulee.
+# Pour D, le vrai M-Ghost (#8) + la couche de reglement §10bis (#84 : SettlementRouter, AssetVault,
+# AssetGhost) sont rejoues sur anvil (real_settlement.py), repli automatique sur le pool simule.
+OPT_IN_BY: dict[str, tuple[int, ...]] = {"A": (4, 5), "B": (8,), "C": (7, 8), "D": (8, 84),
+                                         "N3": (8,)}
 _MAIN = "main"
 _DETECTION_SOURCE = real_source(DETECTION_REFS)
 _RESPONSE_SOURCE = real_source(RESPONSE_REFS)
@@ -642,13 +650,15 @@ def run_b(seed: int, params: SimulationParams,
 
 _C_VARIANTS = (("without_beacon", "Sans lecture de la balise"),
                ("with_beacon", "Avec lecture de la balise"))
-# Briques encore simulees quand C tourne sur anvil : le M-Ghost (#8) est `MockGhostRisk`.
-_C_ANVIL_REPLACE_BY: tuple[int, ...] = (8,)
+# C sur anvil : tout vient desormais de la chaine. La balise et le faux marche (#7) sont reels,
+# ET le M-Ghost est le vrai `GhostToken` (#8) : plus aucune brique de C n'est simulee sur ce
+# chemin, donc `replace_by` est vide et le bandeau « simulation hors chaîne » disparait.
+_C_ANVIL_REPLACE_BY: tuple[int, ...] = ()
 
 
 def _run_c_anvil(seed: int, params: SimulationParams,
                  chain_factory: Callable[[], real_contracts.AnvilChain]) -> ScenarioResult:
-    """Rejoue C sur les vrais `RiskBeacon` / `MockLendingMarket` (#7) d'une chaine anvil."""
+    """Rejoue C sur les vrais `RiskBeacon` / `MockLendingMarket` (#7) ET le vrai M-Ghost (#8)."""
     rng = random.Random(seed)
     with chain_factory() as chain:
         readings = real_contracts.replay_scenario_c(chain, params.lending_ltv,
@@ -661,8 +671,9 @@ def _run_c_anvil(seed: int, params: SimulationParams,
         builder = _Builder(rng, DEMO_REFERENCE_TIME)
         at = builder.at(1)
         builder.log(at, "contract", "lending_replayed",
-                    f"Faux marché de prêt #7 rejoué sur anvil ({label.lower()}) : emprunt "
-                    "légitime puis emprunt contre du Ghost suspect, garantie suspecte détruite.",
+                    f"Faux marché de prêt #7 rejoué sur anvil ({label.lower()}) sur le vrai "
+                    "M-Ghost #8 : emprunt légitime puis emprunt contre du Ghost suspect (soupçon "
+                    "semé par le surveillant), garantie suspecte détruite par les guardians 2/3.",
                     {"attacker_borrowed": reading.attacker_borrowed,
                      "bad_debt": reading.bad_debt})
         checks = []
@@ -689,9 +700,9 @@ def _run_c_anvil(seed: int, params: SimulationParams,
         ))
     return _result("C", seed, variants, replace_by=_C_ANVIL_REPLACE_BY,
                    message=f"Rejoué avec la seed {seed} sur une chaîne anvil locale : balise de "
-                           "risque et faux marché de prêt #7 réels, M-Ghost simulé par "
-                           "MockGhostRisk (#8 non livré). Comptages sur chaîne locale, pas des "
-                           "mesures du contrat déployé.")
+                           "risque et faux marché de prêt #7 réels, M-Ghost = vrai GhostToken "
+                           "#8 (soupçon semé par le surveillant, garantie suspecte détruite 2/3). "
+                           "Comptages sur chaîne locale, pas des mesures du contrat déployé.")
 
 
 def run_c(seed: int, params: SimulationParams,
@@ -786,9 +797,91 @@ def _run_c_sim(seed: int, params: SimulationParams) -> ScenarioResult:
 
 # --- D : marche secondaire du Token Ghost (optionnel) ------------------------
 
+# D sur anvil : tout vient de la chaine (vrai M-Ghost #8 + couche de reglement §10bis #84), donc
+# `replace_by` est vide et le bandeau « simulation hors chaîne » disparait sur ce chemin.
+_D_ANVIL_REPLACE_BY: tuple[int, ...] = ()
 
-def run_d(seed: int, params: SimulationParams) -> ScenarioResult:
-    """L'attaquant revend son Ghost a un pool ; le lot suspect est detruit."""
+
+def _run_d_anvil(seed: int, params: SimulationParams,
+                 chain_factory: Callable[[], real_contracts.AnvilChain]) -> ScenarioResult:
+    """Rejoue D sur les vrais contrats Token Ghost #8 + la couche de reglement §10bis #84.
+
+    Cas §10bis 2bis (prix qui montent) sur `GhostToken` / `SettlementRouter` / `AssetVault` /
+    `AssetGhost` : le voleur ne garde rien, le protocole ne garde rien, l'acheteur final du M'
+    pur porte la marge. Grandeurs lues on-chain (`real_settlement.replay_scenario_d`)."""
+    rng = random.Random(seed)
+    with chain_factory() as chain:
+        reading = real_settlement.replay_scenario_d(chain)
+    source = real_source(OPT_IN_BY["D"])
+    builder = _Builder(rng, DEMO_REFERENCE_TIME)
+    at = builder.at(1)
+    builder.log(at, "contract", "settlement_replayed",
+                "Règlement §10bis #84 rejoué sur anvil : M' frauduleux vendu via le routeur "
+                "(acheteur bloque du vrai actif, le voleur ne reçoit que du Ghost de paiement), "
+                "revendu plus cher à l'acheteur final, puis détruit 2/3 et restitué.",
+                {"mprime_destroyed": reading.mprime_destroyed,
+                 "protocol_loss": reading.protocol_loss,
+                 "speculator_loss": reading.speculator_loss})
+    variant = ScenarioVariant(
+        name=_MAIN, label="Revente du M' suspect via le routeur §10bis (coffre + Ghost de paiement)",
+        metrics=[
+            _metric("protocol_loss", "Perte protocole (vrai M émis contre du M' suspect)",
+                    reading.protocol_loss, "base units (M, 18 déc.)", source),
+            _metric("speculator_loss", "Perte côté spéculateurs (marge payée pour du M' détruit)",
+                    reading.speculator_loss, "base units (MockUSDC, 6 déc.)", source),
+            _metric("ghost_destroyed", "M' détruit (destruction 2/3)", reading.mprime_destroyed,
+                    "base units (gpUSD, 18 déc.)", source),
+            _metric("thief_asset_kept", "Argent gardé par le voleur", reading.thief_asset_kept,
+                    "base units (MockUSDC, 6 déc.)", source),
+            _metric("last_holder_restituted", "Restitué à l'acheteur final (argent bloqué du "
+                    "voleur)", reading.last_holder_restituted, "base units (MockUSDC, 6 déc.)",
+                    source),
+            _metric("vault_locked_end", "Actif restant bloqué au coffre", reading.vault_locked_end,
+                    "base units (MockUSDC, 6 déc.)", source),
+        ],
+        checks=[
+            ScenarioCheck(label="perte protocole nulle",
+                          expected="perte protocole = 0 (§10bis)", passed=reading.protocol_loss == 0),
+            ScenarioCheck(label="risque porté par les spéculateurs",
+                          expected="perte côté spéculateurs > 0", passed=reading.speculator_loss > 0),
+            ScenarioCheck(label="le voleur ne garde rien",
+                          expected="argent gardé par le voleur = 0", passed=reading.thief_asset_kept == 0),
+            ScenarioCheck(label="M' suspect détruit", expected="M' détruit > 0",
+                          passed=reading.mprime_destroyed > 0),
+            ScenarioCheck(label="coffre vidé en fin de règlement",
+                          expected="actif bloqué restant = 0", passed=reading.vault_locked_end == 0),
+        ],
+        dataset=build_dataset(builder, seed), end_time=at,
+    )
+    return _result("D", seed, [variant], replace_by=_D_ANVIL_REPLACE_BY,
+                   message=f"Rejoué avec la seed {seed} sur une chaîne anvil locale : vrai M-Ghost "
+                           "#8 + couche de règlement §10bis #84 (routeur, coffre, Ghost de "
+                           "paiement). Comptages sur chaîne locale, pas des mesures du contrat "
+                           "déployé.")
+
+
+def run_d(seed: int, params: SimulationParams,
+          chain_factory: Callable[[], real_contracts.AnvilChain] | None = None) -> ScenarioResult:
+    """D sur les vrais contrats #8 + §10bis #84 si `SH_DEMO_CONTRACTS_BACKEND=anvil`, sinon
+    simulation (pool à produit constant). Repli automatique (bandeau conservé) si Foundry est
+    absent ou si le rejeu échoue, comme A et C."""
+    if real_contracts.selected_backend() != real_contracts.BACKEND_ANVIL:
+        return _run_d_sim(seed, params)
+    reason = real_contracts.unavailable_reason() if chain_factory is None else None
+    if reason is None:
+        try:
+            return _run_d_anvil(seed, params, chain_factory or real_contracts.AnvilChain)
+        except real_contracts.ContractsBackendError as exc:
+            reason = str(exc)
+    fallback = _run_d_sim(seed, params)
+    return fallback.model_copy(update={
+        "message": f"Backend anvil demandé mais indisponible ({reason}) : repli sur la "
+                   f"{SIMULATION_LABEL}. " + fallback.message,
+    })
+
+
+def _run_d_sim(seed: int, params: SimulationParams) -> ScenarioResult:
+    """L'attaquant revend son Ghost a un pool simule ; le lot suspect est detruit."""
     rng = random.Random(seed)
     builder = _Builder(rng, DEMO_REFERENCE_TIME)
     run = _simulate_attack(rng, builder, params)
@@ -1040,7 +1133,8 @@ SPECS: tuple[ScenarioSpec, ...] = (
           "Moins de pertes en aval quand la balise est lue.", True, run_c),
     _spec("D", "Marché secondaire du Token Ghost",
           "L'attaquant revend ses Tokens Ghost à des spéculateurs sur un pool simulé ; l'alerte "
-          "est confirmée, le lot suspect est détruit.",
+          "est confirmée, le lot suspect est détruit. Backend réel optionnel : vrai M-Ghost #8 + "
+          "couche de règlement §10bis #84 (routeur, coffre, Ghost de paiement) sur anvil.",
           "Pertes côté protocole ≈ zéro (à vérifier) vs pertes côté spéculateurs.", True, run_d),
     _spec("N1", "Trafic légitime seul",
           "Aucune attaque : uniquement du trafic légitime large.",

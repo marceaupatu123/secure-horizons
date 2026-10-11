@@ -1,4 +1,8 @@
-"""Backend OPTIONNEL du scenario A (#70) : vrais contrats Foundry #4/#5 rejoues sur anvil.
+"""Backend OPTIONNEL des scenarios A (#70) et C (#110) : vrais contrats Foundry rejoues sur anvil.
+
+Scenario A : minters #4/#5 (`replay_scenario_a`). Scenario C : balise de risque + faux marche de
+pret #7 ET le vrai M-Ghost `GhostToken` #8 (`replay_scenario_c`) ; le M-Ghost n'est plus
+`MockGhostRisk`, le soupçon vient de la vraie chaine de securite (surveillant + guardians 2/3).
 
 Active seulement si `SH_DEMO_CONTRACTS_BACKEND=anvil`. Il faut alors `forge`, `anvil` et
 `cast` (Foundry) dans le PATH, dans `SH_FOUNDRY_BIN` ou dans `~/.foundry/bin`, et les
@@ -293,17 +297,82 @@ def replay_scenario_a(chain: Chain, deposit: int, multiplier: int) -> dict[str, 
     return readings
 
 
-# --- Scenario C : balise de risque + faux marche de pret (#7) ----------------------------
+# --- Primitives du vrai M-Ghost (#8) partagees par C -------------------------------------
+# Duree de fenetre W (secondes) utilisee pour les retards du surveillant ; FIXTURE identique a
+# GHOST_FIXTURE_CONFIG (pas une mesure). Le soupçon et le retard de C vivent le temps de la
+# sequence : on ne fait jamais avancer l'horloge pendant C, donc l'incident reste vivant.
+GHOST_W = 600
 
-# Garantie deposee (M-Ghost fictif, 18 dec.) et liquidite du marche (MockUSDC, 6 dec.), memes
-# ordres de grandeur que `contracts/test/RiskBeacon.t.sol` (`_scenarioC`). Valeurs de demo.
-C_ATTACK_COLLATERAL = 100_000 * 10**18
-C_LEGIT_COLLATERAL = 50_000 * 10**18
+
+def _deploy_ghost_world(chain: Chain, admin: str, service: str, guardians: list[str],
+                        watcher: str) -> tuple[str, str, str]:
+    """Deploie MockUSDC -> ProtectedMinter -> GhostToken (#8) ; renvoie (usdc, minter, ghost).
+
+    `service` tient la cle de service (volee) du minter ; `guardians` sont les 3 guardians 2/3 ;
+    `watcher` recoit `WATCHER_ROLE` (le surveillant). Memes fixtures que `contracts/test`.
+    """
+    usdc = chain.deploy("src/MockUSDC.sol:MockUSDC", admin)
+    guardian_arg = f"[{','.join(guardians[:3])}]"
+    minter = chain.deploy("src/ProtectedMinter.sol:ProtectedMinter", admin, usdc, admin, service,
+                          str(RATE_ONE), guardian_arg, GHOST_FIXTURE_CONFIG)
+    ghost = chain.call(minter, "ghost()(address)").strip().split()[0]
+    role = chain.call(ghost, "WATCHER_ROLE()(bytes32)").strip().split()[0]
+    _expect(chain.send(admin, ghost, "grantRole(bytes32,address)", role, watcher),
+            "grantRole(WATCHER_ROLE)")
+    return usdc, minter, ghost
+
+
+def _fund_and_mint_ghost(chain: Chain, usdc: str, minter: str, service: str, who: str,
+                         usdc_amount: int) -> int:
+    """Credite `who` en MockUSDC puis depose via le minter protege : `who` recoit du Ghost frais.
+
+    La cle de service (volee) traite la demande (`completeSwap(id)`) sans montant ni destinataire.
+    Renvoie le montant de Ghost emis (18 dec.)."""
+    _expect(chain.send(who, usdc, "mint(address,uint256)", who, str(usdc_amount)),
+            "faucet MockUSDC")
+    _expect(chain.send(who, usdc, "approve(address,uint256)", minter, str(usdc_amount)),
+            "approve collateral")
+    request_id = str(parse_uint(chain.call(minter, "nextRequestId()(uint256)")))
+    _expect(chain.send(who, minter, "requestSwap(uint256)", str(usdc_amount)), "requestSwap")
+    _expect(chain.send(service, minter, "completeSwap(uint256)", request_id),
+            "completeSwap(uint256)")
+    return usdc_amount * DECIMALS_SCALE
+
+
+def _delay_full(chain: Chain, ghost: str, watcher: str, account: str, suspect: int) -> int:
+    """Le surveillant retarde `account` en semant `suspect` ; renvoie l'incident ouvert."""
+    _expect(chain.send(watcher, ghost, "delay(address[],uint256[],uint64)",
+                       f"[{account}]", f"[{suspect}]", str(GHOST_W)), "delay (surveillant)")
+    return parse_uint(chain.call(ghost, "openIncidentId()(uint256)"))
+
+
+def _destroy_2of3_target(chain: Chain, ghost: str, guardians: list[str], incident_id: int,
+                         target: str) -> None:
+    """guardian1 propose la destruction de `[target]` pour l'incident, guardian2 approuve (2/3).
+
+    Confirme l'incident (Sp -> Sc) puis brule le soupçon confirme detenu par `target`."""
+    _expect(chain.send(guardians[0], ghost, "proposeDestroy(uint256,address[])",
+                       str(incident_id), f"[{target}]"), "proposeDestroy")
+    proposal_id = str(parse_uint(chain.call(ghost, "proposalCount()(uint256)")))
+    _expect(chain.send(guardians[1], ghost, "approveAction(uint256)", proposal_id),
+            "approveAction (quorum 2/3)")
+
+
+# --- Scenario C : balise de risque + faux marche de pret (#7) sur le VRAI Ghost (#8) -----
+
+# Depots (M-Ghost, 18 dec.) et liquidite du marche (MockUSDC, 6 dec.), memes ordres de grandeur
+# que `contracts/test/RiskBeacon.t.sol` (`_scenarioC`). Les depots sont ici des DEPOTS DE
+# COLLATERAL via le ProtectedMinter (6 dec. de MockUSDC -> 1e12 de Ghost frais), donc exprimes en
+# base units de MockUSDC (6 dec.). Valeurs de demo, FICTIVES.
+C_ATTACK_DEPOSIT = 100_000 * 10**6  # 100 000 USDC -> 100 000e18 de Ghost (100 % suspect)
+C_LEGIT_DEPOSIT = 50_000 * 10**6  # 50 000 USDC -> 50 000e18 de Ghost (propre)
+# Offre de fond legitime (comme `whale` dans ScenarioRecovery.t.sol) : donne au surveillant la
+# marge du budget de quarantaine (2000 bps = 20 % de supplyValue), sinon `delay` revert.
+C_BACKGROUND_DEPOSIT = 2_000_000 * 10**6
 C_MARKET_LIQUIDITY = 10_000_000 * 10**6
 C_BASE_HAIRCUT_BPS = 500  # PROVISOIRE, comme le test de #7
 C_SLOPE_HAIRCUT_BPS = 9_500  # PROVISOIRE, comme le test de #7
 C_MAX_BORROW_SUSPECT = 1_000 * 10**18  # PROVISOIRE, comme le test de #7
-C_INCIDENT_ID = 1
 
 
 @dataclass(frozen=True)
@@ -333,37 +402,59 @@ def _deposit_and_borrow(chain: Chain, ghost: str, market: str, who: str, amount:
 
 
 def replay_scenario_c(chain: Chain, ltv: float, ratio_threshold: float) -> dict[str, MarketReading]:
-    """Scenario C sur les vrais `RiskBeacon` et `MockLendingMarket` (#7).
+    """Scenario C sur les vrais `RiskBeacon`, `MockLendingMarket` (#7) ET le vrai M-Ghost (#8).
 
-    Le M-Ghost est `MockGhostRisk` (#7, `contracts/test/utils/`) tant que le contrat Ghost (#8)
-    n'est pas livre. Meme sequence sur deux marches (sans / avec lecture de la balise) : un
-    emprunteur legitime (Ghost propre) et l'attaquant (Ghost 100 % suspect) deposent et
-    empruntent ; puis la part suspecte de la garantie detenue par le marche est detruite
-    (multisig 2/3 simule par `MockGhostRisk.destroy`). Mauvaise creance = dette totale moins
-    la garantie restante, au prix 1:1 PROVISOIRE de #7.
+    Le M-Ghost est desormais le vrai `GhostToken` (#8), lu par la balise et le marche via
+    `IGhostRisk` : plus de `MockGhostRisk`. Le soupçon n'est plus pose par un setter de test ;
+    il vient de la vraie chaine de securite (surveillant + guardians 2/3), exactement comme B/N3 :
+
+      1. MockUSDC -> ProtectedMinter -> GhostToken deployes (`_deploy_ghost_world`) ; une offre de
+         fond legitime donne la marge du budget de quarantaine ;
+      2. un emprunteur legitime (Ghost propre) et l'attaquant recoivent du Ghost frais par le
+         minter protege ; le surveillant (`WATCHER_ROLE`) retarde l'attaquant en semant 100 % de
+         son solde (`delay`) -> l'attaquant est RETARDE et 100 % suspect ;
+      3. sur deux marches (sans / avec lecture de la balise), chacun depose puis emprunte : au
+         depot de l'attaquant, le soupçon suit la valeur dans le marche (ERC-20 standard du Ghost)
+         et le marche l'importe (`effectiveSuspectOf(market)`) ; avec balise, l'emprunt de
+         l'attaquant est refuse (etat != NORMAL) ;
+      4. destruction 2/3 CONFIRMEE ciblant le marche : `proposeDestroy(incidentId, [market])`
+         (guardian1) + `approveAction` (guardian2) brule le soupçon confirme detenu par le marche
+         (sa garantie suspecte disparait).
+
+    Mauvaise creance = dette totale moins la garantie restante du marche, au prix 1:1 PROVISOIRE
+    de #7. Tous les chiffres (dette, garantie restante, soupçon) sont lus on-chain sur le vrai
+    Ghost : plus aucune brique de C n'est simulee sur ce chemin.
     """
-    if len(chain.accounts) < 3:
-        raise ContractsBackendError("anvil doit exposer au moins 3 comptes")
-    admin, attacker, legit = chain.accounts[:3]
-    ghost = chain.deploy("test/utils/MockGhostRisk.sol:MockGhostRisk", admin)
-    beacon = chain.deploy("src/RiskBeacon.sol:RiskBeacon", admin, ghost)
-    usdc = chain.deploy("src/MockUSDC.sol:MockUSDC", admin)
+    if len(chain.accounts) < 8:
+        raise ContractsBackendError("anvil doit exposer au moins 8 comptes")
+    admin, attacker, legit, watcher, background = chain.accounts[:5]
+    guardians = chain.accounts[5:8]
+
     readings: dict[str, MarketReading] = {}
     for name, use_beacon in (("without_beacon", False), ("with_beacon", True)):
+        # Monde independant par marche : on evite tout etat d'incident residuel entre les deux.
+        usdc, minter, ghost = _deploy_ghost_world(chain, admin, attacker, guardians, watcher)
+        beacon = chain.deploy("src/RiskBeacon.sol:RiskBeacon", admin, ghost)
         market = chain.deploy("src/MockLendingMarket.sol:MockLendingMarket", admin, ghost, usdc,
                               ghost, beacon, str(DECIMALS_SCALE),
                               _market_config(use_beacon, ltv, ratio_threshold))
         _expect(chain.send(admin, usdc, "mint(address,uint256)", market,
                            str(C_MARKET_LIQUIDITY)), "liquidite MockUSDC")
-        _expect(chain.send(admin, ghost, "mint(address,uint256,uint256)", legit,
-                           str(C_LEGIT_COLLATERAL), "0"), "Ghost propre")
-        _expect(chain.send(admin, ghost, "mint(address,uint256,uint256)", attacker,
-                           str(C_ATTACK_COLLATERAL), str(C_ATTACK_COLLATERAL)), "Ghost suspect")
-        legit_borrowed = _deposit_and_borrow(chain, ghost, market, legit, C_LEGIT_COLLATERAL)
-        attacker_borrowed = _deposit_and_borrow(chain, ghost, market, attacker,
-                                                C_ATTACK_COLLATERAL)
-        _expect(chain.send(admin, ghost, "destroy(address,uint256)", market, str(C_INCIDENT_ID)),
-                "destruction 2/3 (simulee)")
+        # Offre de fond legitime (marge du budget de quarantaine) : `attacker` tient la cle service.
+        _fund_and_mint_ghost(chain, usdc, minter, attacker, background, C_BACKGROUND_DEPOSIT)
+        # Ghost frais, emis par le minter protege : propre pour le legitime, puis l'attaquant.
+        _fund_and_mint_ghost(chain, usdc, minter, attacker, legit, C_LEGIT_DEPOSIT)
+        attack_ghost = _fund_and_mint_ghost(chain, usdc, minter, attacker, attacker,
+                                            C_ATTACK_DEPOSIT)
+        # Le surveillant retarde l'attaquant en semant tout son solde (100 % suspect).
+        incident_id = _delay_full(chain, ghost, watcher, attacker, attack_ghost)
+
+        legit_borrowed = _deposit_and_borrow(chain, ghost, market, legit,
+                                             C_LEGIT_DEPOSIT * DECIMALS_SCALE)
+        attacker_borrowed = _deposit_and_borrow(chain, ghost, market, attacker, attack_ghost)
+        # Destruction 2/3 confirmee ciblant le marche : brule la garantie suspecte qu'il detient.
+        _destroy_2of3_target(chain, ghost, guardians, incident_id, market)
+
         debt = parse_uint(chain.call(market, "totalDebt()(uint256)"))
         remaining = parse_uint(chain.call(ghost, "balanceOf(address)(uint256)", market))
         readings[name] = MarketReading(

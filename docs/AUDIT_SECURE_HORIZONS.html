@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Audit Secure Horizons — rapport et propositions de réponse</title>
+<style>
+  @page { size: A4; margin: 2cm; }
+  body { font-family: "Liberation Serif", "DejaVu Serif", serif; font-size: 11pt; line-height: 1.45; color: #1a1a1a; }
+  h1 { font-size: 22pt; color: #0b3d6b; border-bottom: 3px solid #0b3d6b; padding-bottom: 6px; }
+  h2 { font-size: 15pt; color: #0b3d6b; margin-top: 26px; border-bottom: 1px solid #c3d4e3; padding-bottom: 3px; }
+  h3 { font-size: 12.5pt; color: #11507f; margin-top: 18px; }
+  h4 { font-size: 11pt; color: #333; margin-bottom: 4px; }
+  code { font-family: "Liberation Mono", "DejaVu Sans Mono", monospace; background: #eef2f6; padding: 1px 4px; border-radius: 3px; font-size: 9.5pt; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 9.5pt; }
+  th, td { border: 1px solid #b9c6d2; padding: 5px 7px; text-align: left; vertical-align: top; }
+  th { background: #e4edf5; }
+  .meta { color: #555; font-size: 9.5pt; margin-top: -6px; }
+  .sev { font-weight: bold; padding: 1px 6px; border-radius: 4px; color: #fff; font-size: 9pt; }
+  .crit { background: #b00020; }
+  .high { background: #d35400; }
+  .med  { background: #b8860b; }
+  .low  { background: #4a7a3a; }
+  .reco { background: #eef7ee; border-left: 4px solid #2e7d32; padding: 8px 12px; margin: 8px 0 14px 0; }
+  .reco h4 { color: #2e7d32; margin-top: 0; }
+  .frame { background: #f4f7fa; border: 1px solid #c3d4e3; padding: 8px 12px; border-radius: 5px; }
+  .note { font-size: 9.5pt; color: #555; }
+  .pb { page-break-before: always; }
+  ul { margin: 4px 0 10px 0; }
+  li { margin: 2px 0; }
+</style>
+</head>
+<body>
+
+<h1>Audit Secure Horizons — rapport &amp; propositions de réponse</h1>
+<p class="meta">Projet : secure-horizons (Équipe 20 — Guardians of Value) · Audit en lecture seule, puis propositions de correction · 2026-10-11<br>
+Chaque problème est suivi d'une <strong>proposition de réponse recommandée</strong> (la plus pertinente selon l'auditeur), à valider avant implémentation.</p>
+
+<h2>Avant-propos : les mots-clés</h2>
+<table>
+<tr><th>Terme</th><th>Explication simple</th></tr>
+<tr><td>On-chain / off-chain</td><td>On-chain = exécuté par la blockchain, infalsifiable. Off-chain = sur un serveur normal à côté, plus souple mais non garanti.</td></tr>
+<tr><td>Smart contract</td><td>Programme déposé sur la blockchain, au code figé, qui s'exécute selon ses règles.</td></tr>
+<tr><td>Mint / burn</td><td>Mint = créer des tokens à partir de rien. Burn = les détruire.</td></tr>
+<tr><td>Clé de signature</td><td>Le secret qui autorise une opération. Problème central : si elle est <em>volée</em>, le système prend l'attaquant pour un utilisateur légitime.</td></tr>
+<tr><td>Évasion / contournement</td><td>Passer <em>sans</em> déclencher l'alarme (se faufiler), pas « casser » la défense.</td></tr>
+<tr><td>Faux positif / faux négatif</td><td>Faux positif = alarme à tort (gênant). Faux négatif = pas d'alarme alors qu'il y a attaque (dangereux).</td></tr>
+<tr><td>Token Ghost</td><td>Jeton temporaire émis à chaque transfert ; converti 1:1 en vrai token après une fenêtre sans anomalie, détruit si fraude confirmée.</td></tr>
+</table>
+
+<h2>Résumé</h2>
+<p>Le <strong>cœur on-chain est solide</strong> (contrat <code>ProtectedMinter</code> : montant/destinataire dérivés, taux figé, un seul mint immuable, pause 3/3). La faiblesse est <strong>la couche de détection</strong> et quelques points de robustesse dans la réponse. Neuf problèmes sont documentés ci-dessous, chacun avec une proposition de correction. Les trois priorités : (1) rendre la détection non contournable par mise en forme lente du trafic ; (2) remplacer la logique « ET » du discriminant ; (3) implémenter le lignage d'origine du Ghost — sans lui, la promesse de récupération/saisie ne tient pas.</p>
+
+<h2 class="pb">Problèmes détaillés et propositions de réponse</h2>
+
+<h3>4.1 — Empoisonnement de la baseline <span class="sev crit">CRITIQUE</span></h3>
+<p><strong>Fichier :</strong> <code>detection/detector.py</code> (<code>_close_open_slot</code>).</p>
+<p><strong>Mots :</strong> <em>baseline</em> = la « normale » calculée sur le passé récent. <em>z-score</em> = « à combien d'écarts-types au-dessus de la moyenne » (à quel point c'est inhabituel). Seuil ici z=3.</p>
+<p><strong>Le problème :</strong> le détecteur ajoute à sa « normale » <em>tout</em> moment qui n'a pas déclenché l'alerte. Un attaquant patient envoie des volumes <em>juste sous</em> le seuil ; chacun est jugé normal et fait monter la baseline. Après ~7 répétitions, la vraie grosse attaque ne dépasse plus le seuil → faux négatif.</p>
+<div class="reco">
+<h4>Proposition recommandée</h4>
+<p><strong>Zone morte + quarantaine de la baseline.</strong> Ne plus apprendre sur les slots « approchants » : exclure de la baseline tout slot dont le z-score dépasse <code>seuil − marge</code> (ex. marge = 1), pas seulement les slots qui déclenchent. En complément, borner la vitesse de dérive admissible de la médiane entre deux fenêtres (si la « normale » grimpe trop vite, on gèle la mise à jour et on lève un signal). Coût faible, change seulement la règle d'inclusion dans <code>_close_open_slot</code>, testable en rejouant un trafic « montée lente ».</p>
+</div>
+
+<h3>4.2 — Discriminant en « ET » : battre une seule condition suffit <span class="sev crit">CRITIQUE</span></h3>
+<p><strong>Fichier :</strong> <code>detection/detector.py</code> — <code>volume_z &gt;= seuil AND hhi_z &gt;= seuil</code>.</p>
+<p><strong>Mots :</strong> <em>dispersion/concentration</em> = l'argent part vers beaucoup (dispersé) ou peu (concentré) d'adresses. <em>HHI</em> = indice de concentration (élevé = concentré).</p>
+<p><strong>Le problème :</strong> l'alerte exige volume élevé <em>ET</em> concentration forte. L'attaquant n'a donc qu'à en éviter une : éparpiller le volume sur beaucoup d'adresses garde le HHI bas → pas d'alerte, même sur gros volume.</p>
+<div class="reco">
+<h4>Proposition recommandée</h4>
+<p><strong>Score de risque continu au lieu d'un ET binaire.</strong> Remplacer le double seuil par un score combiné (ex. <code>score = w1·volume_z + w2·hhi_z + w3·fanout_z</code>) qui déclenche au-dessus d'un seuil unique — ainsi un volume très anormal <em>seul</em> peut déjà alerter. Ajouter un troisième signal <strong>anti-fan-out</strong> : nombre d'adresses destinataires neuves par slot (un éparpillement soudain vers des adresses jamais vues est lui-même suspect). On garde l'esprit « volume + structure » mais sans le trou du « ET ». À calibrer sur le trafic synthétique (règle « aucun chiffre sans mesure »).</p>
+</div>
+
+<h3>4.3 — Récupération 0 % une fois l'argent propagé (contamination prospective) <span class="sev high">ÉLEVÉ</span></h3>
+<p><strong>Fichier :</strong> <code>data/ghost_ledger.py</code>, mesuré par <code>data/late_marking.py</code>.</p>
+<p><strong>Mots :</strong> <em>prospectif</em> = on ne marque le voleur qu'au moment de la détection ; ce qu'il a envoyé avant portait une suspicion de 0. <em>Lignage d'origine</em> = on étiquette la source frauduleuse ; toute sa descendance reste suspecte où qu'elle aille.</p>
+<p><strong>Le problème :</strong> votre propre mesure donne 0 % récupéré en prospectif dès que l'argent a circulé, contre 100 % avec le lignage (si l'alerte précède l'échéance). Le modèle implémenté est le prospectif.</p>
+<div class="reco">
+<h4>Proposition recommandée</h4>
+<p><strong>Implémenter le lignage d'origine par tranche (piste a).</strong> Chaque tranche de Ghost porte l'identifiant de son origine (le mint/émission d'où elle provient). Une alerte vise une <em>origine</em>, et toute tranche non convertie issue de cette origine devient saisissable, peu importe chez qui elle est. C'est exactement ce que la nouvelle mécanique séquestre/saisie (<code>docs/GHOST_MARKET_SEIZURE.md</code>, déjà mergée) requiert pour fonctionner. Prototypable d'abord dans le registre hors-chaine, chiffré par un sweep « délai de détection vs part saisie », avant de le porter au contrat.</p>
+</div>
+
+<h3>4.4 — Pas d'idempotence : rejeu d'alerte → déni de service <span class="sev high">ÉLEVÉ</span></h3>
+<p><strong>Fichier :</strong> <code>response/orchestrator.py</code> (<code>handle_alert</code>, <code>apply_release</code>).</p>
+<p><strong>Mots :</strong> <em>idempotence</em> = répéter l'action ne produit pas d'effet en plus. <em>Replay</em> = renvoyer un message légitime pour en abuser. <em>DoS</em> = bloquer le service pour les honnêtes gens.</p>
+<p><strong>Le problème :</strong> aucune trace des alertes/décisions déjà traitées. Rejouer la même alerte relance la réponse ; combiné au reset du plafond de retard, un seul payload capturé peut geler un périmètre en permanence (DoS sur la conversion).</p>
+<div class="reco">
+<h4>Proposition recommandée</h4>
+<p><strong>Registre de nonces + ancrage du plafond au premier retard.</strong> Tenir un ensemble des <code>alert_id</code> et <code>decision_id</code> déjà consommés ; toute répétition est ignorée (journalisée comme doublon, sans effet). Et ancrer le compteur « durée max de retard » au <em>premier</em> retard du périmètre (ne pas le remettre à zéro à chaque nouveau retard). Correctif court et local, supprime le DoS et le gonflement du journal.</p>
+</div>
+
+<h3>4.5 — Quorum multisig réglable à 1 <span class="sev high">ÉLEVÉ</span></h3>
+<p><strong>Fichier :</strong> <code>response/orchestrator.py</code> (validation de <code>ResponsePolicy</code>).</p>
+<p><strong>Mots :</strong> <em>multisig</em> = plusieurs clés doivent signer. <em>quorum</em> = nombre de signatures requises.</p>
+<p><strong>Le problème :</strong> la vérification est correcte (signataires dédupliqués, tous guardians, <code>max(quorum, threshold)</code>), <em>mais</em> le code autorise de configurer un quorum de 1. Avec un quorum de 1, une clé volée pourrait détruire/pauser.</p>
+<div class="reco">
+<h4>Proposition recommandée</h4>
+<p><strong>Interdire un quorum &lt; 2 par construction.</strong> Dans la validation de <code>ResponsePolicy</code>, refuser <code>perimeter_quorum &lt; 2</code> et <code>global_pause_quorum &lt; 2</code> (lever une erreur claire). La protection cesse de dépendre d'un bon réglage : elle devient un invariant. Correctif de quelques lignes + un test.</p>
+</div>
+
+<h3>4.6 — Journal d'audit falsifiable <span class="sev high">ÉLEVÉ</span></h3>
+<p><strong>Fichier :</strong> <code>response/</code> (sortie JSONL).</p>
+<p><strong>Mots :</strong> <em>append-only</em> = on n'ajoute que des lignes. <em>hash</em> = empreinte unique d'un contenu. <em>chaînage de hash</em> = chaque ligne inclut l'empreinte de la précédente (maillons soudés).</p>
+<p><strong>Le problème :</strong> le fichier JSONL peut être édité/tronqué sans détection ; le « append-only DORA » n'est garanti que par le programme en mémoire.</p>
+<div class="reco">
+<h4>Proposition recommandée</h4>
+<p><strong>Chaînage de hash + numéro de séquence.</strong> Chaque entrée inclut un champ <code>prev_hash</code> (empreinte de l'entrée précédente) et un <code>seq</code> incrémental ; un vérificateur relit le journal et détecte toute modification/coupure. Argument DORA concret pour le jury, sans dépendance lourde (hachage standard de la bibliothèque Python).</p>
+</div>
+
+<h3 class="pb">4.7 — Divisions par zéro latentes <span class="sev med">MOYEN</span></h3>
+<p><strong>Fichier :</strong> <code>detection/</code> (<code>ratio = suspect / amount</code>, <code>seeds_inflow</code>).</p>
+<p><strong>Le problème :</strong> aujourd'hui sans danger (les modèles imposent <code>amount &gt; 0</code>), mais la protection est ailleurs que là où se fait le calcul — fragile à un futur remaniement.</p>
+<div class="reco">
+<h4>Proposition recommandée</h4>
+<p><strong>Garde locale explicite.</strong> Ajouter au point de calcul une vérification <code>if amount == 0: return ratio 0.0</code> (et idem pour <code>seeds_inflow</code>), avec un test dédié. Rend l'invariant local au lieu de dépendre d'un contrat de données distant.</p>
+</div>
+
+<h3>4.8 — Analyse de mint aveugle par défaut <span class="sev med">MOYEN</span></h3>
+<p><strong>Fichier :</strong> <code>detection/</code> (<code>check_mint</code> sans contexte).</p>
+<p><strong>Mots :</strong> <em>contexte</em> = les infos annexes nécessaires à une règle (ex. « quelle demande correspond à ce mint ? »).</p>
+<p><strong>Le problème :</strong> sans contexte fourni, les règles de mint (dont I3) sont toutes sautées ; l'attaque de détournement 1:1 n'est pas détectée dans le déploiement par défaut.</p>
+<div class="reco">
+<h4>Proposition recommandée</h4>
+<p><strong>Échouer bruyamment plutôt que silencieusement.</strong> Si aucun fournisseur de contexte n'est branché en déploiement « réel », lever une alerte de configuration <em>critique</em> au démarrage (pas un simple warn-once), et refuser de considérer la surveillance de mint comme « active ». Documenter la dépendance au contexte comme pré-requis de déploiement.</p>
+</div>
+
+<h3>4.9 — Destruction « irréversible » réversible dans le modèle <span class="sev low">FAIBLE</span></h3>
+<p><strong>Fichier :</strong> <code>response/</code> (état DESTROYED).</p>
+<p><strong>Le problème :</strong> un périmètre « détruit » peut re-rentrer en « ralenti » via une action ultérieure, alors que le burn est décrit comme irréversible — incohérence entre la simulation et la sémantique on-chain visée.</p>
+<div class="reco">
+<h4>Proposition recommandée</h4>
+<p><strong>État terminal verrouillé.</strong> Faire de DESTROYED un état absorbant : toute transition sortante est refusée (erreur explicite). Aligne le miroir hors-chaine sur le comportement du contrat et évite une démonstration trompeuse.</p>
+</div>
+
+<h2>Plan d'implémentation proposé (après validation)</h2>
+<table>
+<tr><th>Ordre</th><th>Problème</th><th>Effort</th><th>Où</th></tr>
+<tr><td>1</td><td>4.5 Quorum ≥ 2 + 4.4 idempotence</td><td>Court</td><td><code>response/orchestrator.py</code></td></tr>
+<tr><td>2</td><td>4.1 zone morte baseline + 4.2 score continu / anti-fan-out</td><td>Moyen</td><td><code>detection/detector.py</code>, <code>detection/params.py</code></td></tr>
+<tr><td>3</td><td>4.3 lignage d'origine (prototype chiffré)</td><td>Moyen</td><td><code>data/ghost_ledger.py</code>, <code>data/late_marking.py</code></td></tr>
+<tr><td>4</td><td>4.6 journal hash-chaîné</td><td>Court</td><td><code>response/</code></td></tr>
+<tr><td>5</td><td>4.7 gardes div/0 · 4.8 fail-loud mint · 4.9 état terminal</td><td>Court</td><td><code>detection/</code>, <code>response/</code></td></tr>
+</table>
+<p class="note">Chaque lot = une branche + une PR + sa suite de tests, mergée après CI verte. Les modules <code>shared/</code> et les contrats Solidity ne sont touchés que si vous le validez explicitement (règle de périmètre d'équipe). Les points touchant la conception (score de détection, lignage) seront aussi consignés comme décisions dans <code>docs/OPEN_QUESTIONS.md</code>.</p>
+
+</body>
+</html>
