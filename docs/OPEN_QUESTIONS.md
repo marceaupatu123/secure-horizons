@@ -348,14 +348,17 @@ Garder le bénéfice (reverter les deux jambes) **sans** émettre ni custodier d
 > (reçu sans paiement) ; l'argent bloqué du voleur est **restitué aux victimes**, le protocole ne
 > garde rien (ni fonds, ni frais). Le stablecoin pivot Z permanent reste écarté.
 
-## 11. Contamination posée après coup (#85) — _ouvert, bloque §10bis_
+## 11. Contamination posée après coup (#85) — _→ Tranché, voir `docs/OPEN_ANSWERS.md` §11_
 
-Le ratio de contamination (§9) se transmet **au moment de chaque transfert**. Si le voleur n'est
-marqué suspect (`AlertSeed`) qu'**après** avoir fait circuler son M', son ratio valait 0 au moment
-des ventes : le soupçon n'a pas suivi. Exemple : 10 M' frauduleux passés par 40 personnes en
-8 minutes, alerte à la 9e minute. Comment atteindre le M' chez le 40e détenteur ?
+> **TRANCHÉ par la décision §11 (2026-10-11, denybs)** — texte complet et mesure (`python -m
+> data.late_marking`, PR #95) dans `docs/OPEN_ANSWERS.md` §11. Résumé : **piste (b)** — recalcul
+> hors chaîne des ratios rétroactifs, destructions **et** restitutions soumises par le **multisig
+> 2/3** sous forme de **racine de Merkle contestable**. (a) et (b) récupèrent 100 % à couverture
+> égale (mesuré) ; (b) retenue car **coût on-chain nul par tranche**, **un seul mécanisme**
+> destruction+restitution, et cohérence avec « l'IA ne décide jamais seule ». Débloque #84 ;
+> #8 garde seulement le point d'extension « destruction par racine de Merkle ».
 
-Pistes (aucune tranchée) :
+Contexte conservé (pistes évaluées) :
 
 - **(a) Lignage d'origine sur la tranche** : chaque tranche (§0bis-b) garde l'identifiant de son
   entrée dans le Ghost (mint, transfert de vrai M). L'alerte vise une **origine**, pas une adresse.
@@ -367,14 +370,7 @@ Pistes (aucune tranchée) :
   ses Ghost de paiement. Simple, mais le M' déjà propagé n'est pas rattrapé (le dernier acheteur de
   M' pur garde alors un M' frauduleux qui se convertit).
 
-**Proposition (2026-10-10, Marceau) — _à valider en équipe_ : piste (b) pour le hackathon.** Les
-événements de transfert sont publics : le surveillant les rejoue, calcule qui détient quoi dans le
-lot frauduleux (y compris les Ghost de paiement des graines), et le multisig 2/3 soumet le résultat
-sous forme de racine de Merkle. Chaque porteur peut refaire le calcul et contester. C'est cohérent
-avec « l'IA ne décide jamais seule d'une destruction » (§3, §9). Le calcul doit aussi produire la
-liste des restitutions de la §10bis (point 4).
-
-À décider en équipe, avec tests d'invariants dans #8 / #84. Aucun chiffre inventé.
+Tests d'invariants associés dans #8 / #84 (voir la décision §11 d'`OPEN_ANSWERS.md`). Aucun chiffre inventé.
 
 ## 12. Monitor — reprise sur erreur RPC et checkpoint (#74) — _choix provisoires, à valider en équipe_
 
