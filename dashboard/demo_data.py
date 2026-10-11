@@ -172,12 +172,17 @@ class _Builder:
             reason=reason,
             seeds=seeds or [],
         )
+        return self.add_alert(alert)
+
+    def add_alert(self, alert: Alert) -> Alert:
+        """Enregistre une alerte deja construite (ex. par un vrai surveillant) et la journalise."""
         self.alerts.append(alert)
-        self.log(created_at, f"monitor:{monitor_name}", "alert_raised", reason,
-                 {"alert_id": alert.alert_id, "severity": severity.value,
-                  "kind": kind.value, "contamination_ratio": f"{ratio:.4f}",
-                  "suspect_amount": suspect_amount},
-                 subject_address=subject, related_tx_hash=alert.source_tx_hash)
+        self.log(alert.created_at, f"monitor:{alert.monitor_name}", "alert_raised", alert.reason,
+                 {"alert_id": alert.alert_id, "severity": alert.severity.value,
+                  "kind": alert.kind.value,
+                  "contamination_ratio": f"{alert.contamination_ratio:.4f}",
+                  "suspect_amount": alert.suspect_amount},
+                 subject_address=alert.subject_address, related_tx_hash=alert.source_tx_hash)
         return alert
 
     def action(self, action_type: ResponseActionType, status: ResponseActionStatus,

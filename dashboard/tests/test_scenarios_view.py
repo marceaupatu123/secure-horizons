@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dashboard.scenarios import SIMULATION_LABEL, MeasuredMetric, list_specs, run_scenario
+from dashboard.scenarios.models import REAL_LABEL
 from dashboard.scenarios.view import (
     CHECK_COLUMNS,
     METRIC_COLUMNS,
@@ -24,8 +25,18 @@ def test_scenarios_frame_columns_and_status() -> None:
     row_c = frame[frame["Scénario"] == "C"].iloc[0]
     assert row_c["Statut"] == "désactivé"
     assert row_c["Optionnel"] == "oui"
-    assert all(v.startswith(f"{SIMULATION_LABEL}, à remplacer par #")
-               for v in frame["Implémentation"])
+    labels = dict(zip(frame["Scénario"], frame["Implémentation"], strict=True))
+    for scenario_id in ("C", "D"):
+        assert labels[scenario_id].startswith(f"{SIMULATION_LABEL}, à remplacer par #")
+    for scenario_id in ("N1", "N2"):
+        assert labels[scenario_id].startswith(REAL_LABEL)
+        assert SIMULATION_LABEL not in labels[scenario_id]
+    for scenario_id in ("B", "N3"):
+        assert labels[scenario_id].startswith(REAL_LABEL)
+        assert f"{SIMULATION_LABEL}, à remplacer par #8" in labels[scenario_id]
+    # A : simule par defaut, backend reel optionnel (anvil) annonce dans le libelle.
+    assert labels["A"].startswith(f"{SIMULATION_LABEL}, à remplacer par #4, #5")
+    assert "SH_DEMO_CONTRACTS_BACKEND=anvil" in labels["A"]
 
 
 def test_metrics_frame_formats_values() -> None:

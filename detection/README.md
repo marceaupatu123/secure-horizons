@@ -51,6 +51,13 @@ mint = déposant de la demande, #91 : détournement à 1:1 du scénario B, entr�
 d'administration non annoncés et l'écart du taux au-delà de δ vs une référence. Une `Alert`
 signifie seulement **retarder** le périmètre (§3) ; détruire / pause globale = multisig.
 
+- **I3 (#91)** : si l'appelant fournit `MintContext.requester` (le déposant de la demande) et que
+  `event.recipient` en diffère, tout le montant minté est suspect. C'est le seul contrôle qui
+  attrape le **détournement à 1:1 du scénario B** (OPEN_ANSWERS §1, piste 4 : la demande d'une
+  victime est mintée vers l'attaquant) — I1 tient dans ce cas, seul le changement de destinataire
+  trahit l'attaque, quelle que soit sa taille. `requester` reste **hors `shared/`** (fourni par
+  l'appelant comme `deposit_amount`).
+
 - **Paramètres** : un seul fichier, `detection/params.py` (ε, δ, facteur I6, gravités), tous
   **PROVISOIRES / À MESURER**, aucune valeur mesurée.
 - **Entrées hors `MintEvent`** : `detection/inputs.py` (`MintContext`, `AdminEvent`,
