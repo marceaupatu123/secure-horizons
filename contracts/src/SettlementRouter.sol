@@ -17,9 +17,10 @@ interface IGuardianSet {
 /// @title SettlementRouter — routeur de règlement du M' (#84, OPEN_ANSWERS §10bis). FICTIF.
 /// @notice Voir `ISettlementRouter`. Itération 3 : `buyWithAsset` (PROTEGE), `sellPure` (PUR),
 ///         `statusOf`, un coffre par actif. Le M' est le M-Ghost (#8) ; le routeur le déplace par
-///         `transferFrom` (allowance du vendeur). L'enforcement « le M' ne bouge QUE par le
-///         routeur » est différé après le merge de #123 (OPEN_QUESTIONS §16), donc un transfert
-///         direct reste possible pour l'instant — le routeur ne fait qu'ÉTIQUETER les ventes.
+///         `transferFrom` (allowance du vendeur). L'enforcement « le M' non échu ne bouge que par
+///         un appelant autorisé » est porté par `GhostToken` (§10bis b′, #145) une fois
+///         `initRouting` appelé avec ce routeur dans la liste ; avant, le routeur ne fait
+///         qu'ÉTIQUETER les ventes.
 contract SettlementRouter is ISettlementRouter, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
