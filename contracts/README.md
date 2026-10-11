@@ -36,7 +36,8 @@ contracts/
     ├── ScenarioA.t.sol         # même attaque rejouée sur les deux contrats
     ├── StolenServiceKey.fuzz.t.sol
     ├── ghost/                  # une règle du design -> au moins un test (Buckets, Suspicion,
-    │                           #   Convert, Watcher, Guardian, Events)
+    │                           #   Convert, Watcher, Guardian, Events, LedgerParity)
+    ├── gas/GhostGas.t.sol      # mesures de gas (--isolate), recopiées plus bas
     └── invariant/
         ├── ProtectedMinterHandler.sol
         ├── ProtectedMinter.invariant.t.sol
@@ -324,10 +325,40 @@ d'incident, séries d'extension) et classe chaque action « doit réussir » / �
   avant l'expiration fige le soupçon (`Sc`), qui reste verrouillé.
 - Le M obtenu **avant** le gel n'est jamais repris (voulu) : seul du Ghost sans soupçon valide
   sort.
-- **Pas encore écrits** (suivis en issue) : parité avec `data/ghost_ledger.py`
-  (`LedgerParity.t.sol`), scénario de récupération après fragmentation, mesures de gas
-  (`GhostGas.t.sol`). Tailles mesurées (`forge build --sizes`) : `GhostToken` 21 173 o
-  (limite 24 576), initcode `ProtectedMinter` 33 546 o (limite 49 152).
+- **Pas encore écrit** (suivi #124) : scénario de récupération après fragmentation.
+  Tailles mesurées (`forge build --sizes`) : `GhostToken` 21 173 o (limite 24 576), initcode
+  `ProtectedMinter` 33 546 o (limite 49 152).
+- **Parité avec le registre hors chaîne** `data/ghost_ledger.py` : `test/ghost/LedgerParity.t.sol`
+  rejoue une chaîne courte (mints, transferts, conversions, transfert de M) et compare soldes,
+  tranches et montants convertis aux valeurs du registre, recopiées en dur.
+
+### Gas mesuré (`test/gas/GhostGas.t.sol`)
+
+Commande : `forge test --match-path test/gas/GhostGas.t.sol --isolate -vv` (chaque appel est une
+transaction séparée, stockage froid). Fixtures N = 10 (anneau de 11). Chiffres d'une exécution
+locale (forge 1.5.1), à refaire après tout changement du contrat ; ce ne sont pas des promesses.
+
+| Opération | Gas |
+|---|---|
+| _référence : transfert ERC-20 OpenZeppelin (MockUSDC), destinataire vide_ | _55 276_ |
+| _référence : transfert ERC-20, destinataire déjà crédité_ | _44 679_ |
+| transfert de Ghost, 1 tranche, destinataire vide | 131 011 |
+| transfert de Ghost, 1 tranche, tranche déjà présente chez le destinataire | 82 413 |
+| transfert de Ghost avec soupçon, 2 comptes dans l'incident | 135 022 |
+| transfert de Ghost, **pire cas** (11 tranches vers destinataire vide) | 425 786 |
+| transfert de Ghost, 11 tranches vers 11 tranches échues à régler | 247 571 |
+| transfert de M (burn + Ghost frais) | 124 449 |
+| `convert` (11 tranches échues à régler) | 172 651 |
+| `delay`, 1 compte (ouvre l'incident) | 251 553 |
+| `delay`, 64 comptes (rejoint l'incident) | 7 779 806 |
+| destruction 2/3, 64 cibles (approbation qui exécute) | 5 501 318 |
+
+Lecture, rapportée à la référence mesurée ci-dessus : un transfert de Ghost courant coûte de
+1,8× (destinataire déjà crédité, 82 413 / 44 679) à 2,4× (destinataire vide, 131 011 / 55 276)
+un transfert ERC-20 simple, et le pire cas 7,7× (425 786 / 55 276). Les lots de 64 (`delay`,
+destruction) font plusieurs millions de gas : la taille de lot utilisable dépend de la limite de
+gas par bloc du réseau visé (à vérifier sur Fuji avant la démo). Si c'est trop cher, seul N
+change (§0bis-b), pas l'algorithme.
 
 ## À produire plus tard — _proposé, à valider en équipe_
 
