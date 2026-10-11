@@ -1,4 +1,4 @@
-# Playbook de réponse — Équipe 20, Secure Horizons
+# Playbook de réponse — Équipe 20, Crypto-Secure
 
 Procédure suivie quand un surveillant lève une alerte sur le token. Elle décrit ce que fait
 `response/orchestrator.py`, tel qu'acté dans `docs/OPEN_ANSWERS.md` §3 et §9.

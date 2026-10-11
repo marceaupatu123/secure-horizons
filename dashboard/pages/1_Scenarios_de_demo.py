@@ -118,7 +118,7 @@ def _render_result(result: ScenarioResult) -> None:
 
 def main() -> None:
     """Rend la page des scenarios de demo."""
-    st.set_page_config(page_title="Scénarios de démo — Secure Horizons", layout="wide")
+    st.set_page_config(page_title="Scénarios de démo — Crypto-Secure", layout="wide")
     st.title("Scénarios de démo")
     st.info(
         "Données synthétiques et fictives : aucune vraie adresse ni clé. Le bandeau de chaque "

@@ -122,8 +122,8 @@ def _module_of(labels: list[str]) -> str:
 
 def render() -> None:
     """Rend le tableau de bord Streamlit."""
-    st.set_page_config(page_title="Secure Horizons - Avancement", page_icon="📊", layout="wide")
-    st.title("📊 Secure Horizons - Avancement du projet")
+    st.set_page_config(page_title="Crypto-Secure - Avancement", page_icon="📊", layout="wide")
+    st.title("📊 Crypto-Secure - Avancement du projet")
     st.caption(f"Source : issues GitHub de {REPO} (lecture seule via gh). Rafraichir la page pour actualiser.")
 
     try:

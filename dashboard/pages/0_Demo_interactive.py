@@ -35,7 +35,7 @@ def _replay(seed: int) -> tuple[Story, float]:
     """Rejoue A et B pour `seed` en montrant la progression ; renvoie l'histoire et la duree."""
     start = time.perf_counter()
     with st.status("Rejeu des attaques sur le moteur de démo…", expanded=False) as status:
-        status.write("🔑 Acte 1 : la clé volée, sur un contrat classique et sur Secure Horizons")
+        status.write("🔑 Acte 1 : la clé volée, sur un contrat classique et sur Crypto-Secure")
         result_a = run_scenario_quietly("A", seed=seed, disabled=frozenset())
         status.write("🕵️ Acte 2 : le pirate discret, dans du trafic synthétique analysé par "
                      "les vrais surveillants")
@@ -47,9 +47,9 @@ def _replay(seed: int) -> tuple[Story, float]:
 
 def main() -> None:
     """Rend la page de demo interactive."""
-    st.set_page_config(page_title="Démo interactive — Secure Horizons", page_icon="🛡️",
+    st.set_page_config(page_title="Démo interactive — Crypto-Secure", page_icon="🛡️",
                        layout="wide")
-    st.title("🛡️ Secure Horizons : une clé volée ne rapporte presque rien")
+    st.title("🛡️ Crypto-Secure : une clé volée ne rapporte presque rien")
     st.caption("Démo interactive : chaque lancement rejoue réellement les attaques. Données "
                "synthétiques et fictives, aucune vraie adresse ni clé.")
 

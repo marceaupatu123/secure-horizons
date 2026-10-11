@@ -1,4 +1,4 @@
-# Secure Horizons — Guardians of Value (Équipe 20)
+# Crypto-Secure — Guardians of Value (Équipe 20)
 
 > ESSECKATHON — Track « Fintech Security : Guardians of Value ». Hackathon 48h.
 
